@@ -8,7 +8,7 @@ A simulated study on real public data (France, 2017-2019).
 
 Picture a small microgrid: a **battery**, a **solar array**, and **five zones of electrical load**, all connected to the main grid.
 
-That grid connection has a hard limit. Whatever happens, the microgrid must **never draw more than 368 kW** from the grid in any hour. Going over is not just expensive, it is not allowed.
+That grid connection has a hard limit. Whatever happens, the microgrid must **never draw more than 368 kW** from the grid in any hour.
 
 Every hour, a controller has to decide:
 
@@ -75,7 +75,7 @@ Three ways of making RL respect the cap, against two reference controllers:
 
 ## The data
 
-Datasets are fetched at run time (not committed):
+Datasets are fetched at run time:
 
 ```bash
 python data/download.py     # ~130 MB into data/raw/
@@ -96,7 +96,7 @@ The zone split of the load and the stadium-event calendar are **synthetic**. Dat
 configs/config.yaml      all experiment settings
 data/                    download and preparation scripts
 env/                     environment, cap shield, observation normaliser
-agents/                  PPO, SAC, heuristics, networks, reward shaping
+agents/                  PPO, heuristics, networks, reward shaping
 experiments/             training and batch runners
 tools/                   table, figure and status scripts
 tests/                   unit tests
@@ -118,8 +118,6 @@ python tools/report/plots.py                              # rebuild figures
 ## Limitations
 
 - The setup is a simulation: the topology, zone split, events, battery and PV sizes, and the price proxy are assumptions.
-- Only five seeds and one train/val split, with no significance test.
-- PPO carries the main claim. The SAC code is there for ablations only.
 - The comparison with the IJCNN paper is analytical, not experimental: different data, objective and battery model.
 
 ---
@@ -140,13 +138,10 @@ Evaluated on the Val split, 300k training steps, 5 seeds per method.
 **Takeaways**
 
 - **No learned policy beats the tuned rule while respecting the cap.** The cheap ones (PPO, PPO-Lagrangian) are cheap because they ignore the cap and behave like Grid-Only.
-- **The Lagrangian multiplier keeps growing** and never changes the behaviour of the policy.
 - **The residual comes closest** (about 2 % cheaper than PSM'), but it still breaks the cap slightly on every seed.
 - **The shield is the only method that is always feasible, but it works by construction**: it clips the actions, so the policy is effectively removed from the loop. Passing a feasibility test that way says nothing about learning.
 
 So the gap to the original paper comes mostly from the **strength of the comparator** and the **presence of a hard constraint**, not from RL being unable to learn.
-
-Full figures (learning curves, cost-vs-violation frontier, multiplier trajectory, per-seed results, cost breakdown) are in `results/figures/`, and the raw tables are in `results/tables/`.
 
 ## Citations
 
