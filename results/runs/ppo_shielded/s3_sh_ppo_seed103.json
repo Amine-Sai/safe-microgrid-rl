@@ -1,0 +1,238 @@
+{
+  "method": "ppo",
+  "seed": 103,
+  "total_steps": 300000,
+  "resolved_config": {
+    "method": "ppo",
+    "state_dim": 17,
+    "action_dim": 1,
+    "hidden_dims": [
+      256,
+      256
+    ],
+    "lr_actor": 0.0003,
+    "lr_critic": 0.0003,
+    "lr_dual": 0.01,
+    "gamma": 0.99,
+    "tau": 0.005,
+    "batch_size": 128,
+    "buffer_size": 100000,
+    "reward_scale": 0.096879,
+    "reward_scale_mode": "fixed",
+    "reward_scale_explicit": false,
+    "auto_entropy": true,
+    "alpha_init": 0.2,
+    "target_entropy": -3.0,
+    "entropy_clamp": null,
+    "cost_limit": 0.05,
+    "lambda_init": 0.0,
+    "dual_cost_horizon": 10,
+    "lambda_source": "episode_mean",
+    "lambda_max": 1000.0,
+    "shed_mapping": "linear",
+    "warmup_steps": 1000,
+    "warmup_mode": "uniform",
+    "fixed_cost_penalty_beta": 1.0,
+    "potential_shaping_kappa": 105.0,
+    "total_steps": 300000,
+    "eval_interval_steps": 50000,
+    "seed": 103,
+    "torch_threads": 1,
+    "lr_policy": 0.0003,
+    "lr_value": 0.001,
+    "gae_lambda": 0.95,
+    "ppo_clip_ratio": 0.2,
+    "ppo_entropy_coef": 0.0,
+    "ppo_n_epochs": 10,
+    "ppo_batch_size": 64,
+    "ppo_target_kl": 0.05,
+    "lambda_lr_mult": 0.1,
+    "lag_normalize_by_1p_lam": true,
+    "rollout_steps": 2048,
+    "residual_on_heuristic": false,
+    "residual_coef": 0.0,
+    "shielded": true,
+    "ppo_use_minibatches": false,
+    "ppo_value_epochs": 1,
+    "ppo_store_raw_action": false,
+    "ppo_init_log_std": -1.0,
+    "ppo_init_log_std_shed": null,
+    "reward_scale_effective": 0.096879
+  },
+  "wall_clock_sec": 522.6905038356781,
+  "steps_per_sec": 573.9534156417602,
+  "wall_clock_history": {
+    "50000_steps": {
+      "chunk_time_sec": 85.13155269622803,
+      "cumulative_time_sec": 85.13155269622803,
+      "steps_per_sec": 587.326301664123
+    },
+    "100000_steps": {
+      "chunk_time_sec": 85.8541431427002,
+      "cumulative_time_sec": 170.98569583892822,
+      "steps_per_sec": 584.8442438962959
+    },
+    "150000_steps": {
+      "chunk_time_sec": 89.40392804145813,
+      "cumulative_time_sec": 260.38962388038635,
+      "steps_per_sec": 576.059820528427
+    },
+    "200000_steps": {
+      "chunk_time_sec": 85.89117217063904,
+      "cumulative_time_sec": 346.2807960510254,
+      "steps_per_sec": 577.565958842631
+    },
+    "250000_steps": {
+      "chunk_time_sec": 88.67766642570496,
+      "cumulative_time_sec": 434.95846247673035,
+      "steps_per_sec": 574.7675274012507
+    },
+    "300000_steps": {
+      "chunk_time_sec": 83.95226621627808,
+      "cumulative_time_sec": 518.9107286930084,
+      "steps_per_sec": 578.1341248341819
+    }
+  },
+  "eval_checkpoints": {
+    "50000_steps": {
+      "energy_purchase_eur": 44246.20205501137,
+      "unserved_penalty_eur": 13676.998730964959,
+      "battery_wear_eur": 112.97088761378542,
+      "total_cost_eur": 58036.171673590114,
+      "unserved_energy_pct": 1.0647551425701034,
+      "violation_rate_pct": 3.7774725274725274,
+      "violation_hours": 165,
+      "mean_exceedance_kw": 7.480695074607843e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 85.48534798534799
+    },
+    "100000_steps": {
+      "energy_purchase_eur": 44442.47274832295,
+      "unserved_penalty_eur": 13440.468693964183,
+      "battery_wear_eur": 378.46143360371616,
+      "total_cost_eur": 58261.40287589085,
+      "unserved_energy_pct": 1.0463412655597275,
+      "violation_rate_pct": 3.7545787545787546,
+      "violation_hours": 164,
+      "mean_exceedance_kw": 7.193122790868607e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 84.36355311355311
+    },
+    "150000_steps": {
+      "energy_purchase_eur": 44520.60398226022,
+      "unserved_penalty_eur": 13646.714525930583,
+      "battery_wear_eur": 321.69666605950954,
+      "total_cost_eur": 58489.01517425031,
+      "unserved_energy_pct": 1.0623975153759058,
+      "violation_rate_pct": 3.7774725274725274,
+      "violation_hours": 165,
+      "mean_exceedance_kw": 7.468258250810738e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 84.2948717948718
+    },
+    "200000_steps": {
+      "energy_purchase_eur": 44580.89647252916,
+      "unserved_penalty_eur": 14715.15166465193,
+      "battery_wear_eur": 130.78128408739934,
+      "total_cost_eur": 59426.829421268485,
+      "unserved_energy_pct": 1.145575409143145,
+      "violation_rate_pct": 1.282051282051282,
+      "violation_hours": 56,
+      "mean_exceedance_kw": 1.8973575286568554e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 94.5054945054945
+    },
+    "250000_steps": {
+      "energy_purchase_eur": 44553.75757808435,
+      "unserved_penalty_eur": 14705.389803685248,
+      "battery_wear_eur": 121.4306694231242,
+      "total_cost_eur": 59380.57805119272,
+      "unserved_energy_pct": 1.1448154476924055,
+      "violation_rate_pct": 1.1217948717948718,
+      "violation_hours": 49,
+      "mean_exceedance_kw": 1.6187801220114905e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 96.49725274725274
+    },
+    "300000_steps": {
+      "energy_purchase_eur": 44550.05170332,
+      "unserved_penalty_eur": 14654.56658617407,
+      "battery_wear_eur": 109.47368421052637,
+      "total_cost_eur": 59314.0919737046,
+      "unserved_energy_pct": 1.1408588574070906,
+      "violation_rate_pct": 0.9844322344322344,
+      "violation_hours": 43,
+      "mean_exceedance_kw": 1.4318035143023553e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 97.39010989010988
+    }
+  },
+  "final_checkpoint": {
+    "checkpoint": "300000_steps",
+    "metrics": {
+      "energy_purchase_eur": 44550.05170332,
+      "unserved_penalty_eur": 14654.56658617407,
+      "battery_wear_eur": 109.47368421052637,
+      "total_cost_eur": 59314.0919737046,
+      "unserved_energy_pct": 1.1408588574070906,
+      "violation_rate_pct": 0.9844322344322344,
+      "violation_hours": 43,
+      "mean_exceedance_kw": 1.4318035143023553e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 97.39010989010988
+    },
+    "weights": "C:/Users/fearn/OneDrive/Desktop/smartgrid-rl/smartgrid-rl/checkpoints/ppo_shielded/s3_sh_ppo_seed103_final.pt"
+  },
+  "best_checkpoint": {
+    "checkpoint": "50000_steps",
+    "metrics": {
+      "energy_purchase_eur": 44246.20205501137,
+      "unserved_penalty_eur": 13676.998730964959,
+      "battery_wear_eur": 112.97088761378542,
+      "total_cost_eur": 58036.171673590114,
+      "unserved_energy_pct": 1.0647551425701034,
+      "violation_rate_pct": 3.7774725274725274,
+      "violation_hours": 165,
+      "mean_exceedance_kw": 7.480695074607843e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 85.48534798534799
+    },
+    "weights": "C:/Users/fearn/OneDrive/Desktop/smartgrid-rl/smartgrid-rl/checkpoints/ppo_shielded/s3_sh_ppo_seed103_step50000.pt",
+    "role": "SECONDARY (reported only to quantify checkpoint-selection optimism)"
+  },
+  "final_metrics": {
+    "energy_purchase_eur": 44550.05170332,
+    "unserved_penalty_eur": 14654.56658617407,
+    "battery_wear_eur": 109.47368421052637,
+    "total_cost_eur": 59314.0919737046,
+    "unserved_energy_pct": 1.1408588574070906,
+    "violation_rate_pct": 0.9844322344322344,
+    "violation_hours": 43,
+    "mean_exceedance_kw": 1.4318035143023553e-07,
+    "frac_saturated": 0.0,
+    "soc_pinned_pct": 97.39010989010988
+  },
+  "training_time_metrics": {
+    "total_cost_eur": 5026706.2629581,
+    "mean_exceedance_kw": 6.100351058521861e-07,
+    "violation_rate_pct": 5.253333333333334,
+    "cost_limit_d_main": 0.05,
+    "satisfies_d_main_on_train": true
+  },
+  "lambda_summary": {
+    "lambda_start": null,
+    "lambda_mid": null,
+    "lambda_end": null,
+    "status": "N/A (unconstrained/penalty)",
+    "trajectory_sample": []
+  },
+  "degeneracy_check": {
+    "is_degenerate": false,
+    "summary": "None (healthy dynamic dispatch)",
+    "mean_battery_cmd": 0.08111327141523361,
+    "mean_shed_cmd": 0.0,
+    "soc_pinned_bounds_pct": 62.93566666666667
+  },
+  "agent": "ppo_shielded",
+  "run_id": "s3_sh_ppo"
+}

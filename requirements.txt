@@ -1,0 +1,18 @@
+# smartgrid-rl requirements - regenerated from the environment that produced every
+# result in results/. The previous pins (numpy 1.26.4 / torch 2.3.1 / pytest 8.2.2)
+# did NOT match this environment. See DECISIONS.md D39.
+#
+# The clean-machine reproduction claim is WITHDRAWN until the suite passes once in a
+# fresh venv built from this file.
+
+numpy==2.4.4
+pandas==3.0.2
+pyarrow==26.0.0
+gymnasium==1.4.0
+torch==2.14.1
+pyyaml==6.0.3
+pytest==9.1.1
+matplotlib==3.10.8
+scipy==1.17.1
+# cvxpy: NOT INSTALLED (No package metadata was found for cvxpy)
+# tensorboard: NOT INSTALLED (No package metadata was found for tensorboard)

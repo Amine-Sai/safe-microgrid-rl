@@ -1,0 +1,238 @@
+{
+  "method": "ppo",
+  "seed": 101,
+  "total_steps": 300000,
+  "resolved_config": {
+    "method": "ppo",
+    "state_dim": 17,
+    "action_dim": 1,
+    "hidden_dims": [
+      256,
+      256
+    ],
+    "lr_actor": 0.0003,
+    "lr_critic": 0.0003,
+    "lr_dual": 0.01,
+    "gamma": 0.99,
+    "tau": 0.005,
+    "batch_size": 128,
+    "buffer_size": 100000,
+    "reward_scale": 0.096879,
+    "reward_scale_mode": "fixed",
+    "reward_scale_explicit": false,
+    "auto_entropy": true,
+    "alpha_init": 0.2,
+    "target_entropy": -3.0,
+    "entropy_clamp": null,
+    "cost_limit": 0.05,
+    "lambda_init": 0.0,
+    "dual_cost_horizon": 10,
+    "lambda_source": "episode_mean",
+    "lambda_max": 1000.0,
+    "shed_mapping": "linear",
+    "warmup_steps": 1000,
+    "warmup_mode": "uniform",
+    "fixed_cost_penalty_beta": 1.0,
+    "potential_shaping_kappa": 105.0,
+    "total_steps": 300000,
+    "eval_interval_steps": 50000,
+    "seed": 101,
+    "torch_threads": 1,
+    "lr_policy": 0.0003,
+    "lr_value": 0.001,
+    "gae_lambda": 0.95,
+    "ppo_clip_ratio": 0.2,
+    "ppo_entropy_coef": 0.0,
+    "ppo_n_epochs": 10,
+    "ppo_batch_size": 64,
+    "ppo_target_kl": 0.05,
+    "lambda_lr_mult": 0.1,
+    "lag_normalize_by_1p_lam": true,
+    "rollout_steps": 2048,
+    "residual_on_heuristic": false,
+    "residual_coef": 0.0,
+    "shielded": true,
+    "ppo_use_minibatches": false,
+    "ppo_value_epochs": 1,
+    "ppo_store_raw_action": false,
+    "ppo_init_log_std": -1.0,
+    "ppo_init_log_std_shed": null,
+    "reward_scale_effective": 0.096879
+  },
+  "wall_clock_sec": 520.4734215736389,
+  "steps_per_sec": 576.398308856881,
+  "wall_clock_history": {
+    "50000_steps": {
+      "chunk_time_sec": 85.11942887306213,
+      "cumulative_time_sec": 85.11942887306213,
+      "steps_per_sec": 587.4099563633653
+    },
+    "100000_steps": {
+      "chunk_time_sec": 85.48121237754822,
+      "cumulative_time_sec": 170.60064125061035,
+      "steps_per_sec": 586.1642680058932
+    },
+    "150000_steps": {
+      "chunk_time_sec": 88.87131023406982,
+      "cumulative_time_sec": 259.4719514846802,
+      "steps_per_sec": 578.0971667330923
+    },
+    "200000_steps": {
+      "chunk_time_sec": 85.5128767490387,
+      "cumulative_time_sec": 344.9848282337189,
+      "steps_per_sec": 579.7356394597876
+    },
+    "250000_steps": {
+      "chunk_time_sec": 88.2974762916565,
+      "cumulative_time_sec": 433.28230452537537,
+      "steps_per_sec": 576.9910226863618
+    },
+    "300000_steps": {
+      "chunk_time_sec": 83.59732437133789,
+      "cumulative_time_sec": 516.8796288967133,
+      "steps_per_sec": 580.4059266958425
+    }
+  },
+  "eval_checkpoints": {
+    "50000_steps": {
+      "energy_purchase_eur": 44271.589823328206,
+      "unserved_penalty_eur": 14063.747284524143,
+      "battery_wear_eur": 98.79999999999995,
+      "total_cost_eur": 58434.13710785235,
+      "unserved_energy_pct": 1.0948635396445665,
+      "violation_rate_pct": 3.9148351648351647,
+      "violation_hours": 171,
+      "mean_exceedance_kw": 7.660772946896041e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 96.01648351648352
+    },
+    "100000_steps": {
+      "energy_purchase_eur": 44235.95559859547,
+      "unserved_penalty_eur": 13889.866349212825,
+      "battery_wear_eur": 167.5911831295117,
+      "total_cost_eur": 58293.413130937806,
+      "unserved_energy_pct": 1.0813268989387896,
+      "violation_rate_pct": 3.708791208791209,
+      "violation_hours": 162,
+      "mean_exceedance_kw": 7.32726735588915e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 84.93589743589743
+    },
+    "150000_steps": {
+      "energy_purchase_eur": 44464.35374082031,
+      "unserved_penalty_eur": 12647.983302942477,
+      "battery_wear_eur": 480.6260672706279,
+      "total_cost_eur": 57592.963111033416,
+      "unserved_energy_pct": 0.9846462320182633,
+      "violation_rate_pct": 4.006410256410256,
+      "violation_hours": 175,
+      "mean_exceedance_kw": 6.586528923245983e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 68.10897435897436
+    },
+    "200000_steps": {
+      "energy_purchase_eur": 44428.52449659318,
+      "unserved_penalty_eur": 13327.219266921282,
+      "battery_wear_eur": 404.47926336634083,
+      "total_cost_eur": 58160.2230268808,
+      "unserved_energy_pct": 1.037524791264695,
+      "violation_rate_pct": 3.411172161172161,
+      "violation_hours": 149,
+      "mean_exceedance_kw": 5.980532524071702e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 78.86904761904762
+    },
+    "250000_steps": {
+      "energy_purchase_eur": 44424.021010577766,
+      "unserved_penalty_eur": 13981.55655567348,
+      "battery_wear_eur": 352.91320875911265,
+      "total_cost_eur": 58758.49077501036,
+      "unserved_energy_pct": 1.0884649872128809,
+      "violation_rate_pct": 2.60989010989011,
+      "violation_hours": 114,
+      "mean_exceedance_kw": 3.6401419434446994e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 84.68406593406593
+    },
+    "300000_steps": {
+      "energy_purchase_eur": 44513.41533823722,
+      "unserved_penalty_eur": 14616.949568785727,
+      "battery_wear_eur": 142.36132526494845,
+      "total_cost_eur": 59272.726232287896,
+      "unserved_energy_pct": 1.1379303703823773,
+      "violation_rate_pct": 1.8315018315018317,
+      "violation_hours": 80,
+      "mean_exceedance_kw": 2.4186701653460517e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 95.26098901098901
+    }
+  },
+  "final_checkpoint": {
+    "checkpoint": "300000_steps",
+    "metrics": {
+      "energy_purchase_eur": 44513.41533823722,
+      "unserved_penalty_eur": 14616.949568785727,
+      "battery_wear_eur": 142.36132526494845,
+      "total_cost_eur": 59272.726232287896,
+      "unserved_energy_pct": 1.1379303703823773,
+      "violation_rate_pct": 1.8315018315018317,
+      "violation_hours": 80,
+      "mean_exceedance_kw": 2.4186701653460517e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 95.26098901098901
+    },
+    "weights": "C:/Users/fearn/OneDrive/Desktop/smartgrid-rl/smartgrid-rl/checkpoints/ppo_shielded/s3_sh_ppo_seed101_final.pt"
+  },
+  "best_checkpoint": {
+    "checkpoint": "150000_steps",
+    "metrics": {
+      "energy_purchase_eur": 44464.35374082031,
+      "unserved_penalty_eur": 12647.983302942477,
+      "battery_wear_eur": 480.6260672706279,
+      "total_cost_eur": 57592.963111033416,
+      "unserved_energy_pct": 0.9846462320182633,
+      "violation_rate_pct": 4.006410256410256,
+      "violation_hours": 175,
+      "mean_exceedance_kw": 6.586528923245983e-07,
+      "frac_saturated": 0.0,
+      "soc_pinned_pct": 68.10897435897436
+    },
+    "weights": "C:/Users/fearn/OneDrive/Desktop/smartgrid-rl/smartgrid-rl/checkpoints/ppo_shielded/s3_sh_ppo_seed101_step150000.pt",
+    "role": "SECONDARY (reported only to quantify checkpoint-selection optimism)"
+  },
+  "final_metrics": {
+    "energy_purchase_eur": 44513.41533823722,
+    "unserved_penalty_eur": 14616.949568785727,
+    "battery_wear_eur": 142.36132526494845,
+    "total_cost_eur": 59272.726232287896,
+    "unserved_energy_pct": 1.1379303703823773,
+    "violation_rate_pct": 1.8315018315018317,
+    "violation_hours": 80,
+    "mean_exceedance_kw": 2.4186701653460517e-07,
+    "frac_saturated": 0.0,
+    "soc_pinned_pct": 95.26098901098901
+  },
+  "training_time_metrics": {
+    "total_cost_eur": 4823245.292029882,
+    "mean_exceedance_kw": 6.124732179675145e-07,
+    "violation_rate_pct": 5.247333333333333,
+    "cost_limit_d_main": 0.05,
+    "satisfies_d_main_on_train": true
+  },
+  "lambda_summary": {
+    "lambda_start": null,
+    "lambda_mid": null,
+    "lambda_end": null,
+    "status": "N/A (unconstrained/penalty)",
+    "trajectory_sample": []
+  },
+  "degeneracy_check": {
+    "is_degenerate": false,
+    "summary": "None (healthy dynamic dispatch)",
+    "mean_battery_cmd": -0.0017427930142730474,
+    "mean_shed_cmd": 0.0,
+    "soc_pinned_bounds_pct": 58.342666666666666
+  },
+  "agent": "ppo_shielded",
+  "run_id": "s3_sh_ppo"
+}

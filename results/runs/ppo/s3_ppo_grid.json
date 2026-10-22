@@ -1,0 +1,63 @@
+{
+  "wall_clock_sec": 729.8749117851257,
+  "speedup": 2.946295735485909,
+  "n_ok": 5,
+  "n_total": 5,
+  "results": [
+    {
+      "method": "ppo",
+      "seed": 103,
+      "steps": 300000,
+      "wall_clock_sec": 473.4349982738495,
+      "final_val_cost": 45665.708009014066,
+      "final_val_exc": 3.4218200437947854,
+      "final_lambda": null,
+      "result_path": "results/runs/s3_ppo_ppo_seed103.json",
+      "ckpt_path": "checkpoints/s3_ppo_ppo_seed103_final.pt"
+    },
+    {
+      "method": "ppo",
+      "seed": 102,
+      "steps": 300000,
+      "wall_clock_sec": 473.48740458488464,
+      "final_val_cost": 45654.06122727355,
+      "final_val_exc": 3.42851060813547,
+      "final_lambda": null,
+      "result_path": "results/runs/s3_ppo_ppo_seed102.json",
+      "ckpt_path": "checkpoints/s3_ppo_ppo_seed102_final.pt"
+    },
+    {
+      "method": "ppo",
+      "seed": 101,
+      "steps": 300000,
+      "wall_clock_sec": 473.59837007522583,
+      "final_val_cost": 45303.39789471729,
+      "final_val_exc": 3.257000365061858,
+      "final_lambda": null,
+      "result_path": "results/runs/s3_ppo_ppo_seed101.json",
+      "ckpt_path": "checkpoints/s3_ppo_ppo_seed101_final.pt"
+    },
+    {
+      "method": "ppo",
+      "seed": 104,
+      "steps": 300000,
+      "wall_clock_sec": 473.73574900627136,
+      "final_val_cost": 45640.358604266585,
+      "final_val_exc": 3.384296911235194,
+      "final_lambda": null,
+      "result_path": "results/runs/s3_ppo_ppo_seed104.json",
+      "ckpt_path": "checkpoints/s3_ppo_ppo_seed104_final.pt"
+    },
+    {
+      "method": "ppo",
+      "seed": 105,
+      "steps": 300000,
+      "wall_clock_sec": 256.17081809043884,
+      "final_val_cost": 45303.38733165006,
+      "final_val_exc": 3.257000365061858,
+      "final_lambda": null,
+      "result_path": "results/runs/s3_ppo_ppo_seed105.json",
+      "ckpt_path": "checkpoints/s3_ppo_ppo_seed105_final.pt"
+    }
+  ]
+}

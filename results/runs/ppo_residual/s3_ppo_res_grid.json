@@ -1,0 +1,63 @@
+{
+  "wall_clock_sec": 893.1522164344788,
+  "speedup": 2.9285346293620704,
+  "n_ok": 5,
+  "n_total": 5,
+  "results": [
+    {
+      "method": "ppo_lagrangian",
+      "seed": 102,
+      "steps": 300000,
+      "wall_clock_sec": 573.4383676052094,
+      "final_val_cost": 52378.54401655636,
+      "final_val_exc": 0.8323996389358423,
+      "final_lambda": 2.140956968199438,
+      "result_path": "results/runs/s3_ppo_res_ppo_lagrangian_seed102.json",
+      "ckpt_path": "checkpoints/s3_ppo_res_ppo_lagrangian_seed102_final.pt"
+    },
+    {
+      "method": "ppo_lagrangian",
+      "seed": 103,
+      "steps": 300000,
+      "wall_clock_sec": 573.6496720314026,
+      "final_val_cost": 53460.49478074751,
+      "final_val_exc": 0.5739112571502691,
+      "final_lambda": 2.158006982903237,
+      "result_path": "results/runs/s3_ppo_res_ppo_lagrangian_seed103.json",
+      "ckpt_path": "checkpoints/s3_ppo_res_ppo_lagrangian_seed103_final.pt"
+    },
+    {
+      "method": "ppo_lagrangian",
+      "seed": 101,
+      "steps": 300000,
+      "wall_clock_sec": 574.440836429596,
+      "final_val_cost": 55777.16640911154,
+      "final_val_exc": 0.08952080310746172,
+      "final_lambda": 1.8875574105887332,
+      "result_path": "results/runs/s3_ppo_res_ppo_lagrangian_seed101.json",
+      "ckpt_path": "checkpoints/s3_ppo_res_ppo_lagrangian_seed101_final.pt"
+    },
+    {
+      "method": "ppo_lagrangian",
+      "seed": 104,
+      "steps": 300000,
+      "wall_clock_sec": 574.632942199707,
+      "final_val_cost": 55300.95817236746,
+      "final_val_exc": 0.08039903662989052,
+      "final_lambda": 2.01188103144009,
+      "result_path": "results/runs/s3_ppo_res_ppo_lagrangian_seed104.json",
+      "ckpt_path": "checkpoints/s3_ppo_res_ppo_lagrangian_seed104_final.pt"
+    },
+    {
+      "method": "ppo_lagrangian",
+      "seed": 105,
+      "steps": 300000,
+      "wall_clock_sec": 319.46537685394287,
+      "final_val_cost": 54285.97483905993,
+      "final_val_exc": 0.30885813221017394,
+      "final_lambda": 1.9753810935277272,
+      "result_path": "results/runs/s3_ppo_res_ppo_lagrangian_seed105.json",
+      "ckpt_path": "checkpoints/s3_ppo_res_ppo_lagrangian_seed105_final.pt"
+    }
+  ]
+}
