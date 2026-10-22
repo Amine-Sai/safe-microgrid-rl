@@ -4,8 +4,7 @@ A simulated study on real public data (France, 2017-2019).
 
 ---
 
-## The problem in one minute
-
+## The problem:
 Picture a small microgrid: a **battery**, a **solar array**, and **five zones of electrical load**, all connected to the main grid.
 
 That grid connection has a hard limit. Whatever happens, the microgrid must **never draw more than 368 kW** from the grid in any hour.
@@ -122,9 +121,12 @@ python tools/report/plots.py                              # rebuild figures
 
 ---
 
-## Results (short version)
+## Results 
 
 Evaluated on the Val split, 300k training steps, 5 seeds per method.
+
+<table> <tr> <td align="center" valign="top" width="50%"> <img src="https://github.com/user-attachments/assets/2b1c13be-0387-4972-b5ce-9cef18aa4a03" alt="Learning curves" width="360"><br> <sub><b>Learning curves</b></sub> </td> <td align="center" valign="top" width="50%"> <img src="https://github.com/user-attachments/assets/2950f657-375d-4140-8d3b-2478d6801843" alt="Cost vs exceedance" width="360"><br> <sub><b>Cost vs exceedance</b></sub> </td> </tr> <tr> <td align="center" valign="top" width="50%"> <img src="https://github.com/user-attachments/assets/0662f2a8-4648-4092-a9a3-0a6bbab783c4" alt="Per-seed results" width="360"><br> <sub><b>Per-seed results</b></sub> </td> <td align="center" valign="top" width="50%"> <img src="https://github.com/user-attachments/assets/b7af4ffa-9ab5-4885-b906-479c03d9bb50" alt="Cost breakdown" width="360"><br> <sub><b>Cost breakdown</b></sub> </td> </tr> </table>
+
 
 | Method | Val cost (EUR) | Respects the cap? |
 |---|---:|:---:|
@@ -134,6 +136,8 @@ Evaluated on the Val split, 300k training steps, 5 seeds per method.
 | Shielded PPO | 58,937 | **yes** |
 | *Grid-Only* | *45,338* | *no* |
 | *PSM' (tuned rule)* | *55,532* | *yes* |
+
+
 
 **Takeaways**
 
