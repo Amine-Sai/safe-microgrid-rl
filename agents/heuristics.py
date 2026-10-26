@@ -48,7 +48,7 @@ def pct_to_action(pct_res, pct_com, pct_stad, pct_street, pct_ind, bat_cmd=0.0):
 
 
 def _train_price_quantile(q: float) -> float:
-    """The price quantile that matches `q`, read from the TRAIN split."""
+    """The price quantile that matches `q`, read from the Train split."""
     import pandas as pd
 
     path = os.path.join(REPO_ROOT, "data", "processed", "train.parquet")

@@ -146,12 +146,13 @@ def test_cost_ignores_soc_deficit():
     assert saw_deficit, "test setup never drove SoC below the 0.20 reserve floor"
 
 
-def test_shed_action_mapping_current():
-    """Pin the CURRENT shed mapping: s = (a+1)/2, no dead zone.
+def test_shed_action_mapping_linear():
+    """Pin the shed mapping as implemented: s = (a+1)/2, no dead zone.
 
     env/smartgrid_env.py:183-194. For a=-1 -> s=0 (no shed); a=0 -> s=0.5;
     a=1 -> s=1.0. Industrial: off if s>0.9 else 0.3*s/0.9.
-    (The 'dead zone' s=max(0,a) is the PROPOSED Probe 0 change, not this code.)
+    A dead-zone variant s=max(0,a) was considered and not adopted; this test
+    pins the mapping above so that change cannot slip in unnoticed.
     """
     env = make_env(grid_import_cap_kw=100000.0)
     env.reset(seed=42)

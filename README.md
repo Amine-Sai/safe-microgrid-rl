@@ -3,9 +3,11 @@
 A simulated study on real public data (France, 2017-2019).
 
 > **Status: prototype snapshot** (`git tag v0-prototype`). The negative result is the
-> point of the study; the code is research-grade, not a maintained library. Decisions,
-> verification scope and known gaps are in **[NOTES.md](NOTES.md)**. The committed
-> results and how to rebuild them are described in **[results/README.md](results/README.md)**.
+> point of the study; the code is research-grade, not a maintained library. What was
+> re-run for this snapshot, and what was not, is summarised under
+> [Test status](#test-status) and [Hardware and compute](#hardware-and-compute). The
+> committed results and how to rebuild them are described in
+> **[results/README.md](results/README.md)**.
 
 ---
 
@@ -33,7 +35,7 @@ Most RL-for-energy papers ask: *"can RL beat a hand-written rule?"*
 
 This project asks something harder:
 
-> If the controller **must** respect a hard constraint, and the rule it is compared against is **well tuned**, can RL find a policy that is both **feasible** and **cheaper**?
+> If the controller **has to** respect a constraint on grid import, and the rule it is compared against is **well tuned**, can RL find a policy that is both **feasible** and **cheaper**?
 
 ## Where this comes from
 
@@ -42,11 +44,11 @@ This repo extends two papers by Salaorni et al. (Politecnico di Milano):
 - **ErNESTO-DT**, a battery simulator (*Journal of Energy Storage*, 2025, [doi:10.1016/j.est.2025.117745](https://doi.org/10.1016/j.est.2025.117745)).
 - **RL for optimal control in microgrids**, PPO on top of that simulator (*IJCNN 2025*, [arXiv:2506.22995](https://arxiv.org/abs/2506.22995)).
 
-That second paper shows RL beating simple rule-based strategies, but it has **no hard grid-import cap** and compares against **untuned** rules. This repo changes exactly those two things:
+That second paper shows RL beating simple rule-based strategies, but it has **no grid-import cap of any kind** and compares against **untuned** rules. This repo changes exactly those two things:
 
 | | IJCNN 2025 paper | this repo |
 |---|---|---|
-| Constraint | soft penalty on battery limits | **hard cap on grid import** |
+| Constraint | soft penalty on battery limits | **grid-import cap as a learned penalty**, hard battery limits |
 | Rule-based comparator | simple rules | **tuned** peak-shaving heuristics |
 | Objective | maximise profit | minimise cost |
 | Load shedding | not modelled | in the objective, per zone |
@@ -114,7 +116,6 @@ experiments/             training and batch runners
 tools/                   table, figure and status scripts
 tests/                   unit tests
 results/                 run outputs, tables, figures (see results/README.md)
-NOTES.md                 decision log, verification scope, known gaps
 ```
 
 ## Reproduction
@@ -147,11 +148,11 @@ agent (GAE, truncation bootstrapping, seed determinism, λ update), the config
 loader, and the reward-shaping helper. Some tests are marked `needs_real_data`
 and skip until `data/processed/*.parquet` exists.
 
-In the fresh-venv verification for this snapshot, the **full suite passed 32/32**
+In the fresh-venv verification for this snapshot, the **full suite passed 37/37**
 with the real dataset present and the CPU-only `torch==2.14.1+cpu` build (187 MB,
 no NVIDIA runtime). A short `bench10k` PPO run also completed end to end. The
-published 300k-step results were not re-run. See [NOTES.md](NOTES.md) (D1) for
-the exact scope.
+published 300k-step results were not re-run; the reproduction scope is limited to
+the items above.
 
 ### Hardware and compute
 
@@ -197,7 +198,7 @@ diagnostic (`lambda_trajectory.png`) regenerated from the same runs.
 - **The residual comes closest** (about 2 % cheaper than PSM'), but it still breaks the cap slightly on every seed.
 - **The shield is the only method that is always feasible, but it works by construction**: it clips the actions, so the policy is effectively removed from the loop. Passing a feasibility test that way says nothing about learning.
 
-So the gap to the original paper comes mostly from the **strength of the comparator** and the **presence of a hard constraint**, not from RL being unable to learn.
+So the gap to the original paper comes mostly from the **strength of the comparator** and the **presence of a grid-import constraint**, not from RL being unable to learn.
 
 ## Citations
 

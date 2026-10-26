@@ -12,10 +12,10 @@ SHED_ORDER = (
 
 
 def predict_battery_kw(batt_cmd: float, soc: float, env) -> float:
-    """Post-battery power in kW, replicating the env's clipping (read-only).
+    """Post-battery power in kW, mirroring the env's clipping without mutating it.
 
-    Positive = charging (raises grid import), negative = discharging. Uses only the
-    env's public constants; the env's own step applies the true physics.
+    Positive means charging (raises grid import), negative means discharging. Only
+    the env's public constants are used; the env's step applies the full physics.
     """
     p = float(np.clip(batt_cmd, -1.0, 1.0)) * env.bat_max_power_kw
     if p > 0:
@@ -41,7 +41,7 @@ def shed_actions_for(excess_kw: float, obs: np.ndarray) -> np.ndarray:
             continue
         k = entry["obs_idx"] - 2  # zone position 0..4 == shed dim 0..4
         if entry["industrial"]:
-            # partial cover within the 30% band, else full OFF
+            # partial cover within the 30% band, otherwise fully off
             if rem <= 0.30 * d:
                 shed_kw[k] = rem
                 rem = 0.0
@@ -61,7 +61,7 @@ def shed_actions_for(excess_kw: float, obs: np.ndarray) -> np.ndarray:
             continue
         if entry["industrial"]:
             if shed_kw[k] >= d - 1e-9:
-                act[entry["act_dim"] - 1] = 1.0  # OFF
+                act[entry["act_dim"] - 1] = 1.0  # fully off
             else:
                 s = shed_kw[k] * 0.9 / (0.30 * d)
                 act[entry["act_dim"] - 1] = float(np.clip(2.0 * s - 1.0, -1.0, 0.80))

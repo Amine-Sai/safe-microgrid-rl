@@ -76,12 +76,13 @@ def collect():
 def main():
     out = []
     out.append(f"PYTEST: {pytest_status()}")
-    out.append("TEST-LOCK: " + ("PRESENT (S3 already ran)" if os.path.exists("results/TEST_RUN.lock")
+    out.append("TEST-LOCK: " + ("PRESENT (the published grid already ran)"
+                                if os.path.exists("results/TEST_RUN.lock")
                                 else "absent (Test split untouched)"))
     n = sum(len(re.findall(r"""["']test["']""",
                            open(f, encoding="utf-8", errors="replace").read()))
             for f in glob.glob("agents/**/*.py", recursive=True))
-    out.append(f"TEST-READS under agents/: {n}  (must be 0 until S3)")
+    out.append(f"TEST-READS under agents/: {n}  (must be 0 before the published grid runs)")
     out.append("RUNS  agent/run-id | variant | steps | seed | J | exc | V% | lambda | wall")
     fmt = lambda x, k=2: "-" if x is None else (f"{x:,.{k}f}" if isinstance(x, float) else str(x))
     for rid, m, st, sd, j, e, v, lam, w, _ in collect()[-10:]:

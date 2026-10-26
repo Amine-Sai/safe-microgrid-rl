@@ -56,11 +56,12 @@ def run_rows():
 
 
 def per_seed_table():
-    """Per-seed S2 + rung table with G1/G2 flags. No means.
+    """Per-seed rung table with the two gate flags. No means.
 
     Columns: run, agent, method, seed, cost, unserved, exc, viol, lam start/end/max,
-    |a|>=0.99 fraction, SoC-pin fraction, G1 flag, G2 flag. G1 = exc <= 0.05 (d_main),
-    G2 = cost <= 58,309 (1.05*PSM'). Written to results/tables/s2_per_seed.csv.
+    |a|>=0.99 fraction, SoC-pin fraction, gate-1 flag, gate-2 flag. Gate 1 =
+    exc <= 0.05 (d_main); gate 2 = cost <= 58,309 (1.05*PSM'). Written to
+    results/tables/s2_per_seed.csv.
     """
     G1_EXC, G2_COST = 0.05, 1.05 * 55531.95
     rows = []

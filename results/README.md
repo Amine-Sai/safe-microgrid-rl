@@ -18,7 +18,7 @@ runs/<agent>/                one JSON per (experiment, seed)
   *_grid.json                batch roll-up, not a run
 tables/
   runs.csv                   one row per seed run (cost, exceedance, wall clock)
-  s2_per_seed.csv            per-seed diagnostics + G1/G2 gate flags
+  s2_per_seed.csv            per-seed diagnostics + the two gate flags
   frozen_baselines.csv       Grid-Only / PSM' reference values
   project_constants.csv      cap, d_main, weights, gate constants
 ```

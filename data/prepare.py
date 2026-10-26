@@ -628,8 +628,8 @@ def compute_grid_import_cap(splits: dict, quantile: float = CAP_QUANTILE) -> dic
     """Derive the grid import cap from the training split's grid-only import.
 
     The env's PV model is reused rather than re-specified here so the cap and the
-    simulation cannot drift apart. Only Train and Val are profiled: Test is closed
-    by policy (NOTES.md), so it is never read for anything, including diagnostics.
+    simulation cannot drift apart. Only Train and Val are profiled; Test stays
+    closed, so it is not read for anything, including diagnostics.
     """
     pv_cfg = env_default_config()
     pv_scale = (pv_cfg["pv_area_m2"] * pv_cfg["pv_efficiency"]

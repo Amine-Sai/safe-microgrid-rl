@@ -10,14 +10,14 @@ from agents.running_stat import RunningMeanStd
 
 
 def grid_only_action(shed_mapping: str, action_dim: int = 6) -> np.ndarray:
-    """The action reproducing Grid-Only, DERIVED from the env's mapping rule.
+    """The action that reproduces Grid-Only, derived from the env's mapping rule.
 
     env/smartgrid_env.py::step parses the action as
-        relu/deadzone : shed = max(0, a)          -> a <= 0 means NO shedding
-        linear        : shed = (a + 1) / 2        -> a = -1   means NO shedding
-    and battery_cmd = action[0], so 0.0 is "battery idle". Grid-Only = battery idle +
-    no shedding, i.e. [0.0, a_noshed, ...]. This function mirrors that rule so a change in
-    the env cannot silently leave the init stale.
+        relu/deadzone : shed = max(0, a)          -> a <= 0 sheds nothing
+        linear        : shed = (a + 1) / 2        -> a = -1   sheds nothing
+    and battery_cmd = action[0], so 0.0 means the battery is idle. Grid-Only is the
+    battery idle plus no shedding, i.e. [0.0, a_noshed, ...]. This function mirrors
+    that rule so a change in the env cannot silently leave the init stale.
     """
     if shed_mapping in ("relu", "deadzone"):
         no_shed = 0.0
@@ -31,8 +31,9 @@ def grid_only_action(shed_mapping: str, action_dim: int = 6) -> np.ndarray:
 def compute_gae(rewards, values, dones, truncated, last_value, gamma=0.99, lam=0.95):
     """GAE(lambda) with truncation-aware bootstrapping.
 
-    `dones` must be TERMINAL only. A truncation (time limit) still bootstraps from
-    `last_value`, which is why it is passed in separately and never zeroed.
+    `dones` must mark terminal transitions only. A truncation (time limit) still
+    bootstraps from `last_value`, which is why it is passed in separately and never
+    zeroed.
 
     Returns (advantages, returns), both plain numpy arrays of length T.
     """
@@ -42,7 +43,7 @@ def compute_gae(rewards, values, dones, truncated, last_value, gamma=0.99, lam=0
     for t in reversed(range(T)):
         not_terminal = 0.0 if dones[t] else 1.0
         next_value = last_value if t == T - 1 else values[t + 1]
-        # truncation does NOT kill the bootstrap
+        # a truncation does not discard the bootstrap
         if truncated[t] and not (t == T - 1):
             next_value = values[t + 1] if not dones[t] else 0.0
         delta = rewards[t] + gamma * next_value * not_terminal - values[t]
@@ -95,7 +96,7 @@ class _ValueNet(nn.Module):
 
 
 class PPOAgent:
-    """PPO with the lagrangian / pbrs flags of the ladder."""
+    """PPO, with optional Lagrangian dual ascent and potential-based reward shaping."""
 
     def __init__(
         self,
@@ -117,12 +118,12 @@ class PPOAgent:
         pbrs: bool = False,
         cost_limit: float = 0.05,          # d_main, kW/step
         lambda_init: float = 0.0,
-        lambda_lr_mult: float = 0.1,       # dual runs SLOWER than the policy
+        lambda_lr_mult: float = 0.1,       # the dual runs slower than the policy
         potential_shaping_kappa: float = 105.0,
         normalize_advantage: bool = True,
         lag_normalize_by_1p_lam: bool = True,
         max_grad_norm: float = 0.5,
-        residual_policy=None,      # r3 only: read-only heuristic with get_action(obs)
+        residual_policy=None,      # residual agents only: fixed base policy with get_action(obs)
         residual_coef: float = 0.25,
         use_minibatches: bool = False,     # default = legacy full-batch
         value_epochs: int = 1,             # default = legacy 1 GD step
@@ -156,14 +157,15 @@ class PPOAgent:
         self._rng = np.random.RandomState(0)   # trainer overwrites with the run seed
         self.device = th.device(device or ("cuda:0" if th.cuda.is_available() else "cpu"))
 
-        # log-std init (default -1.0 = legacy). Shed dims (indices 1:) can be
-        # overridden to cut the training-time shedding of H4.
+        # log-std init (default -1.0). The shed dims (indices 1:) can take a
+        # separate init, which limits how much load random exploration sheds early
+        # in training.
         ls = np.full(action_dim, init_log_std, dtype=np.float32)
         if init_log_std_shed is not None and action_dim > 1:
             ls[1:] = init_log_std_shed
 
-        # Zero-init the policy head: the mean starts exactly at init_mean (Grid-Only),
-        # or at exactly zero correction when a residual base is present.
+        # Zero-init the policy head so the mean starts at init_mean (Grid-Only), or
+        # at a zero correction when a residual base policy is present.
         init_mean = (np.zeros(action_dim, dtype=np.float32)
                      if residual_policy is not None
                      else grid_only_action(shed_mapping, action_dim))
@@ -187,11 +189,11 @@ class PPOAgent:
         self.kappa = potential_shaping_kappa if pbrs else 0.0
 
         self.obs_normalizer = RunningMeanStd(shape=(state_dim,))
-        # value-TARGET normalisation. The critic was fitting raw
-        # return magnitudes with one GD step per rollout and learned only the mean
-        # (EV -0.02 on same-scale Monte-Carlo returns). Targets are normalised with a
-        # running mean/std; the net output is denormalised at inference so every stored
-        # value and bootstrap stays in true reward units (GAE consistency preserved).
+        # Value-target normalisation. The critic was fitting raw return magnitudes
+        # with one gradient step per rollout and learned only the mean (EV -0.02 on
+        # same-scale Monte-Carlo returns). Targets are normalised with a running
+        # mean/std and the net output is denormalised at inference, so every stored
+        # value and bootstrap stays in true reward units and GAE stays consistent.
         self.ret_normalizer = RunningMeanStd(shape=())
         self.cost_normalizer = RunningMeanStd(shape=())
         self._reset_buffer()
@@ -265,9 +267,9 @@ class PPOAgent:
             cv_raw = self.cost_net(s) if self.cost_net is not None else th.zeros_like(v)
             cv = self._denorm_c(cv_raw) if self.cost_net is not None else cv_raw
         if not evaluate:
-            # remember the PRE-CLIP sample u. With store_raw_action the
-            # buffer stores this u, so the PPO ratio log_pi(u)-log_pi_old(u) is consistent
-            # with the log-prob recorded at acting time (legacy stored clip(u) instead).
+            # Keep the pre-clip sample u. With store_raw_action the buffer stores
+            # this u, so the PPO ratio log_pi(u)-log_pi_old(u) matches the log-prob
+            # recorded at acting time (the legacy path stored clip(u) instead).
             self._last_u = u.squeeze(0).cpu().numpy().astype(np.float32)
         return (a.squeeze(0).cpu().numpy().astype(np.float32),
                 float(logp), float(v), float(cv))
@@ -342,7 +344,7 @@ class PPOAgent:
 
     # ---------------------------------------------------- minibatched fits
     def _fit_critics_mb(self, s_t, ret_norm, retc_norm):
-        """H1/H2: minibatched critic epochs. Returns (last value loss, GD steps)."""
+        """Minibatched critic epochs. Returns (last value loss, gradient steps)."""
         n, steps, v_loss = s_t.shape[0], 0, None
         for _ in range(self.value_epochs):
             perm = th.as_tensor(self._rng.permutation(n), device=self.device)
@@ -363,9 +365,9 @@ class PPOAgent:
         return float(v_loss.detach()), steps
 
     def _policy_epochs_mb(self, s_t, a_t, old_logp, adv_t):
-        """H1: minibatched policy epochs with an epoch-end full-batch KL early stop.
+        """Minibatched policy epochs with an epoch-end full-batch KL early stop.
 
-        Returns (loss, entropy, KL, clip-binding fraction, GD steps).
+        Returns (loss, entropy, KL, clip-binding fraction, gradient steps).
         """
         n, steps, loss_v = s_t.shape[0], 0, 0.0
         ent = kl = clipf = 0.0
@@ -403,9 +405,10 @@ class PPOAgent:
         s_t = self._t(states)
         a_t = self._t(batch["actions"])
         old_logp = self._t(batch["logp"]).view(-1, 1)
-        # diagnostic (no behaviour change, no RNG use): share of samples whose
-        # stored action is already off the recorded log-prob before any gradient step
-        # (H3). This is the fraction the PPO ratio starts at |ratio-1| > clip_ratio.
+        # Diagnostic only: no behaviour change, no RNG use. This is the share of
+        # samples whose stored action is already off the recorded log-prob before any
+        # gradient step, i.e. the fraction where the PPO ratio starts above
+        # |ratio - 1| = clip_ratio.
         with th.no_grad():
             lp0 = self.policy.dist(s_t).log_prob(a_t).sum(dim=-1, keepdim=True)
             ratio_off_at_start = float(
@@ -416,11 +419,11 @@ class PPOAgent:
             adv = adv - self.lambda_ * batch["adv_c"]
             if self.lag_normalize_by_1p_lam and (1.0 + self.lambda_) > 1e-8:
                 adv = adv / (1.0 + self.lambda_)
-        # C6a audit point: the norm ratio is measured HERE, on the RAW advantages at
-        # the point they are combined — BEFORE the normalisation below. Normalisation
-        # is applied to the COMBINED advantage (not separately to A_r and A_c), so a
-        # large lambda cannot be "normalised away": it changes the direction of adv,
-        # not just its scale. Logged per update for the audit.
+        # Advantage-normalisation audit: the norm ratio is measured here, on the raw
+        # advantages at the point where they are combined and before the
+        # normalisation below. Normalisation applies to the combined advantage (not
+        # separately to A_r and A_c), so a large lambda cannot be normalised away: it
+        # changes the direction of adv, not just its scale. Logged per update.
         norm_ratio = None
         if self.lagrangian:
             denom = float(np.abs(batch["adv_r"]).mean()) + 1e-12
@@ -431,7 +434,7 @@ class PPOAgent:
         ret_t = self._t(batch["ret_r"]).view(-1, 1)
         retc_t = self._t(batch["ret_c"]).view(-1, 1) if self.lagrangian else None
 
-        # value fits first (on NORMALISED targets; net output is in norm units)
+        # Fit the critic first, on normalised targets (the net output is in norm units).
         self.ret_normalizer.update(np.asarray(batch["ret_r"], dtype=np.float64))
         v_std = float(np.sqrt(self.ret_normalizer.var) + self.ret_normalizer.epsilon)
         v_mean = float(self.ret_normalizer.mean)
@@ -494,7 +497,7 @@ class PPOAgent:
                 with th.no_grad():
                     kl = float((old_logp - logp).mean())
                     frac_sat = float(np.mean(np.abs(batch["actions"]) >= 0.99))
-                    # diagnostic: clip-binding fraction + value explained variance.
+                    # Diagnostics only: clip-binding fraction and value explained variance.
                     clip_frac_val = float((th.abs(ratio - 1.0) > self.clip_ratio).float().mean())
                     v_pred = self.value_net(s_t)
                     ev_val = 1.0 - float(F.mse_loss(v_pred, ret_t) / (ret_t.var() + 1e-8))
@@ -509,7 +512,7 @@ class PPOAgent:
             "entropy": ent_val,
             "approx_kl": kl_val,
             "frac_saturated": frac_sat,
-            "lag_adv_norm_ratio": norm_ratio,  # C6a: ||lam*A_c|| / ||A_r|| at combination
+            "lag_adv_norm_ratio": norm_ratio,  # ||lam*A_c|| / ||A_r|| at combination
             "clip_frac": clip_frac_val,
             "explained_variance": ev_val,
             "mean_abs_adv": mean_abs_adv,

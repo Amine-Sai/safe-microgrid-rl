@@ -51,8 +51,8 @@ class SmartGridEnv(gym.Env):
 
         # Industrial motor floor
         self.motor_min_pct = cfg["motor_min_pct"] / 100.0
-        # shed-action mapping. "linear" = s=(a+1)/2 (no dead zone).
-        # "deadzone" = s=max(0,a) so a~0 means no shed (kills the a<0 dead zone).
+        # Shed-action mapping. "linear" = s=(a+1)/2 (no dead zone).
+        # "deadzone" = s=max(0,a), so a<=0 means no shed (removes the a<0 dead zone).
         self.shed_mapping = cfg.get("shed_mapping", "linear")
 
         # Load data
@@ -172,8 +172,8 @@ class SmartGridEnv(gym.Env):
 
         # --- Parse action ---
         battery_cmd = float(action[0])
-        # `relu` is the canonical name; `deadzone` is kept as an alias for the
-        # archived S1 probe configs. Anything else -> linear (s=(a+1)/2).
+        # "relu" is the canonical name; "deadzone" is kept as an alias for the
+        # archived probe configs. Any other value selects linear, s=(a+1)/2.
         if self.shed_mapping in ("relu", "deadzone"):
             # s = max(0, a). a<=0 -> no shed; a>0 -> shed = a.
             shed_raw = np.maximum(0.0, action[1:])
@@ -230,11 +230,11 @@ class SmartGridEnv(gym.Env):
         reward = -(energy_cost + unserved_cost + battery_wear)
 
         # --- Constraint cost ---
-        # The SINGLE Lagrangian constraint is grid import exceedance, in kW.
-        # This matches the units in which d_main = 0.05 kW/step was calibrated.
+        # The single Lagrangian constraint is grid import exceedance, in kW, which
+        # matches the units d_main = 0.05 kW/step was calibrated in.
         grid_exceedance_kw = max(0.0, grid_import_kw - self.grid_import_cap_kw)
-        # SoC reserve deficit: DIAGNOSTIC ONLY, in kWh. NOT a constraint, and
-        # deliberately excluded from info["cost"] so it can never enter Q_c or the dual update.
+        # SoC reserve deficit is a diagnostic only, in kWh: it is not a constraint and
+        # is left out of info["cost"] so it cannot enter Q_c or the dual update.
         soc_deficit_kwh = max(0.0, self.soc_reserve_floor - self._soc) * self.bat_capacity_kwh
         cost = grid_exceedance_kw
 
@@ -306,9 +306,8 @@ def resolve_grid_import_cap(cfg: dict) -> float:
     """Resolve the grid import cap: explicit config first, then the prepared data.
 
     `data/prepare.py` writes the train-derived cap to split_report.json. There is
-    deliberately no hardcoded fallback: a missing cap means the data was not
-    prepared, and silently using a stale number would mislabel every run that
-    touches it.
+    no hardcoded fallback: a missing cap means the data was not prepared, and
+    silently using a stale number would mislabel every run that touches it.
     """
     explicit = cfg.get("grid_import_cap_kw")
     if explicit is not None:
