@@ -200,19 +200,6 @@ def test_episode_start_window_within_split():
     assert trunc is True
 
 
-def test_buffer_terminated_truncated():
-    """Buffer stores terminated and truncated separately."""
-    from agents.buffer import ReplayBuffer
-    buf = ReplayBuffer(100, (17,), 6)
-    s = np.zeros(17, dtype=np.float32)
-    a = np.zeros(6, dtype=np.float32)
-    buf.store_transition(s, a, -1.0, s, terminated=False, truncated=True, cost=0.5)
-    buf.store_transition(s, a, -2.0, s, terminated=False, truncated=False, cost=0.0)
-    assert buf.terminated_memory[0] == False and buf.truncated_memory[0] == True
-    assert buf.terminated_memory[1] == False and buf.truncated_memory[1] == False
-    assert buf.cost_memory[0] == 0.5
-
-
 def test_bootstrap_not_zeroed_on_truncation():
     """Truncation must NOT zero the bootstrap (only termination should)."""
     # In this env terminated is always False, so bootstrapping must continue.

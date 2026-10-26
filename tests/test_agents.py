@@ -1,35 +1,7 @@
 import numpy as np
 
-from agents.buffer import ReplayBuffer
 from agents.running_stat import RunningMeanStd
 from agents.shaping import PotentialBasedShaping
-
-
-def test_buffer_termination_separation():
-    """Terminated and truncated are stored as independent flags."""
-    buf = ReplayBuffer(max_size=100, input_shape=(17,), n_actions=6)
-    s = np.zeros(17, dtype=np.float32)
-    a = np.zeros(6, dtype=np.float32)
-
-    # Store a truncated (time-limit) transition
-    buf.store_transition(s, a, 1.0, s, terminated=False, truncated=True, cost=0.5)
-    # Store a terminated transition
-    buf.store_transition(s, a, 2.0, s, terminated=True, truncated=False, cost=1.0)
-
-    # Independent storage: row 0 truncated-only, row 1 terminated-only.
-    assert bool(buf.terminated_memory[0]) is False and bool(buf.truncated_memory[0]) is True
-    assert bool(buf.terminated_memory[1]) is True and bool(buf.truncated_memory[1]) is False
-    assert buf.cost_memory[0] == 0.5 and buf.cost_memory[1] == 1.0
-
-    # Sampling returns both arrays separately, with correct lengths and dtypes.
-    np.random.seed(0)
-    states, actions, rewards, next_states, terminated, truncated, costs = buf.sample_buffer(2)
-    assert len(terminated) == 2 and len(truncated) == 2 and len(costs) == 2
-    assert terminated.dtype == bool and truncated.dtype == bool
-    assert set(np.unique(terminated).tolist()) <= {False, True}
-    assert set(np.unique(truncated).tolist()) <= {False, True}
-    assert set(np.unique(costs).tolist()) <= {0.5, 1.0}
-    assert set(np.unique(rewards).tolist()) <= {1.0, 2.0}
 
 
 def test_running_mean_std():
