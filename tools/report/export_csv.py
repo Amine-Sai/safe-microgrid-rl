@@ -6,7 +6,6 @@ import sys
 
 TABLES = os.path.join("results", "tables")
 RUNS = os.path.join("results", "runs")
-HOURS_PER_WEEK = 168
 
 
 def run_files():
