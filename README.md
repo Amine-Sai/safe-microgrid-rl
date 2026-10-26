@@ -103,7 +103,7 @@ The zone split of the load and the stadium-event calendar are **synthetic**. Dat
 configs/config.yaml      all experiment settings
 data/                    download and preparation scripts
 env/                     environment, cap shield, observation normaliser
-agents/                  PPO, heuristics, networks, reward shaping
+agents/                  PPO, heuristics, reward shaping
 experiments/             training and batch runners
 tools/                   table, figure and status scripts
 tests/                   unit tests
@@ -141,7 +141,7 @@ agent (GAE, truncation bootstrapping, seed determinism, λ update), the config
 loader, and the reward-shaping helper. Some tests are marked `needs_real_data`
 and skip until `data/processed/*.parquet` exists.
 
-In the fresh-venv verification for this snapshot, the **full suite passed 30/30**
+In the fresh-venv verification for this snapshot, the **full suite passed 32/32**
 with the real dataset present and the CPU-only `torch==2.14.1+cpu` build (187 MB,
 no NVIDIA runtime). A short `bench10k` PPO run also completed end to end. The
 published 300k-step results were not re-run. See [NOTES.md](NOTES.md) (D1) for

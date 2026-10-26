@@ -18,7 +18,7 @@ Verified in a fresh Python 3.14.7 virtual environment built from
 - The dataset was downloaded (OPSD 124.3 MB, PVGIS 1.2 MB, Open-Meteo 0.8 MB)
   and `python data/prepare.py` built `data/processed/{train,val,test}.parquet`
   (17,472 / 4,368 / 4,032 rows).
-- **Full test suite: 30/30 pass** with `python -m pytest tests/ -v`. This
+- **Full test suite: 32/32 pass** with `python -m pytest tests/ -v`. This
   includes `test_ppo.py` and every `test_config.py` case; no tests were skipped.
 - A short PPO smoke run (`experiments/train.py --config bench10k --seed 101`)
   completed end to end, wrote the result JSON and step checkpoints, and

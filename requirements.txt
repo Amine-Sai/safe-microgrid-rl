@@ -4,7 +4,7 @@
 #
 # Verification status (fresh Python 3.14.7 venv, no GPU):
 #   - All packages below install from these pins.
-#   - Full suite passes 30/30 with the dataset prepared and a CPU-only torch
+#   - Full suite passes 32/32 with the dataset prepared and a CPU-only torch
 #     build (`torch==2.14.1+cpu` from download.pytorch.org/whl/cpu).
 #   - The torch wheel on PyPI is CUDA-linked and needs the NVIDIA runtime. If it
 #     is absent, install the CPU wheel from https://download.pytorch.org/whl/cpu.
