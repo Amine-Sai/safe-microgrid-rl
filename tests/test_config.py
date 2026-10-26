@@ -42,6 +42,17 @@ def test_unknown_key_raises():
         os.unlink(path)
 
 
+def test_lagrangian_key_is_checked_against_the_resolved_method(tmp_path):
+    """A row without `method` inherits ppo, so Lagrangian-only keys must be rejected."""
+    path = tmp_path / "lagrangian_keys.yaml"
+    path.write_text("lr_dual: 0.1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Lagrangian-only"):
+        load_config_with_base(str(path))
+
+    path.write_text("method: ppo_lagrangian\nlr_dual: 0.1\n", encoding="utf-8")
+    assert load_config_with_base(str(path))["lr_dual"] == 0.1
+
+
 def test_every_experiment_id_builds():
     """One-step smoke: each id in the table resolves onto the defaults."""
     assert EXPERIMENTS, "configs/config.yaml has no experiments"

@@ -487,8 +487,8 @@ def load_config_with_base(path):
     unknown = sorted(k for k in override if k not in base)
     if unknown:
         raise KeyError(f"{label}: unknown config key(s) {unknown}")
-    method = override.get("method")
-    if method and "lagrangian" not in str(method):
+    method = override.get("method", base.get("method"))
+    if "lagrangian" not in str(method):
         bad_keys = sorted(k for k in override if k in LAG_ONLY)
         if bad_keys:
             raise ValueError(f"{label}: Lagrangian-only key(s) {bad_keys} under method {method!r}")
