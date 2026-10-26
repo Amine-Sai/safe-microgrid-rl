@@ -176,3 +176,40 @@ def test_no_test_split_access_under_agents():
             hits = [ln for ln in src.splitlines()
                     if '"test"' in ln or "'test'" in ln]
             assert not hits, f"{f} references the test split: {hits[:2]}"
+
+
+def test_checkpoint_round_trip(tmp_path):
+    """save_models/load_models restore weights, normalisers, and lambda."""
+    agent = PPOAgent(state_dim=17, action_dim=6, lagrangian=True)
+    with th.no_grad():
+        for p in agent.policy.parameters():
+            p.add_(0.01)
+        for p in agent.value_net.parameters():
+            p.add_(0.01)
+    agent.obs_normalizer.mean = np.arange(17, dtype=np.float64) + 0.5
+    agent.obs_normalizer.var = np.arange(17, dtype=np.float64) + 1.5
+    agent.obs_normalizer.count = 11
+    agent.ret_normalizer.mean = np.array(1.25)
+    agent.ret_normalizer.var = np.array(2.5)
+    agent.ret_normalizer.count = 7
+    agent.lambda_ = 0.37
+
+    path = tmp_path / "ckpt.pt"
+    agent.save_models(str(path))
+
+    restored = PPOAgent(state_dim=17, action_dim=6, lagrangian=True)
+    restored.load_models(str(path))
+
+    for key, value in agent.policy.state_dict().items():
+        assert th.equal(value, restored.policy.state_dict()[key]), key
+    for key, value in agent.value_net.state_dict().items():
+        assert th.equal(value, restored.value_net.state_dict()[key]), key
+    assert np.allclose(restored.obs_normalizer.mean, agent.obs_normalizer.mean)
+    assert np.allclose(restored.obs_normalizer.var, agent.obs_normalizer.var)
+    assert restored.obs_normalizer.count == agent.obs_normalizer.count
+    assert restored.ret_normalizer.mean == pytest.approx(agent.ret_normalizer.mean)
+    assert restored.ret_normalizer.var == pytest.approx(agent.ret_normalizer.var)
+    assert restored.lambda_ == pytest.approx(agent.lambda_)
+
+    step = th.zeros(1, 17)
+    assert th.equal(agent.policy(step), restored.policy(step))
