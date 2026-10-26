@@ -401,7 +401,7 @@ def generate_event_calendar(df: pd.DataFrame) -> pd.DataFrame:
 
     n_event_hours = df["stadium_event"].sum()
     print(f"  Generated {n_events} events ({n_event_hours} event hours)")
-    print(f"  Events per split will be reported after splitting.")
+    print("  Events per split will be reported after splitting.")
     return df
 
 
