@@ -4,11 +4,10 @@
 #
 # Verification status (fresh Python 3.14.7 venv, no GPU):
 #   - All packages below install from these pins.
-#   - tests/test_env.py: 11/11 pass.
-#   - The pinned torch wheel is CUDA-linked and needs the NVIDIA runtime. The
-#     verification sandbox had no CUDA, so torch-dependent tests were not re-run
-#     there. On a machine where pip can install torch's NVIDIA deps, run the full
-#     suite: python -m pytest tests/ -v
+#   - Full suite passes 30/30 with the dataset prepared and a CPU-only torch
+#     build (`torch==2.14.1+cpu` from download.pytorch.org/whl/cpu).
+#   - The torch wheel on PyPI is CUDA-linked and needs the NVIDIA runtime. If it
+#     is absent, install the CPU wheel from https://download.pytorch.org/whl/cpu.
 # See NOTES.md (D1) for the exact scope of the reproduction claim.
 
 numpy==2.4.4

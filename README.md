@@ -138,14 +138,14 @@ existing result. A full 300k-step run writes
 
 `tests/` covers the environment (physics, cap, SoC bounds, determinism), the PPO
 agent (GAE, truncation bootstrapping, seed determinism, λ update), the config
-loader, and the buffer/shaping helpers. Some tests are marked `needs_real_data`
+loader, and the reward-shaping helper. Some tests are marked `needs_real_data`
 and skip until `data/processed/*.parquet` exists.
 
-In the fresh-venv verification for this snapshot, **`tests/test_env.py` passed
-11/11** and `tests/test_agents.py` passed **4/4**. The torch-dependent tests were
-not re-run in that sandbox because the pinned torch wheel is CUDA-linked and no
-NVIDIA runtime was available; I did not download the multi-GB CUDA stack. See
-[NOTES.md](NOTES.md) (D1) for the exact scope.
+In the fresh-venv verification for this snapshot, the **full suite passed 30/30**
+with the real dataset present and the CPU-only `torch==2.14.1+cpu` build (187 MB,
+no NVIDIA runtime). A short `bench10k` PPO run also completed end to end. The
+published 300k-step results were not re-run. See [NOTES.md](NOTES.md) (D1) for
+the exact scope.
 
 ### Hardware and compute
 
