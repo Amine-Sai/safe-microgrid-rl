@@ -1,22 +1,14 @@
-# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-
-# Environments
 .venv/
 venv/
 env/*.egg-info/
-
-# Generated data (fetched/prepared at run time; never commit)
 data/raw/
 data/processed/
 tests/test_data/
-
-# Model checkpoints (large; regenerate by training)
 checkpoints/
-
-# OS
 .DS_Store
+NOTES.md
