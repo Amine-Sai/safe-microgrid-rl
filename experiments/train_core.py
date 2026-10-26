@@ -144,11 +144,11 @@ def grid_only_reward_scale(cfg: dict, shed_mapping: str, method_name: str = "age
 
 
 def _require_ppo(method_name: str) -> None:
-    """Reject historical method names: this release ships the PPO family only."""
-    if "ppo" not in method_name:
+    """Reject method names outside the PPO family this release ships."""
+    if method_name not in PPO_METHODS:
         raise ValueError(
             f"unsupported method {method_name!r}: this release ships the PPO family "
-            "only (ppo, ppo_lagrangian, ppo_potential_shaping, ...)"
+            f"only ({', '.join(PPO_METHODS)})"
         )
 
 

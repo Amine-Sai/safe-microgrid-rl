@@ -6,7 +6,7 @@ import yaml
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from experiments.train_core import load_config_with_base
+from experiments.train_core import load_config_with_base, PPO_METHODS, _require_ppo
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CONFIG_PATH = os.path.join(REPO_ROOT, "configs", "config.yaml")
@@ -40,6 +40,14 @@ def test_unknown_key_raises():
             load_config_with_base(path)
     finally:
         os.unlink(path)
+
+
+def test_require_ppo_accepts_only_known_methods():
+    for method in PPO_METHODS:
+        _require_ppo(method)
+    for bad in ("plain_sac", "notppo", "ppo_extra"):
+        with pytest.raises(ValueError, match="unsupported method"):
+            _require_ppo(bad)
 
 
 def test_lagrangian_key_is_checked_against_the_resolved_method(tmp_path):
