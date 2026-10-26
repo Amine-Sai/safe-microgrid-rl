@@ -1,4 +1,3 @@
-import os
 import numpy as np
 
 from agents.buffer import ReplayBuffer
@@ -7,11 +6,7 @@ from agents.shaping import PotentialBasedShaping
 
 
 def test_buffer_termination_separation():
-    """Terminated and truncated must be stored as INDEPENDENT flags, not one `done`.
-
-    Storage is asserted directly because sample_buffer() samples WITH replacement,
-    so a 2-element buffer cannot be relied on to return both flags.
-    """
+    """Terminated and truncated are stored as independent flags."""
     buf = ReplayBuffer(max_size=100, input_shape=(17,), n_actions=6)
     s = np.zeros(17, dtype=np.float32)
     a = np.zeros(6, dtype=np.float32)

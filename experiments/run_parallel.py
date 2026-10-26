@@ -9,15 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import torch as th
 
-from experiments.train_core import train_single_method
-
-# The PPO family is the only agent family in this release.
-ALL_METHODS = [
-    "ppo",
-    "ppo_lagrangian",
-    "ppo_potential_shaping",
-    "ppo_lagrangian_potential_shaping",
-]
+from experiments.train_core import PPO_METHODS, train_single_method
 
 
 def _worker(job):
@@ -85,7 +77,7 @@ def main():
                     help="run two IDENTICAL jobs concurrently, compare to 1e-6")
     args = ap.parse_args()
 
-    methods = ALL_METHODS if args.methods == "all" else args.methods.split(",")
+    methods = PPO_METHODS if args.methods == "all" else args.methods.split(",")
     seeds = [int(s) for s in args.seeds.split(",")]
     run_id = args.run_id or datetime.now().strftime("run_%Y%m%d_%H%M%S")
 

@@ -53,11 +53,7 @@ def test_every_experiment_id_builds():
 
 
 def test_every_override_key_actually_moves_the_resolved_config():
-    """For each override key the effective value must differ from the base default.
-
-    This is the generic version of the guard: a key that is declared but
-    resolves to the default is a no-op probe.
-    """
+    """Every override must actually change the resolved config."""
     for exp_id, ov in EXPERIMENTS.items():
         cfg = load_config_with_base(exp_id)
         for k, v in (ov or {}).items():
@@ -131,13 +127,7 @@ def test_explicit_reward_scale_beats_the_computed_default():
 
 
 def test_agent_helper_matches_training_kwargs():
-    """`load_agent_for_method` must build the SAME PPO agent as the training call.
-
-    Both paths go through `_ppo_kwargs`, so the helper cannot silently replay a
-    differently-configured agent than the one that trained. Assert that structural
-    guarantee first, then check that every resolved hyperparameter reaches the
-    live agent.
-    """
+    """`load_agent_for_method` must build the same PPO agent as the trainer."""
     import ast
     import inspect
     from experiments import train_core as pp
@@ -193,8 +183,7 @@ def test_grid_only_reward_scale_matches_documented_value():
 
     cfg = dict(BASE, reward_scale_mode="grid_only", reward_scale_explicit=False)
     c = grid_only_reward_scale(cfg, cfg["shed_mapping"], method_name="t")
-    # The documented value was 0.096879 from 104 episodes; the fix makes the
-    # code actually reproduce it (this is the assertion that used to fail at 0.101380).
+    # The published value is 0.096879 from the full Train split.
     assert abs(c - 0.096879) < 1e-4, c
 
     # an explicit value is respected verbatim
