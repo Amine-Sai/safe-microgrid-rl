@@ -270,9 +270,6 @@ class SmartGridEnv(gym.Env):
         }
         return obs, float(reward), terminated, truncated, info
 
-    def get_episode_data_range(self):
-        return self._start_idx, self._start_idx + self.episode_length
-
 
 def default_config() -> dict:
     """The env defaults (battery, costs, import cap, PV, episode length).

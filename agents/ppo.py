@@ -80,11 +80,6 @@ class _PolicyNet(nn.Module):
         std = th.exp(self.log_std)
         return th.distributions.Normal(mu, std)
 
-    def mean_and_logprob(self, state, action):
-        d = self.dist(state)
-        lp = d.log_prob(action).sum(dim=-1, keepdim=True)
-        return lp
-
 
 class _ValueNet(nn.Module):
     def __init__(self, state_dim, hidden_dims=(64, 64)):
