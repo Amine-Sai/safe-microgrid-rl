@@ -1,17 +1,11 @@
-**Can reinforcement learning respect a hard limit on grid import, and still keep the bill low?**
+# Can reinforcement learning stay under a grid-import cap and still keep the bill low?
 
-A simulated study on real public data (France, 2017-2019).
-
-> **Status: prototype snapshot** (`git tag v0-prototype`). The negative result is the
-> point of the study; the code is research-grade, not a maintained library. What was
-> re-run for this snapshot, and what was not, is summarised under
-> [Test status](#test-status) and [Hardware and compute](#hardware-and-compute). The
-> committed results and how to rebuild them are described in
-> **[results/README.md](results/README.md)**.
+A simulated study on real public data (France, 2017–2019).
 
 ---
 
-## The problem:
+## The problem
+
 Picture a small microgrid: a **battery**, a **solar array**, and **five zones of electrical load**, all connected to the main grid.
 
 That grid connection has a **368 kW import target**. The microgrid should draw no more than that from the grid in any hour: exceeding it is charged as a constraint violation, and the controller is judged on how rarely and how little it overruns.
@@ -27,7 +21,7 @@ so that the total cost stays as low as possible:
 cost = electricity bought + penalty for unserved energy + battery wear
 ```
 
-Shedding load keeps you under the cap, but it is penalised (1 EUR per kWh not served). Using the battery helps, but it wears out. Doing nothing is cheapest on paper, but it breaks the cap. The controller has to balance all three.
+Shedding load keeps the site under the cap, but it is penalised (1 EUR per kWh not served). Using the battery helps, but it wears out. Doing nothing is cheapest on paper, but it breaks the cap. The controller has to balance all three.
 
 ## The question
 
@@ -83,19 +77,11 @@ Three ways of making RL respect the cap, against two reference controllers:
   peak-shaving energy than the battery can deliver at one full cycle per day. Runs
   record the resolved value under `resolved_config.grid_import_cap_kw`.
 
-`env/cap_shield.py` is the shield wrapper. It clips the battery command so the cap can't be exceeded and turns any remaining violation into shed load.
+`env/cap_shield.py` is the shield wrapper. It clips the battery command so the cap cannot be exceeded and turns any remaining violation into shed load.
 
 ## The data
 
-Datasets are fetched at run time and are **not** committed:
-
-```bash
-python data/download.py     # ~130 MB into data/raw/
-python data/prepare.py      # builds data/processed/*.parquet
-```
-
-SHA-256 checksums for the three expected raw files live in `data/checksums.json`;
-`download.py` verifies them automatically.
+Datasets are fetched at run time and are **not** committed.
 
 | Data | Source |
 |---|---|
@@ -103,7 +89,7 @@ SHA-256 checksums for the three expected raw files live in `data/checksums.json`
 | Solar irradiance | PVGIS (EU Joint Research Centre) |
 | Temperature, humidity, pressure | Open-Meteo |
 
-The zone split of the load and the stadium-event calendar are **synthetic**. Data is split by whole weeks into Train (2017-2018), Val (2019 H1) and Test (2019 H2). The Test split is kept closed and is not used by any code here.
+The zone split of the load and the stadium-event calendar are **synthetic**. Data is split by whole weeks into Train (2017–2018), Val (2019 H1) and Test (2019 H2). The Test split is kept closed and is not used by any code here.
 
 ## Project layout
 
@@ -120,15 +106,15 @@ results/                 run outputs, tables, figures (see results/README.md)
 
 ## Reproduction
 
-The short version, from a clean checkout:
+From a clean checkout:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-python data/download.py          # ~130 MB, checksum-verified
-python data/prepare.py           # builds data/processed/*.parquet
-python -m pytest tests/ -v       # unit suite
+python data/download.py
+python data/prepare.py
+python -m pytest tests/ -v
 
 python experiments/train.py --config s3_ppo --seed 101
 python tools/report/export_csv.py
@@ -141,26 +127,18 @@ existing result. A full 300k-step run writes
 `results/runs/<agent>/<run-id>_seed<seed>.json` and a checkpoint under
 `checkpoints/`.
 
-### Test status
+### Tests
 
 `tests/` covers the environment (physics, cap, SoC bounds, determinism), the PPO
 agent (GAE, truncation bootstrapping, seed determinism, λ update), the config
-loader, and the reward-shaping helper. Some tests are marked `needs_real_data`
-and skip until `data/processed/*.parquet` exists.
+loader, and the reward-shaping helper. Tests marked `needs_real_data` skip until
+`data/processed/*.parquet` exists.
 
-In the fresh-venv verification for this snapshot, the **full suite passed 37/37**
-with the real dataset present and the CPU-only `torch==2.14.1+cpu` build (187 MB,
-no NVIDIA runtime). A short `bench10k` PPO run also completed end to end. The
-published 300k-step results were not re-run; the reproduction scope is limited to
-the items above.
+### Compute
 
-### Hardware and compute
-
-Everything is CPU-only and single-threaded per run (`torch_threads: 1`). The 20
-published 300k-step runs recorded **256–571 s each (mean 471 s)** in their result
-JSONs — about **2.6 CPU-hours** for the full grid before parallelism. The batch
-runner uses one process per run, so 6 workers finish the grid in roughly half an
-hour. No GPU is required.
+Everything runs CPU-only, one thread per run (`torch_threads: 1`). The 20 published
+300k-step runs took **256–571 s each (mean 471 s)**, about **2.6 CPU-hours** for the
+full grid before parallelism; six workers finish it in roughly half an hour.
 
 ## Limitations
 
@@ -170,7 +148,7 @@ hour. No GPU is required.
 
 ---
 
-## Results 
+## Results
 
 Evaluated on the Val split, 300k training steps, 5 seeds per method.
 
@@ -180,9 +158,8 @@ All four figures and the per-seed JSONs behind them are committed under
 [`results/`](results/README.md). That folder also carries a λ-trajectory
 diagnostic (`lambda_trajectory.png`) regenerated from the same runs.
 
-
-| Method | Val cost (EUR) | Respects the cap? |
-|---|---:|:---:|
+| Method | Val cost (EUR) | Within the cap? |
+|---|---:|---:|
 | PPO | 45,513 | no |
 | PPO-Lagrangian | 45,539 | no |
 | PPO-Residual | 54,241 | no (close) |
@@ -190,13 +167,13 @@ diagnostic (`lambda_trajectory.png`) regenerated from the same runs.
 | *Grid-Only* | *45,338* | *no* |
 | *PSM' (tuned rule)* | *55,532* | *yes* |
 
-
+"Within the cap" means mean exceedance at most 0.05 kW per hourly step.
 
 **Takeaways**
 
-- **No learned policy beats the tuned rule while respecting the cap.** The cheap ones (PPO, PPO-Lagrangian) are cheap because they ignore the cap and behave like Grid-Only.
+- **No learned policy beats the tuned rule while staying within the cap.** The cheap ones (PPO, PPO-Lagrangian) are cheap because they ignore the cap and behave like Grid-Only.
 - **The residual comes closest** (about 2 % cheaper than PSM'), but it still breaks the cap slightly on every seed.
-- **The shield is the only method that is always feasible, but it works by construction**: it clips the actions, so the policy is effectively removed from the loop. Passing a feasibility test that way says nothing about learning.
+- **The shield is the only method that is always within the cap, but it works by construction**: it clips the actions, so the policy is effectively removed from the loop. Passing a feasibility test that way says nothing about learning.
 
 So the gap to the original paper comes mostly from the **strength of the comparator** and the **presence of a grid-import constraint**, not from RL being unable to learn.
 
