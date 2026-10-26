@@ -37,7 +37,7 @@ class SmartGridEnv(gym.Env):
         self.cost_wear_eur_kwh = cfg["cost_wear_eur_kwh"]
 
         # Constraints
-        self.grid_import_cap_kw = cfg["grid_import_cap_kw"]
+        self.grid_import_cap_kw = resolve_grid_import_cap(cfg)
         self.soc_reserve_floor = cfg["soc_reserve_floor"]
 
         # PV
@@ -274,8 +274,10 @@ class SmartGridEnv(gym.Env):
 def default_config() -> dict:
     """The env defaults (battery, costs, import cap, PV, episode length).
 
-    Public so other modules can read a constant such as `grid_import_cap_kw`
-    without instantiating an env (which would load a data split).
+    Public so other modules can read a constant such as `pv_area_m2` without
+    instantiating an env (which would load a data split). `grid_import_cap_kw`
+    defaults to None: it is derived from the prepared data, see
+    `resolve_grid_import_cap`.
     """
     return {
         "data_path": os.path.join(os.path.dirname(__file__), "..", "data", "processed"),
@@ -290,7 +292,7 @@ def default_config() -> dict:
         "battery_soc_init": 0.50,
         "cost_unserved_eur_kwh": 1.0,   # constant 1 EUR/kWh
         "cost_wear_eur_kwh": 0.02,      # constant 0.02 EUR/kWh throughput
-        "grid_import_cap_kw": 368.15,   # Fixed P90 of train grid-only import
+        "grid_import_cap_kw": None,     # derived: see resolve_grid_import_cap()
         "soc_reserve_floor": 0.20,
         "pv_area_m2": 1471.0,           # sized for ~250 kW peak
         "pv_efficiency": 0.20,
@@ -298,6 +300,36 @@ def default_config() -> dict:
         "motor_min_pct": 70,
         "episode_length_hours": 168,
     }
+
+
+def resolve_grid_import_cap(cfg: dict) -> float:
+    """Resolve the grid import cap: explicit config first, then the prepared data.
+
+    `data/prepare.py` writes the train-derived cap to split_report.json. There is
+    deliberately no hardcoded fallback: a missing cap means the data was not
+    prepared, and silently using a stale number would mislabel every run that
+    touches it.
+    """
+    explicit = cfg.get("grid_import_cap_kw")
+    if explicit is not None:
+        return float(explicit)
+
+    data_path = cfg.get("data_path") or os.path.join(
+        os.path.dirname(__file__), "..", "data", "processed")
+    report_path = os.path.join(data_path, "split_report.json")
+
+    if os.path.exists(report_path):
+        with open(report_path) as f:
+            report = json.load(f)
+        value = (report.get("grid_import_cap") or {}).get("value_kw")
+        if value is not None:
+            return float(value)
+
+    raise ValueError(
+        "grid_import_cap_kw is unset and %r has no 'grid_import_cap.value_kw'. "
+        "Run `python -m data.prepare` or pass grid_import_cap_kw explicitly."
+        % report_path
+    )
 
 
 def load_config(path: str) -> dict:

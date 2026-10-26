@@ -44,12 +44,21 @@ above.
 
 ## Design decisions (evidence in this repo)
 
-- **Hard cap, not a soft penalty.** Grid import may never exceed **368.15 kW**,
-  fixed as the P90 of Grid-Only import on the Train split
-  (`env/smartgrid_env.py::default_config`).
+- **Peak-reduction target, not a hardware rating.** Grid import is aimed at
+  **368.153918 kW**, derived as the P90 of Grid-Only import on the Train split
+  (`max(0, load − PV)` with the battery idle) in `data/prepare.py` and persisted to
+  `data/processed/split_report.json`; `env/smartgrid_env.py::resolve_grid_import_cap`
+  reads it and there is no hardcoded fallback. It is a soft constraint with a
+  violation budget (`cost_limit`), not a physical connection limit: 10.0 % of Train
+  hours and 10.7 % of Val hours exceed it with the battery idle, and 6 of 104 Train
+  weeks need more peak-shaving energy than the battery can deliver at one full
+  cycle per day. Economic sizing was considered as an alternative derivation and
+  rejected: at ~10 EUR/kW-month, capping at 368 kW removes only ~3.6 kEUR/year of
+  demand charge (721.9 kW-month over the two Train years) against a 500 kWh battery,
+  so an economically optimal cap would sit *above* P90 rather than justify it.
 - **Strong comparator.** The reference is a tuned peak-shaving rule (PSM'), not
   an untuned baseline. The negative result is largely about the strength of that
-  comparator and the presence of the hard cap; see the README takeaway.
+  comparator and the presence of the grid-import cap; see the README takeaway.
 - **Reward scale.** Learning targets use `c = 1/mean|r| = 0.096879` computed on
   Grid-Only Train (`experiments/train_core.py::grid_only_reward_scale`). Metrics
   stay in unscaled EUR/kW.

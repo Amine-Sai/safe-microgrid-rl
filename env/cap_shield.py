@@ -1,7 +1,5 @@
 import numpy as np
 
-CAP_KW = 368.15
-
 # (obs index of zone load, action dim of its shed, industrial flag)
 # Order: street -> stadium -> commercial -> residential -> industrial (PSM').
 SHED_ORDER = (
@@ -79,9 +77,11 @@ class CapShield:
     env's, plus `shield_shed_kw` (total kW shed by the shield this step).
     """
 
-    def __init__(self, env, cap_kw: float = CAP_KW):
+    def __init__(self, env, cap_kw: float = None):
         self.env = env
-        self.cap_kw = cap_kw
+        # Default to the wrapped env's cap so the shield can never shave to a
+        # different threshold than the one the env is judged against.
+        self.cap_kw = env.grid_import_cap_kw if cap_kw is None else float(cap_kw)
 
     def __getattr__(self, name):
         return getattr(self.env, name)

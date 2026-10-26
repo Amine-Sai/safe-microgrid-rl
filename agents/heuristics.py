@@ -170,10 +170,10 @@ class PeakShaveMinPolicy:
 
 
 def _env_cap_kw() -> float:
-    """The env's grid import cap, read from the env defaults (no data split loaded)."""
-    from env.smartgrid_env import default_config
+    """The env's grid import cap, resolved the same way the env resolves it."""
+    from env.smartgrid_env import default_config, resolve_grid_import_cap
 
-    return float(default_config()["grid_import_cap_kw"])
+    return resolve_grid_import_cap(default_config())
 
 
 def psm_prime_policy() -> PeakShaveMinPolicy:

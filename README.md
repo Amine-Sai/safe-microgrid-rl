@@ -12,7 +12,7 @@ A simulated study on real public data (France, 2017-2019).
 ## The problem:
 Picture a small microgrid: a **battery**, a **solar array**, and **five zones of electrical load**, all connected to the main grid.
 
-That grid connection has a hard limit. Whatever happens, the microgrid must **never draw more than 368 kW** from the grid in any hour.
+That grid connection has a **368 kW import target**. The microgrid should draw no more than that from the grid in any hour: exceeding it is charged as a constraint violation, and the controller is judged on how rarely and how little it overruns.
 
 Every hour, a controller has to decide:
 
@@ -73,7 +73,13 @@ Three ways of making RL respect the cap, against two reference controllers:
 - **Action (6 values):** one battery command in [-1, 1] and five shed fractions in [0, 1].
 - **Battery:** 500 kWh, 250 kW, charge kept between 10 % and 90 %.
 - **Solar:** about 250 kW peak.
-- **Cap:** 368.15 kW grid import, checked every hour.
+- **Cap:** 368.15 kW grid import, checked every hour. It is the 90th percentile of
+  train-split grid-only import (`max(0, load − PV)` with the battery idle), derived by
+  `data/prepare.py` and stored in `data/processed/split_report.json`. It is a
+  peak-reduction **target**, not a hardware rating: 10.0 % of train hours and 10.7 %
+  of val hours exceed it before any control, and 6 of the 104 train weeks need more
+  peak-shaving energy than the battery can deliver at one full cycle per day. Runs
+  record the resolved value under `resolved_config.grid_import_cap_kw`.
 
 `env/cap_shield.py` is the shield wrapper. It clips the battery command so the cap can't be exceeded and turns any remaining violation into shed load.
 

@@ -5,6 +5,9 @@ import sys
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from env.smartgrid_env import default_config as env_default_config  # noqa: E402
+
 RAW_DIR = os.path.join(os.path.dirname(__file__), "raw")
 PROCESSED_DIR = os.path.join(os.path.dirname(__file__), "processed")
 os.makedirs(PROCESSED_DIR, exist_ok=True)
@@ -12,6 +15,13 @@ os.makedirs(PROCESSED_DIR, exist_ok=True)
 # --- Constants ---
 SEED = 42
 MICROGRID_PEAK_KW = 500.0  # Scale national load to this peak (kW)
+
+# Grid import cap is a peak-reduction *target*, not a hardware rating. It is the
+# quantile of grid-only import on the training split, i.e. the load the site would
+# draw with the battery idle. Train-only so the constraint cannot leak into val/test.
+# The Lagrangian budget (`cost_limit` in configs/config.yaml, 0.05 kW/step) is
+# calibrated against 0.90; re-derive it if this quantile moves.
+CAP_QUANTILE = 0.90
 
 # Zone shares (of total load at any given hour)
 ZONE_SHARES = {
@@ -608,7 +618,51 @@ def compute_power_thresholds(df: pd.DataFrame) -> dict:
     return thresholds
 
 
-def save_splits(splits: dict, stress_results: dict, thresholds: dict):
+def _grid_only_import(split: pd.DataFrame, pv_scale: float) -> np.ndarray:
+    """Import the site would draw with the battery idle: max(0, load - pv)."""
+    pv_kw = split["irradiance_wm2"].to_numpy() * pv_scale
+    return np.clip(split["load_kw"].to_numpy() - pv_kw, 0.0, None)
+
+
+def compute_grid_import_cap(splits: dict, quantile: float = CAP_QUANTILE) -> dict:
+    """Derive the grid import cap from the training split's grid-only import.
+
+    The env's PV model is reused rather than re-specified here so the cap and the
+    simulation cannot drift apart. Only Train and Val are profiled: Test is closed
+    by policy (NOTES.md), so it is never read for anything, including diagnostics.
+    """
+    pv_cfg = env_default_config()
+    pv_scale = (pv_cfg["pv_area_m2"] * pv_cfg["pv_efficiency"]
+                * pv_cfg["pv_performance_ratio"] / 1000.0)
+
+    profile = {
+        "train": _grid_only_import(splits["train"], pv_scale),
+        "val": _grid_only_import(splits["val"], pv_scale),
+    }
+
+    cap_kw = float(np.quantile(profile["train"], quantile))
+    report = {
+        "value_kw": round(cap_kw, 6),
+        "quantile": quantile,
+        "derived_from": "train",
+        "method": "quantile of max(0, load_kw - pv_kw) with the battery idle",
+        "exceedance": {
+            name: round(float((net > cap_kw).mean()), 6) for name, net in profile.items()
+        },
+        "max_net_import_kw": {
+            name: round(float(net.max()), 3) for name, net in profile.items()
+        },
+    }
+
+    print(f"\n[CAP] Grid import cap = P{quantile * 100:.0f} of train grid-only import")
+    print(f"  cap: {cap_kw:.3f} kW")
+    for name, net in profile.items():
+        print(f"  {name:5s}: {report['exceedance'][name] * 100:5.1f}% of hours above, "
+              f"peak {report['max_net_import_kw'][name]:.1f} kW")
+    return report
+
+
+def save_splits(splits: dict, stress_results: dict, thresholds: dict, grid_import_cap: dict):
     """Save processed data splits and metadata."""
     print("\n[SAVE] Writing processed data...")
 
@@ -634,6 +688,7 @@ def save_splits(splits: dict, stress_results: dict, thresholds: dict):
         "zone_shares": ZONE_SHARES,
         "irradiance_thresholds_wm2": IRRADIANCE_THRESHOLDS,
         "weather_thresholds": WEATHER_THRESHOLDS,
+        "grid_import_cap": grid_import_cap,
     }
     for name, split in splits.items():
         report["splits"][name] = {
@@ -655,11 +710,16 @@ def main():
     print("=" * 60)
 
     price_source = "proxy_DE"
+    cap_quantile = CAP_QUANTILE
     for arg in sys.argv[1:]:
         if arg.startswith("--price-source="):
             price_source = arg.split("=")[1]
         elif arg == "--price-source" and sys.argv.index(arg) + 1 < len(sys.argv):
             price_source = sys.argv[sys.argv.index(arg) + 1]
+        elif arg.startswith("--cap-quantile="):
+            cap_quantile = float(arg.split("=")[1])
+        elif arg == "--cap-quantile" and sys.argv.index(arg) + 1 < len(sys.argv):
+            cap_quantile = float(sys.argv[sys.argv.index(arg) + 1])
 
     # 1. Load raw datasets
     print(f"\n[1/10] Loading OPSD (price_source={price_source})...")
@@ -705,9 +765,10 @@ def main():
     stress = find_stress_weeks(splits)
     report_weather_rule_frequency(splits)
     report_split_statistics(splits)
+    grid_import_cap = compute_grid_import_cap(splits, cap_quantile)
 
     # Save
-    save_splits(splits, stress, thresholds)
+    save_splits(splits, stress, thresholds, grid_import_cap)
 
     print("\n" + "=" * 60)
     print("Data preparation complete!")

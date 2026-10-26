@@ -39,7 +39,10 @@ def _create_test_data():
 def make_env(seed=42, **kw):
     from env.smartgrid_env import SmartGridEnv
     data_dir = _create_test_data()
-    cfg = {"data_path": data_dir, "split": "train", "seed": seed, "episode_length_hours": 48}
+    # The synthetic report has no derived cap, so pin one explicitly: tests must not
+    # depend on data/processed/split_report.json (which reflects the real dataset).
+    cfg = {"data_path": data_dir, "split": "train", "seed": seed,
+           "episode_length_hours": 48, "grid_import_cap_kw": 400.0}
     cfg.update(kw)
     return SmartGridEnv(cfg)
 
@@ -210,6 +213,69 @@ def test_bootstrap_not_zeroed_on_truncation():
     # At truncation, terminated must be False (bootstrap continues)
     assert truncated is True
     assert terminated is False
+
+
+def test_cap_resolved_from_split_report(tmp_path):
+    """With no explicit cap, the env reads the value derived by data/prepare.py."""
+    from env.smartgrid_env import resolve_grid_import_cap
+    with open(tmp_path / "split_report.json", "w") as f:
+        json.dump({"grid_import_cap": {"value_kw": 123.4, "quantile": 0.9}}, f)
+    assert resolve_grid_import_cap({"data_path": str(tmp_path)}) == 123.4
+
+
+def test_cap_explicit_override_wins(tmp_path):
+    """An explicit config value beats the prepared report."""
+    from env.smartgrid_env import resolve_grid_import_cap
+    with open(tmp_path / "split_report.json", "w") as f:
+        json.dump({"grid_import_cap": {"value_kw": 123.4}}, f)
+    cfg = {"data_path": str(tmp_path), "grid_import_cap_kw": 250.0}
+    assert resolve_grid_import_cap(cfg) == 250.0
+
+
+def test_cap_missing_raises(tmp_path):
+    """No explicit cap and no report entry is an error, never a silent fallback."""
+    from env.smartgrid_env import resolve_grid_import_cap
+    with pytest.raises(ValueError, match="grid_import_cap_kw"):
+        resolve_grid_import_cap({"data_path": str(tmp_path)})
+    with open(tmp_path / "split_report.json", "w") as f:
+        json.dump({"grid_import_cap": {}}, f)
+    with pytest.raises(ValueError, match="grid_import_cap_kw"):
+        resolve_grid_import_cap({"data_path": str(tmp_path)})
+
+
+def test_cap_shield_defaults_to_env_cap():
+    """CapShield must shave to the env's cap, not to a stale module constant."""
+    from env.cap_shield import CapShield
+    env = make_env()  # synthetic cap = 400.0
+    assert CapShield(env).cap_kw == 400.0
+    assert CapShield(env, cap_kw=50.0).cap_kw == 50.0
+
+
+def test_persisted_cap_matches_recomputed_p90():
+    """split_report.json must agree with a fresh derivation from the train split."""
+    import pandas as pd
+    from env.smartgrid_env import default_config
+
+    cfg = default_config()
+    data_dir = cfg["data_path"]
+    csv_path = os.path.join(data_dir, "train.csv")
+    report_path = os.path.join(data_dir, "split_report.json")
+    if not (os.path.exists(csv_path) and os.path.exists(report_path)):
+        pytest.skip("processed data not available")
+
+    with open(report_path) as f:
+        report = json.load(f)
+    derived = report.get("grid_import_cap")
+    if not derived:
+        pytest.skip("split_report.json predates the derived cap; re-run data/prepare.py")
+
+    df = pd.read_csv(csv_path)
+    pv_kw = (df["irradiance_wm2"] * cfg["pv_area_m2"] * cfg["pv_efficiency"]
+             * cfg["pv_performance_ratio"] / 1000.0)
+    net_import = (df["load_kw"] - pv_kw).clip(lower=0.0)
+    expected = round(float(np.quantile(net_import, derived["quantile"])), 6)
+
+    assert derived["value_kw"] == pytest.approx(expected, abs=1e-6)
 
 
 if __name__ == "__main__":
