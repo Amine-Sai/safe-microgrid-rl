@@ -49,7 +49,8 @@ def _job(job):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--configs", required=True, help="comma list of config stems")
-    ap.add_argument("--method", default="plain_sac")
+    ap.add_argument("--method", default="ppo",
+                    help="agent method (PPO family; SAC agents are not shipped)")
     ap.add_argument("--seeds", default="42")
     ap.add_argument("--steps", type=int, default=20000)
     ap.add_argument("--eval-interval", type=int, default=5000)

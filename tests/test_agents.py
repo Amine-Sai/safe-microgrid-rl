@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pytest
 
 from agents.buffer import ReplayBuffer
 from agents.running_stat import RunningMeanStd
@@ -103,6 +104,8 @@ def test_fixed_cost_penalty():
 
 def test_actor_loss_normalisation():
     """Actor objective is (alpha*log_pi - Q_r + lambda*Q_c) / (1 + lambda)."""
+    pytest.importorskip("agents.sac_lagrangian",
+                        reason="SAC agents are not included in this PPO-focused release")
     from agents.sac_lagrangian import actor_lagrangian_loss
     alpha, log_prob, qr, qc = 0.5, -1.25, 20.0, 3.0
 
@@ -124,6 +127,8 @@ def test_actor_loss_normalisation():
 
 def test_save_load_roundtrip(tmp_path):
     """save_models/load_models must restore an identical deterministic policy."""
+    pytest.importorskip("agents.sac_agent",
+                        reason="SAC agents are not included in this PPO-focused release")
     from agents.sac_agent import SACAgent
     rng = np.random.RandomState(7)
     states = rng.randn(64, 17).astype(np.float32)
@@ -146,6 +151,8 @@ def test_save_load_roundtrip(tmp_path):
 
 def test_lagrangian_save_load_roundtrip(tmp_path):
     """The dual variable lambda must survive a save/load roundtrip."""
+    pytest.importorskip("agents.sac_lagrangian",
+                        reason="SAC agents are not included in this PPO-focused release")
     from agents.sac_lagrangian import SACLagrangianAgent
     rng = np.random.RandomState(11)
     agent = SACLagrangianAgent(state_dim=17, action_dim=6, batch_size=16, buffer_size=200,

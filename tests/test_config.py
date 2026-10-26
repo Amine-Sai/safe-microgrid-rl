@@ -146,41 +146,59 @@ def test_p1_p2_p3_is_a_documented_no_op():
 
 
 def test_agent_helper_matches_training_kwargs():
-    """`load_agent_for_method` must pass the SAME kwargs as the training call.
+    """`load_agent_for_method` must build the SAME PPO agent as the training call.
 
-    If this drifts, a restored checkpoint silently replays a differently-configured
-    agent than the one that trained — the worst possible silent failure. Compare the
-    keyword sets of both constructor calls in the source, plus live attribute checks.
+    Both paths go through `_ppo_kwargs`, so the helper cannot silently replay a
+    differently-configured agent than the one that trained. Assert that structural
+    guarantee first, then check that every resolved hyperparameter reaches the
+    live agent.
     """
     import ast
     import inspect
     from experiments import train_core as pp
+    from agents.ppo import PPOAgent
 
-    def _kwargs_of(fn, cls_name):
+    def _calls_kwargs_helper(fn):
         tree = ast.parse(inspect.getsource(fn))
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Call) and getattr(node.func, "id", None) == cls_name):
-                return {kw.arg for kw in node.keywords}
-        raise AssertionError(f"{cls_name}(...) not found in {fn.__name__}")
+        return any(
+            isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_ppo_kwargs"
+            for node in ast.walk(tree))
 
-    for cls in ("SACAgent", "SACLagrangianAgent"):
-        train = _kwargs_of(pp.train_single_method, cls)
-        helper = _kwargs_of(pp.load_agent_for_method, cls)
-        assert helper == train, (
-            f"{cls} kwargs differ from the training path: "
-            f"helper-only={helper - train}, train-only={train - helper}")
+    assert _calls_kwargs_helper(pp.train_single_method_ppo)
+    assert _calls_kwargs_helper(pp.load_agent_for_method)
 
-    # live check: every hyperparameter reaches the agent
-    for exp in ("control_plain", "b2_scaled"):
+    # Non-residual configs build without the dataset (the residual base policy
+    # reads the Train price quantile, so it is checked separately below).
+    for exp in ("s3_ppo", "s3_ppo_lag", "s3_sh_ppo"):
         cfg = load_config_with_base(exp)
         a = pp.load_agent_for_method(cfg["method"], cfg)
-        assert isinstance(a, (pp.SACAgent, pp.SACLagrangianAgent))
-        assert abs(float(a.alpha) - cfg["alpha_init"]) < 1e-6   # float32 storage
-        assert a.gamma == cfg["gamma"] and a.tau == cfg["tau"]
-        assert a.batch_size == cfg["batch_size"]
-        if a.__class__.__name__ == "SACLagrangianAgent":
-            assert a.cost_limit == cfg["cost_limit"]
-            assert abs(a.lr_dual - cfg["lr_dual"]) < 1e-12
+        assert isinstance(a, PPOAgent)
+        assert a.gamma == cfg["gamma"]
+        assert a.gae_lambda == cfg["gae_lambda"]
+        assert a.clip_ratio == cfg["ppo_clip_ratio"]
+        assert a.cost_limit == cfg["cost_limit"]
+        assert a.reward_scale == cfg["reward_scale"]
+        assert a.lagrangian == ("lagrangian" in cfg["method"])
+        assert a.pbrs == ("potential_shaping" in cfg["method"])
+        assert a.use_minibatches == cfg["ppo_use_minibatches"]
+        assert a.store_raw_action == cfg["ppo_store_raw_action"]
+        assert a.residual_coef == cfg["residual_coef"]
+        assert a.residual_policy is None
+
+
+@pytest.mark.needs_real_data
+def test_residual_helper_attaches_the_base_policy():
+    """The residual agent must be built on top of the live PSM' heuristic."""
+    import numpy as np
+    from experiments import train_core as pp
+    from agents.ppo import PPOAgent
+
+    cfg = load_config_with_base("s3_ppo_res")
+    agent = pp.load_agent_for_method(cfg["method"], cfg)
+    assert isinstance(agent, PPOAgent)
+    assert agent.residual_policy is not None
+    assert agent.residual_policy.get_action(
+        np.zeros(17, dtype=np.float32)).shape == (6,)
 
 
 @pytest.mark.needs_real_data

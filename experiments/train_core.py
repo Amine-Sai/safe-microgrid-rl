@@ -10,9 +10,12 @@ import torch as th
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from env.smartgrid_env import SmartGridEnv
-from agents.sac_agent import SACAgent
-from agents.sac_lagrangian import SACLagrangianAgent
 from agents.shaping import PotentialBasedShaping, FixedCostPenalty
+
+# The SAC agents were part of the earlier prototype but are not included in this
+# release (the published results are all PPO). They are imported lazily inside the
+# SAC branches so the PPO path stays importable; requesting a SAC method raises a
+# clear error. See NOTES.md (D1).
 
 
 def set_seed(seed: int = 42):
@@ -169,6 +172,27 @@ def grid_only_reward_scale(cfg: dict, shed_mapping: str, method_name: str = "age
     return c
 
 
+def _sac_agents():
+    """Import the SAC agents, or explain why they are unavailable.
+
+    The published study is PPO-only; the SAC implementation was part of the
+    earlier prototype and is not shipped here. Historical SAC rows remain in
+    configs/config.yaml, so this guard replaces a bare ModuleNotFoundError with
+    an actionable message.
+    """
+    try:
+        from agents.sac_agent import SACAgent
+        from agents.sac_lagrangian import SACLagrangianAgent
+    except ModuleNotFoundError as exc:
+        if exc.name not in {"agents.sac_agent", "agents.sac_lagrangian"}:
+            raise
+        raise ModuleNotFoundError(
+            f"{exc.name!r} is not included in this PPO-focused release. "
+            "Runnable methods are the ones containing 'ppo'; see NOTES.md (D1)."
+        ) from exc
+    return SACAgent, SACLagrangianAgent
+
+
 def load_agent_for_method(method_name: str, cfg: dict):
     """Build the agent object for a (method, cfg) pair WITHOUT training.
 
@@ -193,6 +217,8 @@ def load_agent_for_method(method_name: str, cfg: dict):
             kwargs["residual_policy"] = _ppo_residual_policy()
         cls = PPOPotentialShapingAgent if kwargs["pbrs"] else PPOAgent
         return cls(**kwargs)
+
+    SACAgent, SACLagrangianAgent = _sac_agents()
 
     if "lagrangian" in method_name:
         return SACLagrangianAgent(
@@ -225,6 +251,7 @@ def train_single_method(method_name: str, cfg: dict, ckpt_dir: str = None,
         return train_single_method_ppo(method_name, cfg, ckpt_dir=ckpt_dir,
                                        run_name=run_id,
                                        allow_overwrite=allow_overwrite)
+    SACAgent, SACLagrangianAgent = _sac_agents()
     print(f"\n{'='*75}")
     print(f"RUN: {method_name.upper()} (Seed {cfg['seed']}, {cfg['total_steps']} Steps)")
     print(f"{'='*75}")

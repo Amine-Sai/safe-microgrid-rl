@@ -2,6 +2,11 @@
 
 A simulated study on real public data (France, 2017-2019).
 
+> **Status: prototype snapshot** (`git tag v0-prototype`). The negative result is the
+> point of the study; the code is research-grade, not a maintained library. Decisions,
+> verification scope and known gaps are in **[NOTES.md](NOTES.md)**. The committed
+> results and how to rebuild them are described in **[results/README.md](results/README.md)**.
+
 ---
 
 ## The problem:
@@ -60,6 +65,9 @@ Three ways of making RL respect the cap, against two reference controllers:
 | *Grid-Only* | do nothing, just buy from the grid (reference) |
 | *PSM'* | tuned peak-shaving rule, the strong comparator |
 
+All learned methods in this release are PPO-family. Earlier SAC probes are retained
+as historical config rows but their agent modules are not shipped (NOTES.md, D1).
+
 ## The environment
 
 `env/smartgrid_env.py` is a [Gymnasium](https://gymnasium.farama.org/) environment with hourly steps and weekly episodes.
@@ -74,12 +82,15 @@ Three ways of making RL respect the cap, against two reference controllers:
 
 ## The data
 
-Datasets are fetched at run time:
+Datasets are fetched at run time and are **not** committed:
 
 ```bash
 python data/download.py     # ~130 MB into data/raw/
 python data/prepare.py      # builds data/processed/*.parquet
 ```
+
+SHA-256 checksums for the three expected raw files live in `data/checksums.json`;
+`download.py` verifies them automatically.
 
 | Data | Source |
 |---|---|
@@ -99,25 +110,61 @@ agents/                  PPO, heuristics, networks, reward shaping
 experiments/             training and batch runners
 tools/                   table, figure and status scripts
 tests/                   unit tests
-results/                 run outputs, tables, figures
+results/                 run outputs, tables, figures (see results/README.md)
+NOTES.md                 decision log, verification scope, known gaps
 ```
 
-## How to run
+## Reproduction
+
+The short version, from a clean checkout:
 
 ```bash
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m pytest tests/                                   # unit tests
-python experiments/train.py --config s3_ppo --seed 101    # one run
-python tools/report/export_csv.py                         # rebuild tables
-python tools/report/plots.py                              # rebuild figures
+
+python data/download.py          # ~130 MB, checksum-verified
+python data/prepare.py           # builds data/processed/*.parquet
+python -m pytest tests/ -v       # unit suite
+
+python experiments/train.py --config s3_ppo --seed 101
+python tools/report/export_csv.py
+python tools/report/plots.py
 ```
 
-`--config` takes an experiment name from `configs/config.yaml` (for example `s3_ppo`, `s3_ppo_lag`, `s3_ppo_res`, `s3_sh_ppo`). A full 300k-step run takes roughly 5-10 minutes on one CPU thread.
+`--config` takes an experiment name from `configs/config.yaml` (for example
+`s3_ppo`, `s3_ppo_lag`, `s3_ppo_res`, `s3_sh_ppo`). Use `--overwrite` to replace an
+existing result. A full 300k-step run writes
+`results/runs/<agent>/<run-id>_seed<seed>.json` and a checkpoint under
+`checkpoints/`.
+
+### Test status
+
+`tests/` covers the environment (physics, cap, SoC bounds, determinism), the PPO
+agent (GAE, truncation bootstrapping, seed determinism, λ update), the config
+loader, and the buffer/shaping helpers. Some tests are marked `needs_real_data`
+and skip until `data/processed/*.parquet` exists.
+
+In the fresh-venv verification for this snapshot, **`tests/test_env.py` passed
+11/11** and the non-torch part of `tests/test_agents.py` passed **5/5** (the three
+SAC-specific tests skip because those agents are not part of this release). The
+torch-dependent tests were not re-run in that sandbox because the pinned torch
+wheel is CUDA-linked and no NVIDIA runtime was available; I did not download the
+multi-GB CUDA stack. See [NOTES.md](NOTES.md) (D2) for the exact scope.
+
+### Hardware and compute
+
+Everything is CPU-only and single-threaded per run (`torch_threads: 1`). The 20
+published 300k-step runs recorded **256–571 s each (mean 471 s)** in their result
+JSONs — about **2.6 CPU-hours** for the full grid before parallelism. The batch
+runner uses one process per run, so 6 workers finish the grid in roughly half an
+hour. No GPU is required.
 
 ## Limitations
 
 - The setup is a simulation: the topology, zone split, events, battery and PV sizes, and the price proxy are assumptions.
 - The comparison with the IJCNN paper is analytical, not experimental: different data, objective and battery model.
+- The learned methods are PPO-family only; the earlier SAC path is not included (NOTES.md, D1).
+- The reported table is Val only. The Test split (2019 H2) is closed and was not evaluated.
 
 ---
 
@@ -125,7 +172,11 @@ python tools/report/plots.py                              # rebuild figures
 
 Evaluated on the Val split, 300k training steps, 5 seeds per method.
 
-<table> <tr> <td align="center" valign="top" width="50%"> <img src="https://github.com/user-attachments/assets/2b1c13be-0387-4972-b5ce-9cef18aa4a03" alt="Learning curves" width="360"><br> <sub><b>Learning curves</b></sub> </td> <td align="center" valign="top" width="50%"> <img src="https://github.com/user-attachments/assets/2950f657-375d-4140-8d3b-2478d6801843" alt="Cost vs exceedance" width="360"><br> <sub><b>Cost vs exceedance</b></sub> </td> </tr> <tr> <td align="center" valign="top" width="50%"> <img src="https://github.com/user-attachments/assets/0662f2a8-4648-4092-a9a3-0a6bbab783c4" alt="Per-seed results" width="360"><br> <sub><b>Per-seed results</b></sub> </td> <td align="center" valign="top" width="50%"> <img src="https://github.com/user-attachments/assets/b7af4ffa-9ab5-4885-b906-479c03d9bb50" alt="Cost breakdown" width="360"><br> <sub><b>Cost breakdown</b></sub> </td> </tr> </table>
+<table> <tr> <td align="center" valign="top" width="50%"> <img src="results/figures/learning_curves.png" alt="Learning curves" width="360"><br> <sub><b>Learning curves</b></sub> </td> <td align="center" valign="top" width="50%"> <img src="results/figures/cost_vs_exceedance.png" alt="Cost vs exceedance" width="360"><br> <sub><b>Cost vs exceedance</b></sub> </td> </tr> <tr> <td align="center" valign="top" width="50%"> <img src="results/figures/per_seed_results.png" alt="Per-seed results" width="360"><br> <sub><b>Per-seed results</b></sub> </td> <td align="center" valign="top" width="50%"> <img src="results/figures/cost_breakdown.png" alt="Cost breakdown" width="360"><br> <sub><b>Cost breakdown</b></sub> </td> </tr> </table>
+
+All four figures and the per-seed JSONs behind them are committed under
+[`results/`](results/README.md). That folder also carries a λ-trajectory
+diagnostic (`lambda_trajectory.png`) regenerated from the same runs.
 
 
 | Method | Val cost (EUR) | Respects the cap? |

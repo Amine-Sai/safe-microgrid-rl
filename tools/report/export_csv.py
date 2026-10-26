@@ -101,7 +101,7 @@ def per_seed_table():
         print("no per-seed run JSONs matched - %s left unchanged" % p)
         return None
     with open(p, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w = csv.DictWriter(f, fieldnames=list(rows[0]), lineterminator="\n")
         w.writeheader()
         w.writerows(rows)
     print(f"wrote {p}  ({len(rows)} per-seed rows, no means)")
@@ -118,7 +118,8 @@ def main():
         flds = ["run_id", "agent", "method", "steps", "seed", "val_cost_eur",
                 "exceedance_kw", "violation_rate_pct", "lambda", "wall_clock_seconds",
                 "result_path"]
-        w = csv.DictWriter(f, fieldnames=flds, extrasaction="ignore")
+        w = csv.DictWriter(f, fieldnames=flds, extrasaction="ignore",
+                           lineterminator="\n")
         w.writeheader()
         w.writerows(rows)
     written.append(p)
