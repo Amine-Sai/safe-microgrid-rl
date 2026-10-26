@@ -81,6 +81,13 @@ def download_openmeteo():
     )
     dest = os.path.join(RAW_DIR, "openmeteo_weather_2017_2019.json")
     download_file(url, dest, "Open-Meteo Weather (2017-2019)")
+    # The response embeds server processing time, which changes on every
+    # request. Drop it so the file hashes reproducibly for checksum checking.
+    with open(dest, encoding="utf-8") as f:
+        payload = json.load(f)
+    payload.pop("generationtime_ms", None)
+    with open(dest, "w", encoding="utf-8") as f:
+        json.dump(payload, f, sort_keys=True, separators=(",", ":"))
     return dest
 
 
