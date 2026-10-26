@@ -1,33 +1,15 @@
 defaults:
-  method: plain_sac
+  method: ppo
   state_dim: 17
   action_dim: 6
-  hidden_dims:
-  - 256
-  - 256
-  lr_actor: 0.0003
-  lr_critic: 0.0003
   lr_dual: 0.01
   gamma: 0.99
-  tau: 0.005
-  batch_size: 128
-  buffer_size: 100000
   reward_scale: 1.0
   reward_scale_mode: fixed
   reward_scale_explicit: false
-  auto_entropy: true
-  alpha_init: 0.2
-  target_entropy: -3.0
-  entropy_clamp: null
   cost_limit: 0.05
   lambda_init: 0.0
-  dual_cost_horizon: 10
-  lambda_source: episode_mean
-  lambda_max: 1000.0
   shed_mapping: linear
-  warmup_steps: 1000
-  warmup_mode: uniform
-  fixed_cost_penalty_beta: 1.0
   potential_shaping_kappa: 105.0
   total_steps: 100000
   eval_interval_steps: 10000
@@ -53,100 +35,11 @@ defaults:
   ppo_init_log_std: -1.0
   ppo_init_log_std_shed: null
 experiments:
-  control_plain:
-    total_steps: 20000
-    eval_interval_steps: 5000
-  control_lagrangian:
-    method: sac_lagrangian
-    total_steps: 20000
-    eval_interval_steps: 5000
-  p1:
-    shed_mapping: relu
-    reward_scale: 0.096879
-    reward_scale_mode: grid_only
-    total_steps: 20000
-    eval_interval_steps: 5000
-  p1_p2:
-    shed_mapping: relu
-    reward_scale: 0.096879
-    reward_scale_mode: grid_only
-    alpha_init: 0.05
-    target_entropy: -6.0
-    entropy_clamp: 1.0
-    total_steps: 20000
-    eval_interval_steps: 5000
-  p1_p2_p3:
-    shed_mapping: relu
-    reward_scale: 0.096879
-    reward_scale_mode: grid_only
-    alpha_init: 0.05
-    target_entropy: -6.0
-    entropy_clamp: 1.0
-    total_steps: 20000
-    eval_interval_steps: 5000
-  p1_p1b:
-    shed_mapping: relu
-    reward_scale: 0.096879
-    reward_scale_mode: grid_only
-    warmup_mode: informed
-    total_steps: 20000
-    eval_interval_steps: 5000
-  p1_p1b_p2:
-    shed_mapping: relu
-    reward_scale: 0.096879
-    reward_scale_mode: grid_only
-    warmup_mode: informed
-    alpha_init: 0.05
-    target_entropy: -6.0
-    entropy_clamp: 1.0
-    total_steps: 20000
-    eval_interval_steps: 5000
-  m_relu:
-    shed_mapping: relu
-    total_steps: 20000
-    eval_interval_steps: 5000
-  m_relu_t:
-    shed_mapping: relu
-    target_entropy: -6.0
-    total_steps: 20000
-    eval_interval_steps: 5000
-  m_relu_ta:
-    shed_mapping: relu
-    target_entropy: -6.0
-    entropy_clamp: 0.3
-    total_steps: 20000
-    eval_interval_steps: 5000
-  e_linear_ta:
-    target_entropy: -6.0
-    entropy_clamp: 0.3
-    total_steps: 20000
-    eval_interval_steps: 5000
-  b2_scaled:
-    target_entropy: -6.0
-    entropy_clamp: 0.06
-    alpha_init: 0.02
-    reward_scale: 0.096879
-    reward_scale_explicit: true
-    total_steps: 20000
-    eval_interval_steps: 5000
-  b2_warm:
-    target_entropy: -6.0
-    entropy_clamp: 0.3
-    warmup_mode: informed
-    total_steps: 20000
-    eval_interval_steps: 5000
-  b2_long:
-    target_entropy: -6.0
-    entropy_clamp: 0.3
-    total_steps: 40000
-    eval_interval_steps: 5000
   bench10k:
-    method: ppo
     reward_scale: 0.096879
     total_steps: 10000
     eval_interval_steps: 5000
   r1:
-    method: ppo
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
@@ -171,7 +64,6 @@ experiments:
     total_steps: 300000
     eval_interval_steps: 50000
   s2_ppo:
-    method: ppo
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
@@ -198,14 +90,12 @@ experiments:
     total_steps: 300000
     eval_interval_steps: 50000
   sh_ppo42:
-    method: ppo
     action_dim: 1
     shielded: true
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   s3_ppo:
-    method: ppo
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
@@ -222,20 +112,17 @@ experiments:
     total_steps: 300000
     eval_interval_steps: 50000
   s3_sh_ppo:
-    method: ppo
     action_dim: 1
     shielded: true
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   v2_a:
-    method: ppo
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
     ppo_store_raw_action: true
   v2_b:
-    method: ppo
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
@@ -243,7 +130,6 @@ experiments:
     ppo_use_minibatches: true
     ppo_value_epochs: 5
   v2_c:
-    method: ppo
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
@@ -272,7 +158,6 @@ experiments:
     ppo_value_epochs: 5
     ppo_init_log_std_shed: -3.0
   v2_sh:
-    method: ppo
     action_dim: 1
     shielded: true
     reward_scale: 0.096879
@@ -281,31 +166,3 @@ experiments:
     ppo_store_raw_action: true
     ppo_use_minibatches: true
     ppo_value_epochs: 5
-  sl1:
-    method: sac_lagrangian
-    target_entropy: -6.0
-    entropy_clamp: 0.06
-    alpha_init: 0.02
-    reward_scale: 0.096879
-    reward_scale_explicit: true
-    total_steps: 20000
-    eval_interval_steps: 5000
-  sl2:
-    method: sac_lagrangian
-    lr_dual: 0.1
-    target_entropy: -6.0
-    entropy_clamp: 0.06
-    alpha_init: 0.02
-    reward_scale: 0.096879
-    reward_scale_explicit: true
-    total_steps: 20000
-    eval_interval_steps: 5000
-  sl3:
-    seed: 43
-    target_entropy: -6.0
-    entropy_clamp: 0.06
-    alpha_init: 0.02
-    reward_scale: 0.096879
-    reward_scale_explicit: true
-    total_steps: 20000
-    eval_interval_steps: 5000

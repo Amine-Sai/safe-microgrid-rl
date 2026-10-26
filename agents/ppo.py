@@ -281,10 +281,9 @@ class PPOAgent:
     def shape(self, reward, state, next_state, terminated, truncated):
         """Apply the learning-time reward transform.
 
-        The explicit reward_scale c multiplies EVERY learning target (same semantic as
-        SAC's reward_scale; the directive reuses c = 0.096879). With pbrs the
-        potential shaping is added on top; Phi is state-only and is NOT zeroed on
-        truncation (only on true termination).
+        The explicit reward_scale c multiplies EVERY learning target (the directive
+        uses c = 0.096879). With pbrs the potential shaping is added on top; Phi is
+        state-only and is NOT zeroed on truncation (only on true termination).
         """
         scaled = float(reward) * self.reward_scale
         if not self.pbrs:
@@ -325,8 +324,8 @@ class PPOAgent:
     def update_lambda_from_source(self):
         """Projected ascent on lambda, on a slower timescale than the policy.
 
-        J_c = mean UNDISCOUNTED per-step cost over recent episodes (same semantic as
-        the SAC Lagrangian). lambda <- max(0, lambda + lr_dual * (J_c - d)).
+        J_c = mean UNDISCOUNTED per-step cost over recent episodes.
+        lambda <- max(0, lambda + lr_dual * (J_c - d)).
         """
         if not self.lagrangian:
             return self.lambda_
@@ -578,8 +577,8 @@ class PPOAgent:
 class PPOPotentialShapingAgent(PPOAgent):
     """PPO + potential-based reward shaping.
 
-    Phi(s) = kappa * SoC (state[0]), via the SHARED PotentialBasedShaping class so the
-    potential cannot drift from the SAC path.
+    Phi(s) = kappa * SoC (state[0]), via the shared PotentialBasedShaping class so
+    the potential stays consistent with the reward-shaping definition.
     """
 
     def __init__(self, *args, **kwargs):

@@ -10,12 +10,6 @@ import torch as th
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from env.smartgrid_env import SmartGridEnv
-from agents.shaping import PotentialBasedShaping, FixedCostPenalty
-
-# The SAC agents were part of the earlier prototype but are not included in this
-# release (the published results are all PPO). They are imported lazily inside the
-# SAC branches so the PPO path stays importable; requesting a SAC method raises a
-# clear error. See NOTES.md (D1).
 
 
 def set_seed(seed: int = 42):
@@ -25,8 +19,8 @@ def set_seed(seed: int = 42):
         th.cuda.manual_seed_all(seed)
 
 
-def evaluate_deterministic_val(env_val: SmartGridEnv, agent, normalizer, extra_log=None) -> dict:
-    """Evaluate agent deterministically on all 26 weeks of validation with normalizer frozen."""
+def evaluate_deterministic_val(env_val: SmartGridEnv, agent, extra_log=None) -> dict:
+    """Evaluate agent deterministically on all 26 weeks of validation."""
     tot_pur = 0.0
     tot_uns = 0.0
     tot_wear = 0.0
@@ -38,20 +32,12 @@ def evaluate_deterministic_val(env_val: SmartGridEnv, agent, normalizer, extra_l
     sat_fracs = []
     soc_pins = []
 
-    is_ppo = hasattr(agent, "policy") and hasattr(agent, "select_action")
-
-    # We do NOT call normalizer.update() during evaluation -> frozen
+    # Evaluation never updates the agent's observation normalizer (frozen).
     for ep in range(26):
         obs, _ = env_val.reset(options={"start_idx": ep * 168})
         for _ in range(168):
-            if is_ppo:
-                # PPOAgent composes the residual internally; evaluate=True = mean action.
-                act = agent.select_action(obs, evaluate=True)[0]
-            else:
-                norm_obs = normalizer.normalize(obs)
-                obs_t = th.as_tensor(norm_obs, dtype=th.float32, device=agent.device).unsqueeze(0)
-                with th.no_grad():
-                    act = agent.actor.deterministic(obs_t).squeeze(0).cpu().numpy()
+            # PPOAgent composes the residual internally; evaluate=True = mean action.
+            act = agent.select_action(obs, evaluate=True)[0]
             sat_fracs.append(float(np.mean(np.abs(np.asarray(act)) >= 0.99)))
             soc_pins.append(float(obs[0] <= 0.105 or obs[0] >= 0.895))
 
@@ -81,7 +67,7 @@ def evaluate_deterministic_val(env_val: SmartGridEnv, agent, normalizer, extra_l
         "violation_rate_pct": float(viol_rate),
         "violation_hours": int(tot_viol),
         "mean_exceedance_kw": float(mean_exc),
-        # saturation + SoC-pin fractions at every eval (cheap; works for SAC too).
+        # saturation + SoC-pin fractions at every eval (cheap diagnostics).
         "frac_saturated": float(np.mean(sat_fracs)),
         "soc_pinned_pct": float(np.mean(soc_pins)) * 100.0,
     }
@@ -97,12 +83,8 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CONFIG_FILE = os.path.join(REPO_ROOT, "configs", "config.yaml")
 
 # Lagrangian-only config keys. Under a non-Lagrangian method they are silent
-# no-ops, so the loader refuses them in a row that declares such a
-# method. LEGACY_EXEMPT holds labels of historical rows that must stay loadable; the scan
-# of configs/config.yaml found NONE that trip the guard, so it is empty.
-LAG_ONLY = {"lr_dual", "dual_cost_horizon", "lambda_init", "lambda_source",
-            "lambda_max", "lambda_lr_mult", "lag_normalize_by_1p_lam"}
-LEGACY_EXEMPT = set()
+# no-ops, so the loader refuses them in a row that declares such a method.
+LAG_ONLY = {"lr_dual", "lambda_init", "lambda_lr_mult", "lag_normalize_by_1p_lam"}
 
 
 def variant_label(method_name: str, cfg: dict) -> str:
@@ -112,7 +94,7 @@ def variant_label(method_name: str, cfg: dict) -> str:
     and the shielded rung runs plain PPO. The two extra flags decide the folder, so
     every artefact of one agent lands in one place.
 
-        ppo | ppo_lagrangian | ppo_residual | ppo_shielded | <SAC method name>
+        ppo | ppo_lagrangian | ppo_residual | ppo_shielded
     """
     if cfg.get("shielded"):
         return "ppo_shielded"
@@ -172,27 +154,6 @@ def grid_only_reward_scale(cfg: dict, shed_mapping: str, method_name: str = "age
     return c
 
 
-def _sac_agents():
-    """Import the SAC agents, or explain why they are unavailable.
-
-    The published study is PPO-only; the SAC implementation was part of the
-    earlier prototype and is not shipped here. Historical SAC rows remain in
-    configs/config.yaml, so this guard replaces a bare ModuleNotFoundError with
-    an actionable message.
-    """
-    try:
-        from agents.sac_agent import SACAgent
-        from agents.sac_lagrangian import SACLagrangianAgent
-    except ModuleNotFoundError as exc:
-        if exc.name not in {"agents.sac_agent", "agents.sac_lagrangian"}:
-            raise
-        raise ModuleNotFoundError(
-            f"{exc.name!r} is not included in this PPO-focused release. "
-            "Runnable methods are the ones containing 'ppo'; see NOTES.md (D1)."
-        ) from exc
-    return SACAgent, SACLagrangianAgent
-
-
 def load_agent_for_method(method_name: str, cfg: dict):
     """Build the agent object for a (method, cfg) pair WITHOUT training.
 
@@ -201,373 +162,31 @@ def load_agent_for_method(method_name: str, cfg: dict):
     always sees the object it trained in;
     `tests/test_config.py::test_agent_helper_matches_training_kwargs` pins this.
     """
-    state_dim, action_dim = cfg["state_dim"], cfg["action_dim"]
-    d_main = cfg["cost_limit"]
-    shed_mapping = cfg.get("shed_mapping", "linear")
-    reward_scale = grid_only_reward_scale(cfg, shed_mapping)
-    target_entropy = cfg.get("target_entropy", -3.0)
-    entropy_clamp = cfg.get("entropy_clamp", None)
+    if "ppo" not in method_name:
+        raise ValueError(
+            f"unsupported method {method_name!r}: this release ships the PPO family "
+            "only (ppo, ppo_lagrangian, ppo_potential_shaping, ...)"
+        )
 
-    # PPO methods branch FIRST - "ppo_lagrangian" contains "lagrangian" and would
-    # otherwise fall into the SAC constructor below.
-    if "ppo" in method_name:
-        from agents.ppo import PPOAgent, PPOPotentialShapingAgent
-        kwargs = _ppo_kwargs(cfg, method_name)
-        if cfg.get("residual_on_heuristic", False):
-            kwargs["residual_policy"] = _ppo_residual_policy()
-        cls = PPOPotentialShapingAgent if kwargs["pbrs"] else PPOAgent
-        return cls(**kwargs)
+    from agents.ppo import PPOAgent, PPOPotentialShapingAgent
 
-    SACAgent, SACLagrangianAgent = _sac_agents()
-
-    if "lagrangian" in method_name:
-        return SACLagrangianAgent(
-            state_dim=state_dim, action_dim=action_dim, cost_limit=d_main,
-            lr_actor=cfg["lr_actor"], lr_critic=cfg["lr_critic"], lr_dual=cfg["lr_dual"],
-            gamma=cfg["gamma"], tau=cfg["tau"], alpha_init=cfg["alpha_init"],
-            lambda_init=cfg["lambda_init"], auto_entropy=cfg["auto_entropy"],
-            target_entropy=target_entropy, batch_size=cfg["batch_size"],
-            reward_scale=reward_scale, entropy_clamp=entropy_clamp,
-            lambda_source=cfg.get("lambda_source", "episode_mean"),
-            lambda_max=cfg.get("lambda_max", float("inf")))
-    # NOTE: `SACAgent` (non-Lagrangian) deliberately does NOT take `reward_scale` here —
-    # identical to the training path, so a restored checkpoint sees the object it trained in.
-    # (The PPO branch above already returned, so the check below is SAC-only.)
-    return SACAgent(
-        state_dim=state_dim, action_dim=action_dim,
-        lr_actor=cfg["lr_actor"], lr_critic=cfg["lr_critic"], gamma=cfg["gamma"],
-        tau=cfg["tau"], alpha_init=cfg["alpha_init"], auto_entropy=cfg["auto_entropy"],
-        target_entropy=target_entropy, batch_size=cfg["batch_size"],
-        entropy_clamp=entropy_clamp)
+    kwargs = _ppo_kwargs(cfg, method_name)
+    if cfg.get("residual_on_heuristic", False):
+        kwargs["residual_policy"] = _ppo_residual_policy()
+    cls = PPOPotentialShapingAgent if kwargs["pbrs"] else PPOAgent
+    return cls(**kwargs)
 
 
 def train_single_method(method_name: str, cfg: dict, ckpt_dir: str = None,
                         run_name: str = "", allow_overwrite: bool = False):
-    run_id = clean_run_id(run_name)
-    if ckpt_dir is None:
-        _result_path, ckpt_dir = run_paths(method_name, cfg, run_id)
-    # PPO methods take the on-policy path; SAC methods keep the off-policy path below.
-    if "ppo" in method_name:
-        return train_single_method_ppo(method_name, cfg, ckpt_dir=ckpt_dir,
-                                       run_name=run_id,
-                                       allow_overwrite=allow_overwrite)
-    SACAgent, SACLagrangianAgent = _sac_agents()
-    print(f"\n{'='*75}")
-    print(f"RUN: {method_name.upper()} (Seed {cfg['seed']}, {cfg['total_steps']} Steps)")
-    print(f"{'='*75}")
-
-    set_seed(cfg["seed"])
-    # shed-action mapping. "linear" = s=(a+1)/2 (no dead zone);
-    # "deadzone" = s=max(0,a) so a~0 means no shed.
-    shed_mapping = cfg.get("shed_mapping", "linear")
-    env_train = SmartGridEnv({"split": "train", "seed": cfg["seed"], "shed_mapping": shed_mapping})
-    # seed the gymnasium action_space RNG so warmup actions are reproducible.
-    # set_seed() only sets the global numpy/torch seeds; the action_space has its own RNG.
-    env_train.action_space.seed(cfg["seed"])
-    env_val = SmartGridEnv({"split": "val", "seed": cfg["seed"] + 100})
-
-    state_dim = cfg["state_dim"]
-    action_dim = cfg["action_dim"]
-    batch_size = cfg["batch_size"]
-    total_steps = cfg["total_steps"]
-    warmup_steps = cfg["warmup_steps"]
-    eval_interval = cfg["eval_interval_steps"]
-    d_main = cfg["cost_limit"]
-    lr_dual = cfg["lr_dual"]
-
-    # reward scale, entropy target/clamp, and the agent object itself are
-    # resolved by the shared helpers below so evaluation cannot drift from the
-    # training path. `reward_scale_mode: grid_only` recomputes c from the FULL
-    # Train split (104 episodes) and never overwrites an explicit value.
-    reward_scale = grid_only_reward_scale(cfg, shed_mapping, method_name=method_name)
-    target_entropy = cfg.get("target_entropy", -3.0)
-    entropy_clamp = cfg.get("entropy_clamp", None)
-
-    is_lagrangian = "lagrangian" in method_name
-    use_pot_shaping = "potential_shaping" in method_name
-    use_fixed_penalty = "fixed_cost_penalty" in method_name
-
-    # Probe 0 (P1b): warmup action mode. "uniform" = action_space.sample() (current);
-    # "informed" = battery ~ U(-1,1), shed dims ~ small noise around the no-shed action (a=-1).
-    warmup_mode = cfg.get("warmup_mode", "uniform")
-
-    pot_shaping = PotentialBasedShaping(gamma=cfg["gamma"], kappa=cfg["potential_shaping_kappa"]) if use_pot_shaping else None
-    cost_penalty = FixedCostPenalty(beta=cfg["fixed_cost_penalty_beta"]) if use_fixed_penalty else None
-
-    if is_lagrangian:
-        agent = SACLagrangianAgent(
-            state_dim=state_dim,
-            action_dim=action_dim,
-            cost_limit=d_main,
-            lr_actor=cfg["lr_actor"],
-            lr_critic=cfg["lr_critic"],
-            lr_dual=lr_dual,
-            gamma=cfg["gamma"],
-            tau=cfg["tau"],
-            alpha_init=cfg["alpha_init"],
-            lambda_init=cfg["lambda_init"],
-            auto_entropy=cfg["auto_entropy"],
-            target_entropy=target_entropy,
-            batch_size=batch_size,
-            reward_scale=reward_scale,
-            entropy_clamp=entropy_clamp,
-            lambda_source=cfg.get("lambda_source", "episode_mean"),
-            lambda_max=cfg.get("lambda_max", float("inf")),
+    """Train one run with the PPO-family trainer."""
+    if "ppo" not in method_name:
+        raise ValueError(
+            f"unsupported method {method_name!r}: this release ships the PPO family only"
         )
-    else:
-        agent = SACAgent(
-            state_dim=state_dim,
-            action_dim=action_dim,
-            lr_actor=cfg["lr_actor"],
-            lr_critic=cfg["lr_critic"],
-            gamma=cfg["gamma"],
-            tau=cfg["tau"],
-            alpha_init=cfg["alpha_init"],
-            auto_entropy=cfg["auto_entropy"],
-            target_entropy=target_entropy,
-            batch_size=batch_size,
-            entropy_clamp=entropy_clamp,
-        )
-    obs, _ = env_train.reset()
-    start_time = time.time()
-    t_chunk_prev = start_time
-
-    wall_clock_history = {}
-    eval_checkpoints = {}
-    lambda_trajectory = []
-    ep_costs = []
-    ep_rewards = []
-    ep_viols = []
-    current_ep_costs = []
-    current_ep_rewards = []
-    current_ep_viols = 0
-
-    # Running training metrics
-    all_train_exceedances = []
-    all_train_costs_eur = []
-
-    # Degeneracy diagnostics
-    actions_taken = []
-    soc_history = []
-
-    # One folder per agent, one file name per (experiment, seed): two experiments can
-    # never write to the same artefact.
-    ckpt_stem = "%s_seed%s" % (run_id, cfg["seed"])
-    os.makedirs(ckpt_dir, exist_ok=True)
-    final_ckpt_path = os.path.join(ckpt_dir, ckpt_stem + "_final.pt")
-    if os.path.exists(final_ckpt_path) and not allow_overwrite:
-        raise FileExistsError(
-            f"refusing to overwrite {final_ckpt_path} — pass allow_overwrite=True "
-            f"(or --overwrite) if the old run is really superseded")
-
-    for step in range(1, total_steps + 1):
-        if step <= warmup_steps:
-            if warmup_mode == "informed":
-                # P1b: battery ~ U(-1,1); shed dims near no-shed (a=-1) + small noise.
-                action = np.full(6, -1.0, dtype=np.float32)
-                action[0] = float(np.random.uniform(-1.0, 1.0))
-                action[1:] = np.clip(-1.0 + np.random.normal(0.0, 0.1, 5), -1.0, 1.0)
-            else:
-                action = env_train.action_space.sample()
-        else:
-            action = agent.select_action(obs, evaluate=False)
-
-        next_obs, reward, terminated, truncated, info = env_train.step(action)
-        # the Lagrangian cost is the GRID EXCEEDANCE IN kW only.
-        cost = float(info["grid_exceedance_kw"])
-        imp = float(info.get("grid_import_kw", 0.0))
-        exc = max(0.0, imp - env_train.grid_import_cap_kw)
-
-        all_train_exceedances.append(exc)
-        step_cost_eur = info["energy_cost"] + info["unserved_cost"] + info["battery_wear_cost"]
-        all_train_costs_eur.append(step_cost_eur)
-
-        # Track degeneracy signals
-        actions_taken.append(action)
-        soc_history.append(float(next_obs[0]))
-
-        current_ep_costs.append(cost)
-        current_ep_rewards.append(reward)
-        if imp > env_train.grid_import_cap_kw:
-            current_ep_viols += 1
-
-        # Reward modification
-        step_reward = reward
-        if use_pot_shaping:
-            # F = gamma * Phi(s') - Phi(s). Phi is NOT zeroed on truncation!
-            f_t = pot_shaping.shape(obs, next_obs)
-            step_reward += f_t
-        elif use_fixed_penalty:
-            pen_t = cost_penalty.penalty(cost)
-            step_reward += pen_t
-
-        agent.store_transition(obs, action, step_reward, next_obs, terminated, truncated, cost=cost)
-
-        obs = next_obs
-
-        # Episode boundary handling
-        if truncated:
-            ep_mean_cost = float(np.mean(current_ep_costs))
-            ep_costs.append(ep_mean_cost)
-            ep_rewards.append(float(np.sum(current_ep_rewards)))
-            ep_viols.append(current_ep_viols)
-
-            if is_lagrangian:
-                agent.record_episode_cost(ep_mean_cost)
-
-            current_ep_costs = []
-            current_ep_rewards = []
-            current_ep_viols = 0
-            obs, _ = env_train.reset()
-
-        # Update gradient
-        if step > warmup_steps:
-            metrics = agent.update()
-            if is_lagrangian and step % 1000 == 0:
-                lambda_trajectory.append({"step": step, "lambda": agent.lam, "J_c": metrics.get("J_c", 0.0)})
-
-        # Wall clock checkpoint & validation evaluation
-        if step % eval_interval == 0:
-            now = time.time()
-            elapsed_chunk = now - t_chunk_prev
-            t_chunk_prev = now
-            rate = eval_interval / elapsed_chunk
-            wall_clock_history[f"{step}_steps"] = {
-                "chunk_time_sec": elapsed_chunk,
-                "cumulative_time_sec": now - start_time,
-                "steps_per_sec": rate,
-            }
-
-            # Evaluate deterministically on Validation (26 weeks)
-            val_metrics = evaluate_deterministic_val(env_val, agent, agent.obs_normalizer)
-            eval_checkpoints[f"{step}_steps"] = val_metrics
-
-            # A checkpoint per evaluation interval: a cancelled run keeps its weights.
-            ckpt_path = os.path.join(ckpt_dir, f"{ckpt_stem}_step{step}.pt")
-            agent.save_models(ckpt_path)
-
-            lam_info = f" | lambda={agent.lam:.4f}" if is_lagrangian else ""
-            print(f"[{method_name}] Step {step:6d}/{total_steps} | Rate: {rate:5.1f} steps/s{lam_info} | Val Cost: {val_metrics['total_cost_eur']:8.2f} EUR | Val Viol: {val_metrics['violation_rate_pct']:4.2f}% | Val Exc: {val_metrics['mean_exceedance_kw']:6.4f} kW", flush=True)
-
-    total_wall_clock = time.time() - start_time
-    avg_steps_per_sec = total_steps / total_wall_clock
-
-    # Identify Best Checkpoint on Validation.
-    # Best checkpoint criteria: minimum total cost among candidates with
-    # mean_exceedance <= d_main (or lowest exceedance if none).
-    if not eval_checkpoints and eval_interval <= total_steps:
-        raise RuntimeError(
-            f"No evaluation was recorded for {method_name}: total_steps={total_steps} "
-            f"< eval_interval={eval_interval}. Lower eval_interval_steps or raise total_steps."
-        )
-    feasible_ckpts = [
-        (k, v) for k, v in eval_checkpoints.items()
-        if v["mean_exceedance_kw"] <= d_main + 1e-4
-    ]
-    if feasible_ckpts:
-        best_ckpt_key, best_ckpt_val = min(feasible_ckpts, key=lambda x: x[1]["total_cost_eur"])
-    else:
-        best_ckpt_key, best_ckpt_val = min(eval_checkpoints.items(), key=lambda x: (x[1]["mean_exceedance_kw"], x[1]["total_cost_eur"]))
-
-    final_ckpt_val = eval_checkpoints[f"{total_steps}_steps"]
-
-    # Training-time metrics
-    train_mean_exceedance = float(np.mean(all_train_exceedances))
-    train_total_cost_eur = float(np.sum(all_train_costs_eur))
-    train_violation_rate_pct = float(np.mean(np.array(all_train_exceedances) > 0.0)) * 100.0
-
-    # Lambda summary
-    if is_lagrangian:
-        lam_start = lambda_trajectory[0]["lambda"] if lambda_trajectory else 0.0
-        mid_idx = len(lambda_trajectory) // 2
-        lam_mid = lambda_trajectory[mid_idx]["lambda"] if lambda_trajectory else 0.0
-        lam_end = agent.lam
-        # Check oscillation vs settling: std of lambda over last 20 measurements
-        recent_lams = [x["lambda"] for x in lambda_trajectory[-20:]] if len(lambda_trajectory) >= 20 else [lam_end]
-        lam_std = float(np.std(recent_lams))
-        lam_status = "settled" if lam_std < 0.02 else ("converging" if lam_std < 0.10 else "oscillating")
-    else:
-        lam_start, lam_mid, lam_end, lam_status = None, None, None, "N/A (unconstrained/penalty)"
-
-    # Degeneracy diagnostics
-    actions_arr = np.array(actions_taken[warmup_steps:])
-    soc_arr = np.array(soc_history[warmup_steps:])
-    mean_bat_cmd = float(np.mean(actions_arr[:, 0]))
-    mean_shed_cmd = float(np.mean(actions_arr[:, 1:]))
-    soc_at_bounds_pct = float(np.mean((soc_arr <= 0.205) | (soc_arr >= 0.895))) * 100.0
-
-    degenerate_flags = []
-    if np.all(actions_arr[:, 0] <= 0.01):
-        degenerate_flags.append("Never charges battery")
-    if np.all(actions_arr[:, 1:] < -0.95):
-        degenerate_flags.append("Never sheds load")
-    elif np.all(actions_arr[:, 1:] > 0.90):
-        degenerate_flags.append("Sheds everything continuously")
-    if soc_at_bounds_pct > 90.0:
-        degenerate_flags.append("Runs SoC constantly pinned at bounds")
-
-    is_degenerate = len(degenerate_flags) > 0
-    degeneracy_summary = "; ".join(degenerate_flags) if is_degenerate else "None (healthy dynamic dispatch)"
-
-    # Decision 10: the FINAL policy is the primary result; best-by-validation is secondary
-    # and is reported only to expose how much checkpoint selection hides.
-    agent.save_models(final_ckpt_path)
-
-    return {
-        "method": method_name,
-        "agent": variant_label(method_name, cfg),
-        "run_id": run_id,
-        "seed": cfg["seed"],
-        "total_steps": total_steps,
-        # the RESOLVED config actually used, including the reward scale c
-        # that survived the grid_only recompute, alpha0, target entropy,
-        # clamp, mapping, warmup mode, thread count and seed. Read this, not the YAML.
-        "resolved_config": dict(cfg, reward_scale_effective=reward_scale),
-        "wall_clock_sec": total_wall_clock,
-        "steps_per_sec": avg_steps_per_sec,
-        "wall_clock_history": wall_clock_history,
-        "eval_checkpoints": eval_checkpoints,
-        "final_checkpoint": {
-            "checkpoint": f"{total_steps}_steps",
-            "metrics": final_ckpt_val,
-            "weights": final_ckpt_path,
-        },
-        "best_checkpoint": {
-            "checkpoint": best_ckpt_key,
-            "metrics": best_ckpt_val,
-            "weights": os.path.join(ckpt_dir, f"{ckpt_stem}_step{best_ckpt_key.split('_')[0]}.pt"),
-            "role": "SECONDARY (reported only to quantify checkpoint-selection optimism)",
-        },
-        # NOTE: the dict key `final_checkpoint` above already carries the metrics;
-        # this repeat was a silent Python dict-overwrite (F601). Kept under the name
-        # `final_metrics` so both survive; consumers reading `final_checkpoint`
-        # (the metrics dict itself) are unaffected.
-        "final_metrics": final_ckpt_val,
-        "training_time_metrics": {
-            "total_cost_eur": train_total_cost_eur,
-            "mean_exceedance_kw": train_mean_exceedance,
-            "violation_rate_pct": train_violation_rate_pct,
-            "cost_limit_d_main": d_main,
-            "satisfies_d_main_on_train": train_mean_exceedance <= d_main,
-        },
-        "lambda_summary": {
-            "lambda_start": lam_start,
-            "lambda_mid": lam_mid,
-            "lambda_end": lam_end,
-            "status": lam_status,
-            # The FULL trajectory (one point per dual update). It used to live in a
-            # separate partial-results file; it is part of the run result now, so
-            # one file holds everything a run produced.
-            "trajectory": lambda_trajectory,
-        },
-        "degeneracy_check": {
-            "is_degenerate": is_degenerate,
-            "summary": degeneracy_summary,
-            "mean_battery_cmd": mean_bat_cmd,
-            "mean_shed_cmd": mean_shed_cmd,
-            "soc_pinned_bounds_pct": soc_at_bounds_pct,
-        }
-    }
+    return train_single_method_ppo(method_name, cfg, ckpt_dir=ckpt_dir,
+                                   run_name=run_name,
+                                   allow_overwrite=allow_overwrite)
 
 
 def _ppo_kwargs(cfg: dict, method_name: str) -> dict:
@@ -614,8 +233,8 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
                             run_name: str = "", allow_overwrite: bool = False):
     """PPO trainer: on-policy rollouts, GAE, clipped updates, deterministic Val.
 
-    Same result schema as the SAC path (final/best checkpoints, lambda_summary,
-    degeneracy_check, resolved_config) so every reader works unchanged. PPO needs no
+    Same result schema as every other run (final/best checkpoints, lambda_summary,
+    degeneracy_check, resolved_config) so the report tools work unchanged. PPO needs no
     warmup: the policy mean starts exactly at the Grid-Only action (test_ppo.py §5).
     """
     run_id = clean_run_id(run_name)
@@ -734,8 +353,7 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
             if is_lagrangian:
                 mean_c = float(np.mean(agent.cost_history[-10:])) if agent.cost_history else 0.0
                 extra = {"lambda": agent.lambda_, "mean_ep_cost": mean_c}
-            val_metrics = evaluate_deterministic_val(env_val, agent, agent.obs_normalizer,
-                                                     extra_log=extra)
+            val_metrics = evaluate_deterministic_val(env_val, agent, extra_log=extra)
             eval_checkpoints[f"{step_tag}_steps"] = val_metrics
             # A checkpoint per evaluation interval: a cancelled run keeps its weights.
             ckpt_path = os.path.join(ckpt_dir, f"{ckpt_stem}_step{step_tag}.pt")
@@ -918,7 +536,7 @@ def load_config_with_base(path):
     _m = override.get("method")
     if _m and "lagrangian" not in str(_m):
         _bad = sorted(k for k in override if k in LAG_ONLY)
-        if _bad and label not in LEGACY_EXEMPT:
+        if _bad:
             raise ValueError(f"{label}: Lagrangian-only key(s) {_bad} under method {_m!r}")
     cfg = dict(base)
     cfg.update(override)
@@ -932,11 +550,10 @@ def main():
     cfg = load_config_with_base(config_path)
 
     all_methods = [
-        "sac_lagrangian",
-        "sac_fixed_cost_penalty",
-        "sac_lagrangian_potential_shaping",
-        "sac_potential_shaping",
-        "plain_sac",
+        "ppo",
+        "ppo_lagrangian",
+        "ppo_potential_shaping",
+        "ppo_lagrangian_potential_shaping",
     ]
     # CLI: python experiments/train_core.py [--methods a,b] [--steps N] [--seed S] [--run-name NAME]
     methods = all_methods

@@ -214,9 +214,8 @@ def test_buffer_terminated_truncated():
 
 
 def test_bootstrap_not_zeroed_on_truncation():
-    """SAC fix: verify that truncation should NOT zero bootstrap (only termination should)."""
-    # This tests the contract: in our env terminated is always False,
-    # so a correct SAC implementation would never zero the bootstrap.
+    """Truncation must NOT zero the bootstrap (only termination should)."""
+    # In this env terminated is always False, so bootstrapping must continue.
     env = make_env()
     env.reset(seed=42)
     for step in range(env.episode_length):

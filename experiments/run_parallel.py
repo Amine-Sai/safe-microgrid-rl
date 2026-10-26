@@ -11,9 +11,7 @@ import torch as th
 
 from experiments.train_core import train_single_method
 
-# PPO is the only agent family shipped in this release. The historical SAC
-# rows remain in configs/config.yaml but their agent modules are not included
-# (see NOTES.md D1), so they are not offered here.
+# The PPO family is the only agent family in this release.
 ALL_METHODS = [
     "ppo",
     "ppo_lagrangian",

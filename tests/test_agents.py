@@ -1,10 +1,9 @@
 import os
 import numpy as np
-import pytest
 
 from agents.buffer import ReplayBuffer
 from agents.running_stat import RunningMeanStd
-from agents.shaping import PotentialBasedShaping, FixedCostPenalty
+from agents.shaping import PotentialBasedShaping
 
 
 def test_buffer_termination_separation():
@@ -92,77 +91,3 @@ def test_potential_shaping_episode_telescoping_sum():
     expected_sum = phi_T - phi_0
 
     assert np.isclose(sum_terms, expected_sum, atol=1e-6), f"Sum {sum_terms} != Phi(s_T) - Phi(s_0) ({expected_sum})"
-
-
-def test_fixed_cost_penalty():
-    """The penalty applies to grid exceedance in kW only."""
-    pen = FixedCostPenalty(beta=1.0)
-    assert np.isclose(pen.penalty(grid_exceedance_kw=12.5), -12.5)
-    assert np.isclose(pen.penalty(0.0), 0.0)
-    assert np.isclose(FixedCostPenalty(beta=2.0).penalty(3.0), -6.0)
-
-
-def test_actor_loss_normalisation():
-    """Actor objective is (alpha*log_pi - Q_r + lambda*Q_c) / (1 + lambda)."""
-    pytest.importorskip("agents.sac_lagrangian",
-                        reason="SAC agents are not included in this PPO-focused release")
-    from agents.sac_lagrangian import actor_lagrangian_loss
-    alpha, log_prob, qr, qc = 0.5, -1.25, 20.0, 3.0
-
-    # lambda = 0 must reduce exactly to the vanilla SAC actor objective.
-    assert np.isclose(float(actor_lagrangian_loss(alpha, log_prob, qr, 0.0, qc)),
-                      float(alpha * log_prob - qr))
-
-    # lambda > 0: the whole objective is divided by (1 + lambda).
-    lam = 3.0
-    expected = float(alpha * log_prob - qr + lam * qc) / (1.0 + lam)
-    assert np.isclose(float(actor_lagrangian_loss(alpha, log_prob, qr, lam, qc)), expected)
-
-    # Normalisation keeps the constraint term bounded: the lambda*Q_c contribution
-    # relative to the reward term is lam/(1+lam), which is < 1 for every finite lambda.
-    assert (lam / (1.0 + lam)) < 1.0
-    for big in [10.0, 100.0, 1e4]:
-        assert (big / (1.0 + big)) < 1.0
-
-
-def test_save_load_roundtrip(tmp_path):
-    """save_models/load_models must restore an identical deterministic policy."""
-    pytest.importorskip("agents.sac_agent",
-                        reason="SAC agents are not included in this PPO-focused release")
-    from agents.sac_agent import SACAgent
-    rng = np.random.RandomState(7)
-    states = rng.randn(64, 17).astype(np.float32)
-    agent = SACAgent(state_dim=17, action_dim=6, batch_size=16, buffer_size=200,
-                     alpha_init=0.2, device="cpu")
-    for s in states[:32]:
-        agent.store_transition(s, np.zeros(6, dtype=np.float32), -1.0, s, False, True, cost=0.1)
-    before = np.stack([agent.select_action(s, evaluate=True) for s in states[:8]])
-
-    path = os.path.join(tmp_path, "model.pt")
-    agent.save_models(path)
-    assert os.path.exists(path)
-
-    fresh = SACAgent(state_dim=17, action_dim=6, batch_size=16, buffer_size=200,
-                     alpha_init=0.9, device="cpu")   # different init on purpose
-    fresh.load_models(path)
-    after = np.stack([fresh.select_action(s, evaluate=True) for s in states[:8]])
-    np.testing.assert_allclose(before, after, rtol=1e-5, atol=1e-6)
-
-
-def test_lagrangian_save_load_roundtrip(tmp_path):
-    """The dual variable lambda must survive a save/load roundtrip."""
-    pytest.importorskip("agents.sac_lagrangian",
-                        reason="SAC agents are not included in this PPO-focused release")
-    from agents.sac_lagrangian import SACLagrangianAgent
-    rng = np.random.RandomState(11)
-    agent = SACLagrangianAgent(state_dim=17, action_dim=6, batch_size=16, buffer_size=200,
-                               lambda_init=2.5, device="cpu")
-    s = rng.randn(17).astype(np.float32)
-    agent.store_transition(s, np.zeros(6, dtype=np.float32), -1.0, s, False, True, cost=0.1)
-    path = os.path.join(tmp_path, "lam.pt")
-    agent.save_models(path)
-    assert abs(agent.lam - 2.5) < 1e-9
-    fresh = SACLagrangianAgent(state_dim=17, action_dim=6, batch_size=16, buffer_size=200,
-                               lambda_init=0.0, device="cpu")
-    fresh.load_models(path)
-    assert abs(fresh.lam - agent.lam) < 1e-9

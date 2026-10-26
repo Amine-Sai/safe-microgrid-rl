@@ -36,18 +36,3 @@ class NonPotentialShapedBonus:
     def shape(self, next_state: np.ndarray) -> float:
         soc_prime = float(next_state[0])
         return float(self.kappa * soc_prime)
-
-
-class FixedCostPenalty:
-    """
-    Fixed cost penalty: penalty = -beta * grid_exceedance_kw.
-    For the 'SAC + fixed cost penalty' method.
-    Penalises the GRID EXCEEDANCE ONLY, so that beta and the Lagrangian
-    budget d_main share the same units (EUR per kW of exceedance).
-    """
-
-    def __init__(self, beta: float = 1.0):
-        self.beta = beta
-
-    def penalty(self, grid_exceedance_kw: float) -> float:
-        return float(-self.beta * grid_exceedance_kw)

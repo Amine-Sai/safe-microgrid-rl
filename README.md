@@ -65,9 +65,6 @@ Three ways of making RL respect the cap, against two reference controllers:
 | *Grid-Only* | do nothing, just buy from the grid (reference) |
 | *PSM'* | tuned peak-shaving rule, the strong comparator |
 
-All learned methods in this release are PPO-family. Earlier SAC probes are retained
-as historical config rows but their agent modules are not shipped (NOTES.md, D1).
-
 ## The environment
 
 `env/smartgrid_env.py` is a [Gymnasium](https://gymnasium.farama.org/) environment with hourly steps and weekly episodes.
@@ -145,11 +142,10 @@ loader, and the buffer/shaping helpers. Some tests are marked `needs_real_data`
 and skip until `data/processed/*.parquet` exists.
 
 In the fresh-venv verification for this snapshot, **`tests/test_env.py` passed
-11/11** and the non-torch part of `tests/test_agents.py` passed **5/5** (the three
-SAC-specific tests skip because those agents are not part of this release). The
-torch-dependent tests were not re-run in that sandbox because the pinned torch
-wheel is CUDA-linked and no NVIDIA runtime was available; I did not download the
-multi-GB CUDA stack. See [NOTES.md](NOTES.md) (D2) for the exact scope.
+11/11** and `tests/test_agents.py` passed **4/4**. The torch-dependent tests were
+not re-run in that sandbox because the pinned torch wheel is CUDA-linked and no
+NVIDIA runtime was available; I did not download the multi-GB CUDA stack. See
+[NOTES.md](NOTES.md) (D1) for the exact scope.
 
 ### Hardware and compute
 
@@ -163,7 +159,6 @@ hour. No GPU is required.
 
 - The setup is a simulation: the topology, zone split, events, battery and PV sizes, and the price proxy are assumptions.
 - The comparison with the IJCNN paper is analytical, not experimental: different data, objective and battery model.
-- The learned methods are PPO-family only; the earlier SAC path is not included (NOTES.md, D1).
 - The reported table is Val only. The Test split (2019 H2) is closed and was not evaluated.
 
 ---

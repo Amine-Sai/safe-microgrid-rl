@@ -1,6 +1,6 @@
 # smartgrid-rl requirements - regenerated from the environment that produced every
 # result in results/. The previous pins (numpy 1.26.4 / torch 2.3.1 / pytest 8.2.2)
-# did NOT match this environment. See NOTES.md (D39).
+# did NOT match this environment. See NOTES.md (D2).
 #
 # Verification status (fresh Python 3.14.7 venv, no GPU):
 #   - All packages below install from these pins.
@@ -9,7 +9,7 @@
 #     verification sandbox had no CUDA, so torch-dependent tests were not re-run
 #     there. On a machine where pip can install torch's NVIDIA deps, run the full
 #     suite: python -m pytest tests/ -v
-# See NOTES.md (D2) for the exact scope of the reproduction claim.
+# See NOTES.md (D1) for the exact scope of the reproduction claim.
 
 numpy==2.4.4
 pandas==3.0.2

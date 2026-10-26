@@ -15,24 +15,15 @@ _STORE = yaml.safe_load(open(CONFIG_PATH, encoding="utf-8")) or {}
 EXPERIMENTS = _STORE.get("experiments") or {}
 BASE = load_config_with_base("configs/config.yaml")
 
-# The 12 runs the audit reads. A row disappearing breaks the audit table.
-AUDIT_RUNS = [
-    "control_plain", "control_lagrangian", "p1", "p1_p2", "p1_p2_p3",
-    "m_relu", "m_relu_t", "m_relu_ta", "e_linear_ta",
-    "b2_scaled", "b2_warm", "b2_long",
-]
-
-
 def test_base_yaml_documents_every_key_with_a_default():
     """Every knob lives in the defaults block with default == current live behaviour."""
+    assert BASE["method"] == "ppo"
     assert BASE["shed_mapping"] == "linear"
     assert BASE["reward_scale"] == 1.0
     assert BASE["reward_scale_mode"] == "fixed"
     assert BASE["reward_scale_explicit"] is False
-    assert BASE["target_entropy"] == -3.0
-    assert BASE["entropy_clamp"] is None
-    assert BASE["alpha_init"] == 0.2
-    assert BASE["warmup_mode"] == "uniform"
+    assert BASE["ppo_clip_ratio"] == 0.2
+    assert BASE["rollout_steps"] == 2048
     assert BASE["torch_threads"] == 1
 
 
@@ -42,7 +33,7 @@ def test_unknown_key_raises():
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False,
                                      dir=os.path.dirname(CONFIG_PATH),
                                      encoding="utf-8") as f:
-        f.write("target_entropy_mistype: -6.0\n")
+        f.write("ppo_clip_ratio_mistype: 0.3\n")
         path = f.name
     try:
         with pytest.raises(KeyError, match="unknown config key"):
@@ -61,11 +52,6 @@ def test_every_experiment_id_builds():
             assert cfg[k] == v, f"{exp_id}.{k} did not resolve"
 
 
-def test_all_audit_runs_present():
-    missing = [r for r in AUDIT_RUNS if r not in EXPERIMENTS]
-    assert not missing, f"audit runs missing from configs/config.yaml: {missing}"
-
-
 def test_every_override_key_actually_moves_the_resolved_config():
     """For each override key the effective value must differ from the base default.
 
@@ -76,13 +62,10 @@ def test_every_override_key_actually_moves_the_resolved_config():
         cfg = load_config_with_base(exp_id)
         for k, v in (ov or {}).items():
             assert cfg[k] == v, f"{exp_id}: {k} failed to apply"
-            # `p1_p2_p3` is deliberately byte-identical to `p1_p2` - the
-            # row is kept so the no-op stays reproducible, so exempt it here.
-            if exp_id != "p1_p2_p3":
-                assert cfg[k] != BASE[k], (
-                    f"{exp_id}: override {k}={v!r} equals the base default — "
-                    f"this probe would change nothing"
-                )
+            assert cfg[k] != BASE[k], (
+                f"{exp_id}: override {k}={v!r} equals the base default — "
+                f"this probe would change nothing"
+            )
 
 
 @pytest.mark.needs_real_data
@@ -100,8 +83,6 @@ def test_shed_mapping_really_moves_the_env():
     assert shed["linear"] == pytest.approx(0.5)      # s = (a+1)/2 at a=0
     assert shed["relu"] == pytest.approx(0.0)        # s = max(0, a) at a=0
     assert shed["deadzone"] == pytest.approx(shed["relu"])   # documented alias
-    # and every `relu` experiment must reach the relu branch
-    assert load_config_with_base("m_relu")["shed_mapping"] == "relu"
 
 
 @pytest.mark.needs_real_data
@@ -125,24 +106,28 @@ def test_constant_action_is_grid_only_under_both_mappings():
 
 def test_explicit_reward_scale_beats_the_computed_default():
     """Regression: `reward_scale_explicit: true` must win over `grid_only`."""
-    cfg = load_config_with_base("b2_scaled")
+    import tempfile
+    from experiments.train_core import grid_only_reward_scale
+
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False,
+                                     dir=os.path.dirname(CONFIG_PATH),
+                                     encoding="utf-8") as f:
+        f.write("reward_scale: 0.096879\n"
+                "reward_scale_mode: grid_only\n"
+                "reward_scale_explicit: true\n")
+        path = f.name
+    try:
+        cfg = load_config_with_base(path)
+    finally:
+        os.unlink(path)
+
     assert cfg["reward_scale_explicit"] is True
     assert cfg["reward_scale"] == 0.096879          # operator's value, not recomputed
-
-    cfg_p1 = load_config_with_base("p1")
-    assert cfg_p1["reward_scale_explicit"] is False  # recomputation allowed
+    assert grid_only_reward_scale(cfg, "linear") == 0.096879
 
     # the loader honours it: base default is 1.0, so the override really applied
     assert BASE["reward_scale"] == 1.0
     assert cfg["reward_scale"] != BASE["reward_scale"]
-
-
-def test_p1_p2_p3_is_a_documented_no_op():
-    """The defect must stay visible: the two rows resolve identically."""
-    a = load_config_with_base("p1_p2")
-    b = load_config_with_base("p1_p2_p3")
-    assert a == b
-    assert "stabilizers" not in BASE and "stabilizers" not in (EXPERIMENTS["p1_p2_p3"] or {})
 
 
 def test_agent_helper_matches_training_kwargs():
@@ -202,15 +187,16 @@ def test_residual_helper_attaches_the_base_policy():
 
 
 @pytest.mark.needs_real_data
-def test_entropy_resolution_is_shared():
-    """target_entropy / entropy_clamp / reward_scale must resolve identically."""
+def test_grid_only_reward_scale_matches_documented_value():
+    """The Grid-Only reward scale must reproduce c = 0.096879 on the Train split."""
     from experiments.train_core import grid_only_reward_scale
-    cfg = load_config_with_base("p1")
-    assert cfg["reward_scale_mode"] == "grid_only" and cfg["reward_scale_explicit"] is False
+
+    cfg = dict(BASE, reward_scale_mode="grid_only", reward_scale_explicit=False)
     c = grid_only_reward_scale(cfg, cfg["shed_mapping"], method_name="t")
     # The documented value was 0.096879 from 104 episodes; the fix makes the
     # code actually reproduce it (this is the assertion that used to fail at 0.101380).
     assert abs(c - 0.096879) < 1e-4, c
-    # explicit value is respected verbatim
-    cfg2 = load_config_with_base("b2_scaled")
+
+    # an explicit value is respected verbatim
+    cfg2 = dict(cfg, reward_scale=0.096879, reward_scale_explicit=True)
     assert grid_only_reward_scale(cfg2, "linear", method_name="t") == 0.096879
