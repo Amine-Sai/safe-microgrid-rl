@@ -589,7 +589,7 @@ def fig_unified_pareto(all_families, baselines, out_dir):
 
 def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
     """Grouped bar plots comparing Cost Breakdown and Exceedance across 3 environments."""
-    fig, axes = plt.subplots(1, 2, figsize=(14.2, 6.4), width_ratios=[1.25, 0.75])
+    fig, axes = plt.subplots(1, 2, figsize=(15.5, 9.4), width_ratios=[1.25, 0.75])
 
     fam_keys = [
         ("unclamped", "Unclamped"),
@@ -600,16 +600,19 @@ def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
     part_names = ("Grid energy bought", "Battery wear", "Unserved penalty")
     part_colours = ("#0072B2", "#7F8C8D", "#E67E22")
 
-    y_centers = list(range(len(GROUPS)))[::-1]
-    bar_h = 0.22
-    offsets = [0.24, 0.0, -0.24]
+    y_ticks = []
+    y_labels = []
+    bar_h = 0.72
 
     ax_cost, ax_exc = axes[0], axes[1]
     max_total = G2_COST_EUR
 
-    for y_c, (label, _prefix, colour) in zip(y_centers, GROUPS):
-        for offset, (f_key, _f_name) in zip(offsets, fam_keys):
-            y = y_c + offset
+    for g_idx, (label, _prefix, colour) in enumerate(GROUPS):
+        for f_idx, (f_key, f_name) in enumerate(fam_keys):
+            y = -(g_idx * 4.2 + f_idx * 1.0)
+            y_ticks.append(y)
+            y_labels.append(f"{label}  [{f_name}]")
+
             runs = all_families.get(f_key, {}).get(label, [])
             if not runs:
                 continue
@@ -621,29 +624,36 @@ def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
                 v = statistics.fmean(vals) if vals else 0.0
                 totals.append(v)
                 ax_cost.barh(y, v, left=left, height=bar_h, color=part_colours[i],
-                             edgecolor="white", linewidth=0.6)
+                             edgecolor="white", linewidth=0.8)
                 if v >= 6000:
                     ax_cost.text(left + v / 2, y, "%.0fk" % (v / 1000), ha="center", va="center",
-                                 color="white", fontsize=7.5, fontweight="bold")
+                                 color="white", fontsize=8.5, fontweight="bold")
                 left += v
             max_total = max(max_total, left)
 
             if label == "Shielded PPO" and totals[2] > 0:
-                ax_cost.text(left + 500, y, "unserved %.0f" % totals[2], va="center",
-                             fontsize=7.5, color="#D35400", fontweight="bold")
+                ax_cost.text(left + 600, y, "unserved %.0f EUR" % totals[2], va="center",
+                             fontsize=8.5, color="#D35400", fontweight="bold")
 
             excs = [float(final_metrics(r).get("mean_exceedance_kw", 0.0)) for r in runs]
             mean_exc = statistics.fmean(excs) if excs else 0.0
             exc_val = max(mean_exc, FLOOR)
             alpha_fam = 0.55 if f_key == "unclamped" else (0.8 if f_key == "clamped" else 1.0)
             ax_exc.barh(y, exc_val, height=bar_h, color=colour, alpha=alpha_fam,
-                        edgecolor="white", linewidth=0.6)
+                        edgecolor="white", linewidth=0.8)
+            if exc_val > 0.01:
+                ax_exc.text(exc_val * 1.15, y, "%.2f kW" % exc_val, va="center",
+                            fontsize=8, color="#333333")
+            else:
+                ax_exc.text(FLOOR * 1.25, y, "0.00 kW", va="center",
+                            fontsize=8, color="#27AE60", fontweight="bold")
 
-    xmax = max(68000, int(math.ceil((max_total + 10000) / 10000.0) * 10000))
-    ax_cost.set_yticks(y_centers)
-    ax_cost.set_yticklabels([g[0] for g in GROUPS], fontweight="bold")
+    xmax = max(68000, int(math.ceil((max_total + 12000) / 10000.0) * 10000))
+    ax_cost.set_yticks(y_ticks)
+    ax_cost.set_yticklabels(y_labels, fontsize=9.5)
+    ax_cost.set_ylim(min(y_ticks) - 1.0, max(y_ticks) + 1.0)
     ax_cost.set_xlabel("Validation Cost (EUR, mean of 5 seeds)")
-    ax_cost.set_title("A. Stacked Cost Breakdown across Environments")
+    ax_cost.set_title("A. Stacked Cost Breakdown by Model & Environment", fontsize=11, fontweight="bold")
     ax_cost.set_xlim(0, xmax)
     ax_cost.xaxis.set_major_locator(FixedLocator(list(range(0, xmax + 1, 20000))))
     ax_cost.xaxis.set_major_formatter(FuncFormatter(fmt_k))
@@ -653,14 +663,15 @@ def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
         ax_cost.axvline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE, lw=1.2, zorder=2)
     ax_cost.axvline(G2_COST_EUR, ls="--", color=GATE, lw=1.3, zorder=2)
 
-    ax_exc.set_yticks(y_centers)
+    ax_exc.set_yticks(y_ticks)
     ax_exc.set_yticklabels([])
+    ax_exc.set_ylim(min(y_ticks) - 1.0, max(y_ticks) + 1.0)
     ax_exc.set_xscale("log")
-    ax_exc.set_xlim(FLOOR * 0.65, 12)
+    ax_exc.set_xlim(FLOOR * 0.65, 15)
     log_axis(ax_exc, "x", EXC_TICKS)
     ax_exc.axvline(G1_EXC_KW, ls="--", color=GATE, lw=1.3, zorder=2)
-    ax_exc.set_xlabel("Mean Exceedance (kW/step, log scale)")
-    ax_exc.set_title("B. Mean Grid Exceedance across Environments")
+    ax_exc.set_xlabel("Mean Exceedance (kW/step, log scale; 0 floored)")
+    ax_exc.set_title("B. Mean Grid Exceedance by Model & Environment", fontsize=11, fontweight="bold")
 
     cost_handles = [Patch(facecolor=part_colours[i], label=part_names[i]) for i in range(len(parts))]
     fam_handles = [
