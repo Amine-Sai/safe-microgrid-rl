@@ -36,10 +36,7 @@ def load_project_constants():
     return exceedance_gate_kw, cost_gate_eur
 
 
-# ---------------------------------------------------------------------------
-# experiment groups, in the order we want them drawn
-# (label, agent folder under results/runs/, colour)
-# ---------------------------------------------------------------------------
+# Experiment groups: (label, agent folder under results/runs/, colour)
 GROUPS = [
     ("PPO", "ppo", "#0072B2"),
     ("PPO-Lagrangian", "ppo_lagrangian", "#D55E00"),
@@ -97,9 +94,7 @@ def log_axis(ax, which, ticks, formatter=fmt_num):
     target.set_minor_formatter(NullFormatter())
 
 
-# ---------------------------------------------------------------------------
-# loading
-# ---------------------------------------------------------------------------
+# Loading helpers
 def group_of(agent):
     """Map an agent folder name to its experiment group."""
     for label, folder, _colour in GROUPS:
@@ -188,9 +183,7 @@ def group_handle(label, extra=""):
                   label=label + extra)
 
 
-# ---------------------------------------------------------------------------
-# figures
-# ---------------------------------------------------------------------------
+# Figure generators
 def fig_learning_curves(runs, baselines):
     """Fig 1 - Val cost and Val exceedance over training, mean +/- sd of 5 seeds."""
     fig, axes = plt.subplots(2, 1, figsize=(9.5, 8.4), sharex=True)
@@ -273,7 +266,7 @@ def fig_cost_vs_exceedance(runs, baselines):
                                              70000, 75000]))
     ax.yaxis.set_major_formatter(FuncFormatter(fmt_k))
 
-    # feasible corner: below the G2 cost line AND left of the G1 exceedance line
+    # Feasible region: below G2 cost and left of G1 exceedance
     ax.add_patch(plt.Rectangle((FLOOR, COST_YLIM[0]),
                                 G1_EXC_KW - FLOOR,
                                 G2_COST_EUR - COST_YLIM[0],

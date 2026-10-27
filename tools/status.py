@@ -9,7 +9,7 @@ os.chdir(ROOT)
 
 
 def pytest_status():
-    """The unit suite is ~6 s, so run it rather than trust a stale pytest cache."""
+    """Run unit test suite and return summary."""
     try:
         env = dict(os.environ, CUDA_VISIBLE_DEVICES="")
         r = subprocess.run(["python", "-m", "pytest", "tests/"],
@@ -28,7 +28,7 @@ def pytest_status():
 
 
 def variant(r):
-    """Which agent a run is: the base agent plus the shield/residual flags."""
+    """Determine agent variant from configuration."""
     rc = r.get("resolved_config") or {}
     if rc.get("shielded"):
         return "ppo_shielded"
@@ -38,7 +38,7 @@ def variant(r):
 
 
 def collect():
-    """Normalize every run JSON shape we write into one row tuple."""
+    """Collect and normalize run JSON records."""
     rows = []
     for f in sorted(glob.glob("results/runs/*/*.json"), key=os.path.getmtime):
         if os.path.basename(f).endswith("_grid.json"):

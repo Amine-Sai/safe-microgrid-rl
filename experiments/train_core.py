@@ -104,16 +104,16 @@ def evaluate_deterministic_val(env_val: SmartGridEnv, agent, extra_log=None) -> 
     return out
 
 
-RESULTS_DIR = os.path.join("results", "runs")   # finished run JSONs, one folder per agent
-CHECKPOINT_DIR = "checkpoints"                 # policy weights, one folder per agent
+RESULTS_DIR = os.path.join("results", "runs")
+CHECKPOINT_DIR = "checkpoints"
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CONFIG_FILE = os.path.join(REPO_ROOT, "configs", "config.yaml")
 
-# Keys that only make sense for a Lagrangian method.
+# Lagrangian-specific keys
 LAG_ONLY = {"lr_dual", "lambda_init", "lambda_lr_mult", "lag_normalize_by_1p_lam"}
 
-# Every method the trainer accepts; the CLIs read this list.
+# Supported PPO methods
 PPO_METHODS = (
     "ppo",
     "ppo_lagrangian",
@@ -169,10 +169,7 @@ def run_paths(method_name: str, cfg: dict, run_id: str):
 
 
 def grid_only_reward_scale(cfg: dict, shed_mapping: str, method_name: str = "agent") -> float:
-    """Constant reward scale c = 1/mean|r| on Grid-Only Train.
-
-    Recomputed from the full Train split; an explicit `reward_scale` always wins.
-    """
+    """Compute reward scale c = 1/mean|r| on Grid-Only Train split."""
     reward_scale = cfg.get("reward_scale", 1.0)
     if not (cfg.get("reward_scale_mode", "fixed") == "grid_only"
             and not cfg.get("reward_scale_explicit")):
@@ -192,8 +189,6 @@ def grid_only_reward_scale(cfg: dict, shed_mapping: str, method_name: str = "age
             next_obs, reward, _, truncated, _ = env.step(policy.get_action(obs))
             rewards.append(abs(reward))
             obs = next_obs
-            # Reset only while another episode remains: a trailing reset would index
-            # past the end of the split.
             if truncated and episode + 1 < n_episodes:
                 obs, _ = env.reset(options={"start_idx": (episode + 1) * ep_hours})
     scale = 1.0 / float(sum(rewards) / len(rewards))
@@ -203,7 +198,7 @@ def grid_only_reward_scale(cfg: dict, shed_mapping: str, method_name: str = "age
 
 
 def _require_ppo(method_name: str) -> None:
-    """Reject method names outside the PPO family this release ships."""
+    """Validate that method name is in supported PPO methods."""
     if method_name not in PPO_METHODS:
         raise ValueError(
             f"unsupported method {method_name!r}: this release ships the PPO family "
@@ -258,7 +253,7 @@ def _ppo_kwargs(cfg: dict, method_name: str) -> dict:
 
 
 def _ppo_residual_policy():
-    """The PSM' heuristic the residual agent corrects (read-only base policy)."""
+    """PSM' heuristic base policy for the residual agent."""
     from agents.heuristics import psm_prime_policy
 
     return psm_prime_policy()
@@ -291,7 +286,7 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
     env_train.action_space.seed(cfg["seed"])
     env_val = build_env(dict(cfg, shed_mapping=shed_mapping), split="val", seed=cfg["seed"] + 100)
 
-    # CapShield wraps the env and only sheds the excess over the cap.
+    # CapShield wraps the env and sheds excess over cap
     shielded = bool(cfg.get("shielded", False))
     if shielded:
         from env.cap_shield import CapShield
@@ -332,11 +327,9 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
     last_chunk_time = start_time
     last_term = False
     step = 0
-    # Eval fires when step crosses a boundary, not on exact multiples: rollout
-    # segments never land exactly on 50k.
     next_eval = eval_interval
     while step < total_steps:
-        # ---- collect one rollout ----
+        # Collect rollout
         for _ in range(min(rollout_steps, total_steps - step)):
             step += 1
             action, logp, value, cost_value = agent.select_action(obs, evaluate=False)
@@ -362,7 +355,7 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
                                               "J_c": float(np.mean(agent.cost_history[-1:])) if agent.cost_history else 0.0})
                 obs, _ = env_train.reset()
 
-        # ---- update on the rollout (bootstrap unless the segment ended terminal) ----
+        # Update on rollout
         with th.no_grad():
             last_state = agent._t(agent.obs_normalizer.normalize(obs[None, :]))
             last_value = float(agent.value_net(last_state))
@@ -373,7 +366,7 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
             agent.update(batch)
         agent._reset_buffer()
 
-        # ---- eval ----
+        # Periodic evaluation
         while next_eval <= step or step >= total_steps:
             if f"{next_eval}_steps" not in eval_checkpoints and next_eval <= step:
                 step_tag = next_eval
@@ -395,7 +388,6 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
                 extra = {"lambda": agent.lambda_, "mean_ep_cost": mean_cost}
             val_metrics = evaluate_deterministic_val(env_val, agent, extra_log=extra)
             eval_checkpoints[f"{step_tag}_steps"] = val_metrics
-            # Save every evaluation so a cancelled run keeps its weights.
             ckpt_path = os.path.join(ckpt_dir, f"{ckpt_stem}_step{step_tag}.pt")
             agent.save_models(ckpt_path)
             if step_tag >= next_eval:
@@ -512,15 +504,10 @@ def clean_run_id(run_name: str) -> str:
 
 
 def resolve_run_name(config_arg: str, run_name_arg: str) -> str:
-    """Run id: the experiment id plus an optional extra name.
-
-    For id-based configs the experiment id comes first, so two runs of the same
-    method and seed cannot overwrite each other.
-    """
+    """Resolve run id from experiment id and optional name argument."""
     name = clean_run_id(run_name_arg)
     stem = os.path.splitext(os.path.basename(str(config_arg)))[0]
     if resolve_config_path(config_arg):
-        # A config file: the explicit run name wins, else the file stem.
         return name or stem
     exp_id = stem
     if not name or name == exp_id or exp_id.endswith(name) or name.endswith(exp_id):

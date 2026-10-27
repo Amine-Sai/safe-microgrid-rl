@@ -23,13 +23,7 @@ class GridOnlyPolicy:
 
 
 def pct_to_action(pct_res, pct_com, pct_stad, pct_street, pct_ind, bat_cmd=0.0):
-    """Map firmware zone percentages (0-100) to a continuous action in [-1, 1].
-
-    Zones 0..3 (res, com, stad, street): shed = 1 - pct/100, s = (a+1)/2
-    => a = 1 - 2*(pct/100).
-    Industrial: pct <= 0 => motor OFF (a = 1.0); else pct in [70, 100],
-    shed in [0, 0.3], s = 3*shed, a = 2*s - 1.
-    """
+    """Map firmware zone percentages (0-100) to continuous action in [-1, 1]."""
     actions = []
     for p in (pct_res, pct_com, pct_stad, pct_street):
         p_c = max(0.0, min(100.0, float(p)))
@@ -48,7 +42,7 @@ def pct_to_action(pct_res, pct_com, pct_stad, pct_street, pct_ind, bat_cmd=0.0):
 
 
 def _train_price_quantile(q: float) -> float:
-    """The price quantile that matches `q`, read from the Train split."""
+    """Price quantile matching `q` on Train split."""
     import pandas as pd
 
     path = os.path.join(REPO_ROOT, "data", "processed", "train.parquet")
@@ -57,11 +51,7 @@ def _train_price_quantile(q: float) -> float:
 
 
 class PeakShaveMinPolicy:
-    """PSM': battery peak shaving + cheap-price charging + minimal load shedding.
-
-    The last resort sheds only the excess import, in fixed priority order:
-    street -> stadium -> commercial -> residential -> industrial (max linear shed).
-    """
+    """Peak shaving + low-price charging + minimal priority shedding."""
 
     def __init__(self, params: Optional[dict] = None):
         from env.smartgrid_env import default_config
@@ -70,9 +60,9 @@ class PeakShaveMinPolicy:
         self.params = {
             "theta_hi": 1.00,
             "q": 0.60,
-            "price_threshold": None,   # filled in below when not given
+            "price_threshold": None,
             "charge_power_frac": 0.50,
-            "cap_kw": None,            # filled in below (the env's import cap)
+            "cap_kw": None,
             "max_power_kw": env_defaults["battery_max_power_kw"],
             "battery_capacity_kwh": env_defaults["battery_capacity_kwh"],
             "soc_floor": env_defaults["battery_soc_min"],
@@ -191,12 +181,12 @@ class PeakShaveMinPolicy:
 
 
 def _env_cap_kw() -> float:
-    """The env's grid import cap, resolved the same way the env resolves it."""
+    """Resolve grid import cap from environment default config."""
     from env.smartgrid_env import default_config, resolve_grid_import_cap
 
     return resolve_grid_import_cap(default_config())
 
 
 def psm_prime_policy() -> PeakShaveMinPolicy:
-    """The residual base policy used by the `ppo_residual` agent."""
+    """Base policy for the residual agent."""
     return PeakShaveMinPolicy()

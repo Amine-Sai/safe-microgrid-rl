@@ -16,14 +16,7 @@ def battery_power_kw(
     clamp: Optional[bool] = None,
     return_info: bool = False,
 ):
-    """Post-battery power in kW, applying in order: rate limit -> SoC limit -> cap clamp.
-
-    Positive means charging (raises grid import), negative means discharging.
-    When clamp is enabled, charging is clamped to available import headroom
-    (grid_import_cap_kw - served_load_kw + pv_generation_kw) using exact post-shed served load.
-    A configurable margin (`cap_clamp_tolerance_kw`, default 1e-9) is used at the cap
-    boundary to prevent floating-point jitter.
-    """
+    """Post-battery power in kW: rate limit -> SoC limit -> cap clamp."""
     if clamp is None:
         clamp = getattr(env, "charge_clamp", True)
     cap_tolerance_kw = float(
@@ -145,8 +138,7 @@ class SmartGridEnv(gym.Env):
             cfg.get("soc_pinned_tolerance", cfg.get("soc_pin_tol", 0.005))
         )
         self.soc_pin_tol = self.soc_pinned_tolerance
-        # Shed-action mapping. "linear" = s=(a+1)/2 (no dead zone).
-        # "deadzone" = s=max(0,a), so a<=0 means no shed (removes the a<0 dead zone).
+        # Shed-action mapping ("linear" or "relu"/"deadzone")
         self.shed_mapping = cfg.get("shed_mapping", "linear")
 
         # Forecast horizon
@@ -300,19 +292,16 @@ class SmartGridEnv(gym.Env):
 
         # --- Parse action ---
         battery_cmd = float(action[0])
-        # "relu" is the canonical name; "deadzone" is kept as an alias for the
-        # archived probe configs. Any other value selects linear, s=(a+1)/2.
+        # Shedding fractions
         if self.shed_mapping in ("relu", "deadzone"):
-            # s = max(0, a). a<=0 -> no shed; a>0 -> shed = a.
             shed_raw = np.maximum(0.0, action[1:])
         else:
-            # linear (default): s = (a + 1) / 2  in [0, 1]
             shed_raw = (action[1:] + 1.0) / 2.0
 
-        # Industrial: s = (a+1)/2. If s > ind_off_threshold -> off. Else linear up to 1 - motor_min_pct.
+        # Industrial load logic
         s_ind = shed_raw[4]
         if s_ind > self.ind_off_threshold:
-            ind_shed = 1.0  # Off
+            ind_shed = 1.0
         else:
             ind_shed = (1.0 - self.motor_min_pct) * s_ind / self.ind_off_threshold
         shed_fractions = shed_raw.copy()
@@ -351,12 +340,8 @@ class SmartGridEnv(gym.Env):
         battery_wear = abs(bat_power_kw) * self.dt_hours * self.cost_wear_eur_kwh
         reward = -(energy_cost + unserved_cost + battery_wear)
 
-        # --- Constraint cost ---
-        # The single Lagrangian constraint is grid import exceedance, in kW, which
-        # matches the units d_main = 0.05 kW/step was calibrated in.
+        # Constraint cost: grid import exceedance in kW
         grid_exceedance_kw = max(0.0, grid_import_kw - self.grid_import_cap_kw)
-        # SoC reserve deficit is a diagnostic only, in kWh: it is not a constraint and
-        # is left out of info["cost"] so it cannot enter Q_c or the dual update.
         soc_deficit_kwh = max(0.0, self.soc_reserve_floor - self._soc) * self.bat_capacity_kwh
         cost = grid_exceedance_kw
 
@@ -406,13 +391,7 @@ class SmartGridEnv(gym.Env):
 
 
 def default_config() -> dict:
-    """The env defaults (battery, costs, import cap, PV, episode length).
-
-    Public so other modules can read a constant such as `pv_area_m2` without
-    instantiating an env (which would load a data split). `grid_import_cap_kw`
-    defaults to None: it is derived from the prepared data, see
-    `resolve_grid_import_cap`.
-    """
+    """Default environment configuration."""
     return {
         "data_path": os.path.join(os.path.dirname(__file__), "..", "data", "processed"),
         "split": "train",
@@ -424,11 +403,11 @@ def default_config() -> dict:
         "battery_soc_min": 0.10,
         "battery_soc_max": 0.90,
         "battery_soc_init": 0.50,
-        "cost_unserved_eur_kwh": 1.0,   # constant 1 EUR/kWh
-        "cost_wear_eur_kwh": 0.02,      # constant 0.02 EUR/kWh throughput
-        "grid_import_cap_kw": None,     # derived: see resolve_grid_import_cap()
+        "cost_unserved_eur_kwh": 1.0,
+        "cost_wear_eur_kwh": 0.02,
+        "grid_import_cap_kw": None,
         "soc_reserve_floor": 0.20,
-        "pv_area_m2": 1471.0,           # sized for ~250 kW peak
+        "pv_area_m2": 1471.0,
         "pv_efficiency": 0.20,
         "pv_performance_ratio": 0.85,
         "motor_min_pct": 70,
@@ -450,12 +429,7 @@ def default_config() -> dict:
 
 
 def resolve_grid_import_cap(cfg: dict) -> float:
-    """Resolve the grid import cap: explicit config first, then the prepared data.
-
-    `data/prepare.py` writes the train-derived cap to split_report.json. There is
-    no hardcoded fallback: a missing cap means the data was not prepared, and
-    silently using a stale number would mislabel every run that touches it.
-    """
+    """Resolve grid import cap: explicit config first, then split_report.json."""
     explicit = cfg.get("grid_import_cap_kw")
     if explicit is not None:
         return float(explicit)

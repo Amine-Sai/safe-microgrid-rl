@@ -65,10 +65,8 @@ def shed_actions_for(
             zone_shed_kw[zone_index] = allocated_shed_kw
             remaining_excess_kw -= allocated_shed_kw
 
-    # Invert to linear-mapping actions: s = (a + 1) / 2 -> a = 2s - 1.
-    # Nudge active continuous actions up by 1 float32 ULP so float32 round-trip
-    # in SmartGridEnv.step never under-sheds due to floating-point truncation.
-    zone_shed_actions = np.full(5, -1.0, dtype=np.float32)  # s = 0 default
+    # Linear mapping s = (a + 1)/2 -> a = 2s - 1 with 1-ULP margin for float32 precision
+    zone_shed_actions = np.full(5, -1.0, dtype=np.float32)
     for entry in SHED_ORDER:
         zone_index = entry["obs_idx"] - 2
         zone_demand_kw = max(0.0, float(obs[entry["obs_idx"]]))
@@ -108,8 +106,6 @@ class CapShield:
 
     def __init__(self, env, cap_kw: float = None):
         self.env = env
-        # Default to the wrapped env's cap so the shield can never shave to a
-        # different threshold than the one the env is judged against.
         self.cap_kw = env.grid_import_cap_kw if cap_kw is None else float(cap_kw)
 
     def __getattr__(self, name):
@@ -141,10 +137,7 @@ class CapShield:
             full_action = np.concatenate([[np.clip(battery_command, -1.0, 1.0)], shed_actions]).astype(np.float32)
             return full_action
 
-        # Charge-clamped composition:
-        # Pre-clamp battery power against total un-shed demand. When demand - pv >= cap,
-        # available import headroom is zero so positive charge is clamped to zero,
-        # preventing unnecessary load shedding to accommodate charging.
+        # Pre-clamp battery power against un-shed demand
         batt_kw = battery_power_kw(battery_command, soc, total_demand_kw, pv_kw, self.env, clamp=True)
         predicted_import_kw = max(0.0, total_demand_kw - pv_kw + batt_kw)
         excess_kw = predicted_import_kw - self.cap_kw

@@ -1,16 +1,3 @@
-# smartgrid-rl requirements - regenerated from the environment that produced every
-# result in results/. The previous pins (numpy 1.26.4 / torch 2.3.1 / pytest 8.2.2)
-# did NOT match this environment, so the versions below are the ones that did.
-#
-# Verification status (fresh Python 3.14.7 venv, no GPU):
-#   - All packages below install from these pins.
-#   - Full suite passes 37/37 with the dataset prepared and a CPU-only torch
-#     build (`torch==2.14.1+cpu` from download.pytorch.org/whl/cpu).
-#   - The torch wheel on PyPI is CUDA-linked and needs the NVIDIA runtime. If it
-#     is absent, install the CPU wheel from https://download.pytorch.org/whl/cpu.
-# Scope of that claim: data download, the full suite and one short training run.
-# The published 300k-step grid was not re-run.
-
 numpy==2.4.4
 pandas==3.0.2
 pyarrow==26.0.0
@@ -20,5 +7,3 @@ pyyaml==6.0.3
 pytest==9.1.1
 matplotlib==3.10.8
 scipy==1.17.1
-# cvxpy: NOT INSTALLED (No package metadata was found for cvxpy)
-# tensorboard: NOT INSTALLED (No package metadata was found for tensorboard)

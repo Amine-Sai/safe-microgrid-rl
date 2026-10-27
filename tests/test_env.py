@@ -38,8 +38,7 @@ def _create_test_data():
 def make_env(seed=42, **kw):
     from env.smartgrid_env import SmartGridEnv
     data_dir = _create_test_data()
-    # The synthetic report has no derived cap, so pin one explicitly: tests must not
-    # depend on data/processed/split_report.json (which reflects the real dataset).
+    # Explicit cap for synthetic test data
     cfg = {"data_path": data_dir, "split": "train", "seed": seed,
            "episode_length_hours": 48, "grid_import_cap_kw": 400.0}
     cfg.update(kw)
@@ -146,13 +145,7 @@ def test_cost_ignores_soc_deficit():
 
 
 def test_shed_action_mapping_linear():
-    """Pin the shed mapping as implemented: s = (a+1)/2, no dead zone.
-
-    env/smartgrid_env.py:183-194. For a=-1 -> s=0 (no shed); a=0 -> s=0.5;
-    a=1 -> s=1.0. Industrial: off if s>0.9 else 0.3*s/0.9.
-    A dead-zone variant s=max(0,a) was considered and not adopted; this test
-    pins the mapping above so that change cannot slip in unnoticed.
-    """
+    """Verify linear shed mapping s = (a+1)/2 without dead zone."""
     env = make_env(grid_import_cap_kw=100000.0)
     env.reset(seed=42)
     cases = [(-1.0, 0.0), (0.0, 0.5), (1.0, 1.0)]
@@ -171,12 +164,7 @@ def test_shed_action_mapping_linear():
 
 
 def test_episode_start_window_within_split():
-    """A sampled Train episode window can never cross the split boundary.
-
-    reset() draws start_idx = rng.randint(0, n_timesteps - 168). This test proves that
-    for every admissible start index i, i + 168 <= n, so no window reads past the end of
-    the split (and therefore cannot reach into Gap 1 or any other split).
-    """
+    """Sampled episode window must stay within data split bounds."""
     env = make_env(episode_length_hours=168, data_path=os.path.join(
         os.path.dirname(__file__), "test_data", "processed"), split="train")
     n = env._n_timesteps

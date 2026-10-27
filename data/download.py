@@ -9,9 +9,7 @@ import urllib.error
 RAW_DIR = os.path.join(os.path.dirname(__file__), "raw")
 os.makedirs(RAW_DIR, exist_ok=True)
 
-# --- Checksums (populated after first verified download) ---
-# Set to None to skip checksum verification on first run.
-# After first download, run with --update-checksums to populate.
+# Download checksums
 CHECKSUMS_FILE = os.path.join(os.path.dirname(__file__), "checksums.json")
 
 
@@ -81,8 +79,7 @@ def download_openmeteo():
     )
     dest = os.path.join(RAW_DIR, "openmeteo_weather_2017_2019.json")
     download_file(url, dest, "Open-Meteo Weather (2017-2019)")
-    # The response embeds server processing time, which changes on every
-    # request. Drop it so the file hashes reproducibly for checksum checking.
+    # Strip volatile generation time for reproducible hashing
     with open(dest, encoding="utf-8") as f:
         payload = json.load(f)
     payload.pop("generationtime_ms", None)

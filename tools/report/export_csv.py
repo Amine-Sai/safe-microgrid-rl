@@ -23,10 +23,7 @@ def load_project_constants():
 
 
 def run_files():
-    """Every per-run result JSON, i.e. results/runs/<agent>/<run id>_seed<S>.json.
-
-    The grid roll-ups (`*_grid.json`) summarise a batch, they are not runs.
-    """
+    """Return list of per-run result JSON file paths."""
     files = []
     for f in sorted(glob.glob(os.path.join(RUNS, "*", "*.json"))):
         if os.path.basename(f).endswith("_grid.json"):
@@ -36,7 +33,7 @@ def run_files():
 
 
 def run_rows():
-    """One row per run found under results/runs/<agent>/."""
+    """Return one dictionary row per run under results/runs/<agent>/."""
     rows, seen = [], set()
     for run_file_path in run_files():
         try:
@@ -88,10 +85,7 @@ def run_rows():
 
 
 def per_seed_table():
-    """Per-seed metrics table with gate pass/fail flags.
-
-    Written to results/tables/per_seed_metrics.csv (and mirrored to s2_per_seed.csv).
-    """
+    """Generate per-seed metrics table with evaluation gate flags."""
     exceedance_gate_kw, cost_gate_eur = load_project_constants()
     rows = []
     for run_file_path in run_files():

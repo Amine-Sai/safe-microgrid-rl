@@ -10,14 +10,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from agents.ppo import PPOAgent, compute_gae, grid_only_action  # noqa: E402
 
 
-# --------------------------------------------------------------------------- 1
 def _gae_reference(rewards, values, dones, truncated, last_value, gamma, lam):
-    """Independent, straightforward implementation — the oracle.
-
-    Formula: delta_t = r_t + gamma * V_{t+1} * (1 - term_t) - V_t
-             A_t     = delta_t + gamma * lam * (1 - term_t) * A_{t+1}
-    At t = T-1: V_{t+1} = 0 if terminal else last_value.
-    """
+    """Reference numpy GAE implementation."""
     T = len(rewards)
     adv = np.zeros(T)
     gae = 0.0
@@ -34,18 +28,7 @@ def _gae_reference(rewards, values, dones, truncated, last_value, gamma, lam):
 
 
 def test_gae_matches_numpy_reference():
-    """Hand-checkable 5-step case: terminal at step 3, truncation at step 1.
-
-    gamma=0.5, lam=0.5 for easy manual verification.
-    rewards = [1, 0, 2, 1, 3], values = [1, 2, 1, 3, 2], last_value = 4.
-
-    Manual calculation (backwards):
-      t=4: nt=1, nv=4,     delta = 3+0.5*4-2 = 3.0,   A=3.0
-      t=3: nt=0, nv=v[4],  delta = 1+0-3     = -2.0,  A=-2.0 (resets)
-      t=2: nt=1, nv=v[3],  delta = 2+1.5-1   = 2.5,   A=2.5+0.25*(-2)=2.0
-      t=1: nt=1, nv=v[2],  delta = 0+0.5-2   = -1.5,  A=-1.5+0.25*2.0=-1.0
-      t=0: nt=1, nv=v[1],  delta = 1+1-1     = 1.0,   A=1.0+0.25*(-1.0)=0.75
-    """
+    """Verify GAE calculation against reference numpy implementation."""
     r = np.array([1.0, 0.0, 2.0, 1.0, 3.0])
     v = np.array([1.0, 2.0, 1.0, 3.0, 2.0])
     d = np.array([0, 0, 0, 1, 0], dtype=bool)      # terminal at step 3
@@ -60,7 +43,6 @@ def test_gae_matches_numpy_reference():
     assert np.allclose(adv, ref, atol=1e-10)
 
 
-# --------------------------------------------------------------------------- 2
 def test_truncation_bootstrapping():
     """A time-limit end must bootstrap V(s_T), a terminal end must not."""
     r = np.array([1.0, 1.0, 1.0])
@@ -78,7 +60,6 @@ def test_truncation_bootstrapping():
     assert adv_term[-1] == pytest.approx(1.0 - 0.5, abs=1e-9)
 
 
-# --------------------------------------------------------------------------- 3
 def test_seed_determinism():
     """Two full seeded runs (rollout + finish_path + update) produce identical results."""
     results = []
@@ -107,7 +88,6 @@ def test_seed_determinism():
     assert np.allclose(results[0][3], results[1][3], atol=1e-6), "final policy differs"
 
 
-# --------------------------------------------------------------------------- 4
 def test_lambda_nonnegative_and_rises_when_cost_exceeds_d():
     ag = PPOAgent(state_dim=4, action_dim=2, lagrangian=True, cost_limit=0.05,
                   lambda_lr_mult=0.5)
@@ -130,7 +110,6 @@ def test_lambda_nonnegative_and_rises_when_cost_exceeds_d():
         assert ag2.update_lambda_from_source() >= 0.0
 
 
-# --------------------------------------------------------------------------- 5
 @pytest.mark.needs_real_data
 def test_init_policy_reproduces_grid_only_val():
     """Init policy mean IS Grid-Only; untrained agent produces Val 45,337.92 to the cent.
@@ -166,7 +145,6 @@ def test_init_policy_reproduces_grid_only_val():
     assert np.allclose(mu, a_linear, atol=1e-6), (mu, a_linear)
 
 
-# --------------------------------------------------------------------------- 6
 def test_no_test_split_access_under_agents():
     for root, _, files in os.walk("agents"):
         for f in files:

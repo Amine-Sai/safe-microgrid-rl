@@ -14,7 +14,7 @@ from experiments.train_core import PPO_METHODS, train_single_method
 
 def _worker(job):
     """Run one (method, seed) job in a fresh process with a single torch thread."""
-    # Pin all thread pools to 1 BEFORE importing torch/numpy (CPU-bound scaling).
+    # Pin thread pools to 1
     os.environ["OMP_NUM_THREADS"] = "1"
     os.environ["MKL_NUM_THREADS"] = "1"
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -23,7 +23,6 @@ def _worker(job):
     th.set_num_threads(1)
     from experiments.train_core import load_config_with_base, run_paths
     cfg = load_config_with_base(config_path)
-    # The requested method wins, so the config and the run can never disagree.
     cfg["method"] = method
     cfg["seed"] = seed
     if steps:
@@ -118,7 +117,6 @@ def main():
 
     t0 = time.time()
     results = []
-    # ProcessPoolExecutor gives true process isolation and simple concurrency control.
     from concurrent.futures import ProcessPoolExecutor, as_completed
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
         futs = {ex.submit(_worker, j): j for j in jobs}
@@ -140,8 +138,6 @@ def main():
     print(f"\nCOMPLETE: {n_ok}/{len(jobs)} succeeded | wall={wall/60:.1f} min | "
           f"sum-of-runs={serial_est/60:.1f} min | speedup={serial_est/wall:.2f}x")
 
-    # The grid roll-up lives with the runs it summarises: in the agent folder when the
-    # whole grid ran one agent, otherwise at the top of results/runs/.
     agents = sorted({r.get("agent") for r in results if "error" not in r and r.get("agent")})
     grid_dir = os.path.join("results", "runs", agents[0]) if len(agents) == 1 \
         else os.path.join("results", "runs")

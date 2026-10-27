@@ -189,11 +189,7 @@ class PPOAgent:
         self.kappa = potential_shaping_kappa if pbrs else 0.0
 
         self.obs_normalizer = RunningMeanStd(shape=(state_dim,))
-        # Value-target normalisation. The critic was fitting raw return magnitudes
-        # with one gradient step per rollout and learned only the mean (EV -0.02 on
-        # same-scale Monte-Carlo returns). Targets are normalised with a running
-        # mean/std and the net output is denormalised at inference, so every stored
-        # value and bootstrap stays in true reward units and GAE stays consistent.
+        # Value-target normalization
         self.ret_normalizer = RunningMeanStd(shape=())
         self.cost_normalizer = RunningMeanStd(shape=())
         self._reset_buffer()
@@ -232,16 +228,7 @@ class PPOAgent:
         return v * std + float(self.cost_normalizer.mean)
 
     def select_action(self, state: np.ndarray, evaluate: bool = False):
-        """Returns (action, log_prob, value, cost_value).
-
-        With `residual_policy` set (r3 only): the policy output u is a CORRECTION and the
-        executed action is a = clip(a_heuristic(obs) + residual_coef * u). The policy is
-        zero-init, so training starts exactly at the heuristic.
-
-        The observation normalizer is updated ONLY when acting for
-        training (evaluate=False). Updating it during evaluation drifts the restored
-        statistics and broke Val reproduction to the cent (45,258.10 vs 45,258.17).
-        """
+        """Returns (action, log_prob, value, cost_value)."""
         if not evaluate:
             self.obs_normalizer.update(state[None, :])
         s = self._t(self.obs_normalizer.normalize(state[None, :]))
@@ -254,8 +241,6 @@ class PPOAgent:
             if self.residual_policy is not None:
                 base = self.residual_policy.get_action(state)
                 a = th.clamp(self._t(base) + self.residual_coef * u, -1.0, 1.0)
-                # log-prob is under the residual distribution (base is deterministic
-                # given obs, so this is exact)
                 logp = self.policy.dist(s).log_prob(u).sum(dim=-1)
             else:
                 a = th.clamp(u, -1.0, 1.0)
@@ -267,9 +252,6 @@ class PPOAgent:
             cv_raw = self.cost_net(s) if self.cost_net is not None else th.zeros_like(v)
             cv = self._denorm_c(cv_raw) if self.cost_net is not None else cv_raw
         if not evaluate:
-            # Keep the pre-clip sample u. With store_raw_action the buffer stores
-            # this u, so the PPO ratio log_pi(u)-log_pi_old(u) matches the log-prob
-            # recorded at acting time (the legacy path stored clip(u) instead).
             self._last_u = u.squeeze(0).cpu().numpy().astype(np.float32)
         return (a.squeeze(0).cpu().numpy().astype(np.float32),
                 float(logp), float(v), float(cv))
@@ -405,10 +387,6 @@ class PPOAgent:
         s_t = self._t(states)
         a_t = self._t(batch["actions"])
         old_logp = self._t(batch["logp"]).view(-1, 1)
-        # Diagnostic only: no behaviour change, no RNG use. This is the share of
-        # samples whose stored action is already off the recorded log-prob before any
-        # gradient step, i.e. the fraction where the PPO ratio starts above
-        # |ratio - 1| = clip_ratio.
         with th.no_grad():
             lp0 = self.policy.dist(s_t).log_prob(a_t).sum(dim=-1, keepdim=True)
             ratio_off_at_start = float(
@@ -419,11 +397,6 @@ class PPOAgent:
             adv = adv - self.lambda_ * batch["adv_c"]
             if self.lag_normalize_by_1p_lam and (1.0 + self.lambda_) > 1e-8:
                 adv = adv / (1.0 + self.lambda_)
-        # Advantage-normalisation audit: the norm ratio is measured here, on the raw
-        # advantages at the point where they are combined and before the
-        # normalisation below. Normalisation applies to the combined advantage (not
-        # separately to A_r and A_c), so a large lambda cannot be normalised away: it
-        # changes the direction of adv, not just its scale. Logged per update.
         norm_ratio = None
         if self.lagrangian:
             denom = float(np.abs(batch["adv_r"]).mean()) + 1e-12
