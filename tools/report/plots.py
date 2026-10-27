@@ -511,32 +511,263 @@ def fig_cost_breakdown(runs, baselines):
     plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-def main():
-    global FIGS
-    family = "unclamped"
-    if "--family" in sys.argv:
-        idx = sys.argv.index("--family")
-        if idx + 1 < len(sys.argv):
-            family = sys.argv[idx + 1]
+# Cross-family comparison figures
+def fig_unified_pareto(all_families, baselines, out_dir):
+    """Unified Pareto scatter plot comparing Cost vs Exceedance across 3 environments."""
+    fig, ax = plt.subplots(figsize=(10.5, 7.2))
 
+    fam_styles = [
+        ("unclamped", "Unclamped", "x", 7.0),
+        ("clamped", "Clamped", "o", 6.5),
+        ("clamped_forecast", "Clamped + Forecast", "*", 9.5),
+    ]
+
+    # Shaded feasible quadrant (x <= G1, y <= G2)
+    ax.fill_between([FLOOR * 0.65, G1_EXC_KW], [42000, 42000], [G2_COST_EUR, G2_COST_EUR],
+                    color="#2ECC71", alpha=0.10, zorder=1)
+    ax.text(FLOOR * 1.5, 56500, "Feasible Region\n(G1 & G2)", color="#1E8449",
+            fontsize=9.5, fontweight="bold", va="top", zorder=2)
+
+    max_cost = G2_COST_EUR
+    for label, _prefix, colour in GROUPS:
+        for fam_key, _fam_name, marker, msize in fam_styles:
+            runs = all_families.get(fam_key, {}).get(label, [])
+            if not runs:
+                continue
+            costs = [float(final_metrics(r).get("total_cost_eur", 0.0)) for r in runs]
+            excs = [float(final_metrics(r).get("mean_exceedance_kw", 0.0)) for r in runs]
+            if costs:
+                max_cost = max(max_cost, max(costs))
+
+            x_seeds = [max(e, FLOOR) for e in excs]
+            ax.scatter(x_seeds, costs, marker=marker, color=colour, alpha=0.45,
+                       s=msize ** 2 * 0.5, zorder=3)
+
+            mean_cost = statistics.fmean(costs)
+            mean_exc = statistics.fmean(excs)
+            if marker == "x":
+                ax.scatter([max(mean_exc, FLOOR)], [mean_cost], marker=marker,
+                           color=colour, linewidths=2.0, s=msize ** 2 * 1.8, zorder=5)
+            else:
+                ax.scatter([max(mean_exc, FLOOR)], [mean_cost], marker=marker,
+                           facecolors=colour, edgecolors="black", linewidths=1.5,
+                           s=msize ** 2 * 1.8, zorder=5)
+
+    ax.axvline(G1_EXC_KW, ls="--", color=GATE, lw=1.4, zorder=2)
+    ax.axhline(G2_COST_EUR, ls="--", color=GATE, lw=1.4, zorder=2)
+    if "Grid-Only" in baselines:
+        ax.axhline(float(baselines["Grid-Only"]["cost_eur"]), ls="--", color=BASE, lw=1.2, zorder=2)
+    if "PSM'" in baselines:
+        ax.axhline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE, lw=1.2, zorder=2)
+
+    ax.set_xscale("log")
+    ax.set_xlim(FLOOR * 0.65, 12)
+    log_axis(ax, "x", EXC_TICKS)
+    ymax = int(math.ceil((max_cost + 4000) / 5000.0) * 5000)
+    ax.set_ylim(44000, ymax)
+    ax.yaxis.set_major_locator(FixedLocator(list(range(45000, ymax + 1, 5000))))
+    ax.yaxis.set_major_formatter(FuncFormatter(fmt_k))
+    ax.set_xlabel("Mean grid exceedance (kW/step, log scale; 0 floored at 10⁻⁴)")
+    ax.set_ylabel("Validation Cost (EUR)")
+    ax.set_title("Unified Pareto Frontier: Cost vs. Exceedance across 3 Environments")
+
+    handles_m = [Line2D([], [], color=colour, marker="s", ls="", markersize=7, label=label)
+                 for label, _p, colour in GROUPS]
+    handles_f = [Line2D([], [], color="#333333", marker=marker, ls="", markersize=msize,
+                        label=fam_name) for _, fam_name, marker, msize in fam_styles]
+    handles_ref = [
+        Line2D([], [], ls="--", color=GATE, lw=1.3, label="G1 / G2 Gates"),
+        Line2D([], [], ls="--", color=BASE, lw=1.2, label="Grid-Only"),
+        Line2D([], [], ls=":", color=BASE, lw=1.2, label="PSM'"),
+        Line2D([], [], color="#555555", marker="o", ls="", markersize=4.5, alpha=0.5, label="Single seed"),
+        Line2D([], [], color="#555555", marker="o", ls="", markersize=8, markeredgecolor="black", label="Mean of 5 seeds"),
+    ]
+    fig.legend(handles=handles_m + handles_f + handles_ref, loc="outside lower center", ncol=4)
+    fig.savefig(os.path.join(out_dir, "unified_pareto.png"))
+    plt.close(fig)
+
+
+def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
+    """Grouped bar plots comparing Cost Breakdown and Exceedance across 3 environments."""
+    fig, axes = plt.subplots(1, 2, figsize=(14.2, 6.4), width_ratios=[1.25, 0.75])
+
+    fam_keys = [
+        ("unclamped", "Unclamped"),
+        ("clamped", "Clamped"),
+        ("clamped_forecast", "Clamped + Forecast"),
+    ]
+    parts = ("energy_purchase_eur", "battery_wear_eur", "unserved_penalty_eur")
+    part_names = ("Grid energy bought", "Battery wear", "Unserved penalty")
+    part_colours = ("#0072B2", "#7F8C8D", "#E67E22")
+
+    y_centers = list(range(len(GROUPS)))[::-1]
+    bar_h = 0.22
+    offsets = [0.24, 0.0, -0.24]
+
+    ax_cost, ax_exc = axes[0], axes[1]
+    max_total = G2_COST_EUR
+
+    for y_c, (label, _prefix, colour) in zip(y_centers, GROUPS):
+        for offset, (f_key, _f_name) in zip(offsets, fam_keys):
+            y = y_c + offset
+            runs = all_families.get(f_key, {}).get(label, [])
+            if not runs:
+                continue
+
+            left = 0.0
+            totals = []
+            for i, part in enumerate(parts):
+                vals = [float(final_metrics(r).get(part, 0.0)) for r in runs]
+                v = statistics.fmean(vals) if vals else 0.0
+                totals.append(v)
+                ax_cost.barh(y, v, left=left, height=bar_h, color=part_colours[i],
+                             edgecolor="white", linewidth=0.6)
+                if v >= 6000:
+                    ax_cost.text(left + v / 2, y, "%.0fk" % (v / 1000), ha="center", va="center",
+                                 color="white", fontsize=7.5, fontweight="bold")
+                left += v
+            max_total = max(max_total, left)
+
+            if label == "Shielded PPO" and totals[2] > 0:
+                ax_cost.text(left + 500, y, "unserved %.0f" % totals[2], va="center",
+                             fontsize=7.5, color="#D35400", fontweight="bold")
+
+            excs = [float(final_metrics(r).get("mean_exceedance_kw", 0.0)) for r in runs]
+            mean_exc = statistics.fmean(excs) if excs else 0.0
+            exc_val = max(mean_exc, FLOOR)
+            alpha_fam = 0.55 if f_key == "unclamped" else (0.8 if f_key == "clamped" else 1.0)
+            ax_exc.barh(y, exc_val, height=bar_h, color=colour, alpha=alpha_fam,
+                        edgecolor="white", linewidth=0.6)
+
+    xmax = max(68000, int(math.ceil((max_total + 10000) / 10000.0) * 10000))
+    ax_cost.set_yticks(y_centers)
+    ax_cost.set_yticklabels([g[0] for g in GROUPS], fontweight="bold")
+    ax_cost.set_xlabel("Validation Cost (EUR, mean of 5 seeds)")
+    ax_cost.set_title("A. Stacked Cost Breakdown across Environments")
+    ax_cost.set_xlim(0, xmax)
+    ax_cost.xaxis.set_major_locator(FixedLocator(list(range(0, xmax + 1, 20000))))
+    ax_cost.xaxis.set_major_formatter(FuncFormatter(fmt_k))
+    if "Grid-Only" in baselines:
+        ax_cost.axvline(float(baselines["Grid-Only"]["cost_eur"]), ls="--", color=BASE, lw=1.2, zorder=2)
+    if "PSM'" in baselines:
+        ax_cost.axvline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE, lw=1.2, zorder=2)
+    ax_cost.axvline(G2_COST_EUR, ls="--", color=GATE, lw=1.3, zorder=2)
+
+    ax_exc.set_yticks(y_centers)
+    ax_exc.set_yticklabels([])
+    ax_exc.set_xscale("log")
+    ax_exc.set_xlim(FLOOR * 0.65, 12)
+    log_axis(ax_exc, "x", EXC_TICKS)
+    ax_exc.axvline(G1_EXC_KW, ls="--", color=GATE, lw=1.3, zorder=2)
+    ax_exc.set_xlabel("Mean Exceedance (kW/step, log scale)")
+    ax_exc.set_title("B. Mean Grid Exceedance across Environments")
+
+    cost_handles = [Patch(facecolor=part_colours[i], label=part_names[i]) for i in range(len(parts))]
+    fam_handles = [
+        Patch(facecolor="#777777", alpha=0.55 if fk == "unclamped" else (0.8 if fk == "clamped" else 1.0),
+              label=fn) for fk, fn in fam_keys
+    ]
+    ref_handles = [
+        Line2D([], [], ls="--", color=GATE, lw=1.3, label="G1 / G2 Gates"),
+        Line2D([], [], ls="--", color=BASE, lw=1.2, label="Grid-Only"),
+        Line2D([], [], ls=":", color=BASE, lw=1.2, label="PSM'"),
+    ]
+    fig.legend(handles=cost_handles + fam_handles + ref_handles, loc="outside lower center", ncol=5)
+    fig.savefig(os.path.join(out_dir, "grouped_cost_breakdown.png"))
+    plt.close(fig)
+
+
+def fig_targeted_learning_curves(all_families, baselines, out_dir):
+    """Learning curves for competitive methods (Residual and Shielded) across 3 environments."""
+    fig, axes = plt.subplots(2, 1, figsize=(9.8, 8.4), sharex=True)
+
+    comp_methods = [
+        ("PPO-Residual", "#009E73"),
+        ("Shielded PPO", "#CC79A7"),
+    ]
+    fam_styles = [
+        ("unclamped", "Unclamped", ":", "x", 1.5),
+        ("clamped", "Clamped", "--", "o", 1.8),
+        ("clamped_forecast", "Clamped + Forecast", "-", "*", 2.0),
+    ]
+
+    ax_cost, ax_exc = axes[0], axes[1]
+    max_cost_upper = G2_COST_EUR
+
+    for m_label, colour in comp_methods:
+        for f_key, _f_name, ls, marker, lw in fam_styles:
+            runs = all_families.get(f_key, {}).get(m_label, [])
+            if not runs:
+                continue
+            steps, costs, excs = eval_curve(runs)
+            if not steps:
+                continue
+            mean_c, _ = mean_sd(costs)
+            mean_e, _ = mean_sd(excs)
+            x = [s / 1000 for s in steps]
+
+            ax_cost.plot(x, mean_c, color=colour, ls=ls, lw=lw, marker=marker,
+                         markersize=5.5 if marker != "*" else 8.0, zorder=4)
+            max_cost_upper = max(max_cost_upper, max(mean_c))
+
+            y_exc = [max(v, FLOOR) for v in mean_e]
+            ax_exc.plot(x, y_exc, color=colour, ls=ls, lw=lw, marker=marker,
+                         markersize=5.5 if marker != "*" else 8.0, zorder=4)
+
+    ax_cost.axhline(G2_COST_EUR, ls="--", color=GATE, lw=1.3, zorder=2)
+    if "Grid-Only" in baselines:
+        ax_cost.axhline(float(baselines["Grid-Only"]["cost_eur"]), ls="--", color=BASE, lw=1.2, zorder=2)
+    if "PSM'" in baselines:
+        ax_cost.axhline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE, lw=1.2, zorder=2)
+    ymax = int(math.ceil((max_cost_upper + 2500) / 2500.0) * 2500)
+    ax_cost.set_ylim(44000, ymax)
+    ax_cost.yaxis.set_major_locator(FixedLocator(list(range(45000, ymax + 1, 5000))))
+    ax_cost.yaxis.set_major_formatter(FuncFormatter(fmt_k))
+    ax_cost.set_ylabel("Val cost (EUR)")
+    ax_cost.set_title("A. Validation Cost over Training (Targeted Competitive Methods)")
+
+    ax_exc.axhline(G1_EXC_KW, ls="--", color=GATE, lw=1.3, zorder=2)
+    ax_exc.set_yscale("log")
+    ax_exc.set_ylim(FLOOR * 0.65, 10)
+    log_axis(ax_exc, "y", EXC_TICKS)
+    ax_exc.set_ylabel("Mean exceedance (kW/step, log scale)")
+    ax_exc.set_xlabel("Training steps (thousands)")
+    ax_exc.set_title("B. Mean Grid Exceedance over Training (Targeted Competitive Methods)")
+    ax_exc.set_xticks(STEP_TICKS)
+
+    method_handles = [Line2D([], [], color=c, lw=2.5, label=m) for m, c in comp_methods]
+    env_handles = [
+        Line2D([], [], color="#444444", ls=ls, lw=lw, marker=marker,
+               markersize=6, label=fn) for _, fn, ls, marker, lw in fam_styles
+    ]
+    ref_handles = [
+        Line2D([], [], ls="--", color=GATE, lw=1.3, label="G1 / G2 Gates"),
+        Line2D([], [], ls="--", color=BASE, lw=1.2, label="Grid-Only"),
+        Line2D([], [], ls=":", color=BASE, lw=1.2, label="PSM'"),
+    ]
+    fig.legend(handles=method_handles + env_handles + ref_handles, loc="outside lower center", ncol=4)
+    fig.savefig(os.path.join(out_dir, "targeted_learning_curves.png"))
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+def plot_family(family: str, baselines: dict):
+    global FIGS
     if family in ("clamped_forecast", "forecast"):
         FIGS = os.path.join(ROOT, "results", "figures", "clamped_forecast")
     elif family in ("clamped", "s3v2", "v2"):
         FIGS = os.path.join(ROOT, "results", "figures", "clamped")
     else:
-        FIGS = os.path.join(ROOT, "results", "figures")
+        FIGS = os.path.join(ROOT, "results", "figures", "unclamped")
     os.makedirs(FIGS, exist_ok=True)
 
     runs = load_runs(family=family)
-    baselines = load_baselines()
-
     total = sum(len(v) for v in runs.values())
     if total == 0:
-        print("no run JSONs found in %s for family %r - nothing to plot" % (RUNS, family))
-        return 1
-    print("loaded %d runs in %d groups (family: %s)" % (total, len(runs), family))
+        print("no run JSONs found in %s for family %r - skipping" % (RUNS, family))
+        return
 
+    print("loaded %d runs in %d groups (family: %s)" % (total, len(runs), family))
     for fn, args in ((fig_learning_curves, (runs, baselines)),
                      (fig_cost_vs_exceedance, (runs, baselines)),
                      (fig_lambda, (runs,)),
@@ -545,9 +776,47 @@ def main():
         try:
             fn(*args)
             print("  ok  %s" % fn.__name__)
-        except Exception as exc:                       # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             print("  FAIL %s: %s" % (fn.__name__, exc))
     print("figures written to %s" % FIGS)
+
+
+def plot_comparison(baselines: dict):
+    comp_dir = os.path.join(ROOT, "results", "figures", "comparison")
+    os.makedirs(comp_dir, exist_ok=True)
+
+    all_families = {
+        "unclamped": load_runs("unclamped"),
+        "clamped": load_runs("clamped"),
+        "clamped_forecast": load_runs("clamped_forecast"),
+    }
+
+    print("generating cross-family comparison figures in %s" % comp_dir)
+    for fn in (fig_unified_pareto, fig_grouped_cost_breakdown, fig_targeted_learning_curves):
+        try:
+            fn(all_families, baselines, comp_dir)
+            print("  ok  %s" % fn.__name__)
+        except Exception as exc:  # noqa: BLE001
+            print("  FAIL %s: %s" % (fn.__name__, exc))
+
+
+def main():
+    family = "unclamped"
+    if "--family" in sys.argv:
+        idx = sys.argv.index("--family")
+        if idx + 1 < len(sys.argv):
+            family = sys.argv[idx + 1]
+
+    baselines = load_baselines()
+
+    if family in ("comparison", "compare"):
+        plot_comparison(baselines)
+    elif family == "all":
+        for fam in ("unclamped", "clamped", "clamped_forecast"):
+            plot_family(fam, baselines)
+        plot_comparison(baselines)
+    else:
+        plot_family(family, baselines)
     return 0
 
 

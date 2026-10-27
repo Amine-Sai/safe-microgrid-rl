@@ -7,13 +7,14 @@ evidence behind the README table and figures, so a reader does not have to rerun
 ## Layout
 
 ```
-figures/                     PNGs used in the README (unclamped family)
-  learning_curves.png        Val cost during training, mean ± spread over 5 seeds
-  cost_vs_exceedance.png     cost against mean cap exceedance (the trade-off)
-  per_seed_results.png       every seed, not just the mean
-  cost_breakdown.png         energy + unserved + wear for each method
-  lambda_trajectory.png      dual variable over training (diagnostic, not in README)
-  clamped/                   corresponding 5 PNGs for the clamped family
+figures/
+  unclamped/                 5 PNGs for unclamped family (17-D)
+  clamped/                   5 PNGs for clamped family (17-D)
+  clamped_forecast/          5 PNGs for clamped + 6h forecast family (23-D)
+  comparison/                3 cross-family comparison PNGs:
+    unified_pareto.png       Unified Pareto frontier (Cost vs. Exceedance across environments)
+    grouped_cost_breakdown.png Grouped stacked cost breakdown & exceedance across environments
+    targeted_learning_curves.png Targeted learning curves for competitive methods (Residual & Shielded)
 runs/<agent>/                one JSON per (experiment, seed)
   *_seed101.json ...         5 seeds per method (101–105)
   *_grid.json                batch roll-up, not a run
@@ -23,6 +24,8 @@ tables/
   s2_per_seed.csv            legacy alias of per_seed_metrics.csv
   frozen_baselines.csv       Grid-Only / PSM' reference values
   project_constants.csv      cap, d_main, weights, gate constants
+  test_evaluation.csv        locked one-shot evaluation on the 2019 H2 Test split
+  test_stress_weeks.csv      evaluation on the 4 pre-identified Test stress weeks
 ```
 
 Agents are `ppo`, `ppo_lagrangian`, `ppo_residual`, `ppo_shielded`. Each contains
@@ -30,7 +33,7 @@ seed runs (101–105) at 300k steps, evaluated deterministically on the 26 Val w
 
 ### Experiment families
 
-Two experiment families are tracked:
+Three experiment families are tracked:
 - **Unclamped (`unclamped_*` / legacy `s3_*`):** `charge_clamp: false`. The original environment
   formulation where battery charging was not physically interlocked against the
   import cap.
@@ -38,6 +41,8 @@ Two experiment families are tracked:
   clamp rate limit → SoC limit → cap clamp in the environment. Battery charging
   cannot induce grid import exceedance beyond available headroom. Additive
   columns `mean_charge_clipped_by_cap_kw` and `cap_clipped_steps_pct` track the clamp's activity.
+- **Clamped + Forecast (`clamped_forecast_*`):** `charge_clamp: true` with `forecast_horizon_hours: 6`.
+  Extends the observation space from 17-D to 23-D with rolling 6-hour PV and load lookaheads.
 
 ## Regenerating the tables and figures
 
@@ -45,8 +50,8 @@ From the repository root, in an environment with the requirements installed:
 
 ```bash
 python tools/report/export_csv.py              # rebuild results/tables/*.csv from runs/
-python tools/report/plots.py --family unclamped # rebuild results/figures/*.png
-python tools/report/plots.py --family clamped   # rebuild results/figures/clamped/*.png
+python tools/report/plots.py --family all       # rebuild all per-family and comparison figures
+python tools/report/plots.py --family comparison # rebuild only cross-family comparison figures
 python tools/status.py                         # compact health/status summary
 ```
 
@@ -59,4 +64,4 @@ touch the closed Test split.
   time; see the README.
 - Model checkpoints (`checkpoints/`) — large and not needed to check the reported
   metrics.
-- Any Test-split result. The reported table is Val only.
+- Full test-split timeseries trajectories — only aggregate metrics and stress-week evaluations are stored under results/tables/.

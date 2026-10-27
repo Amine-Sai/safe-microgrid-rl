@@ -198,6 +198,27 @@ Full figure sets across all three experimental families (`unclamped`, `clamped`,
 | *Grid-Only* | *45,338* | *45,338* | *45,338* | *3.26 kW* | *No* |
 | *PSM' (tuned rule)* | *55,532* | *55,532* | *55,532* | *0.0000 kW* | *Yes (0.00% violations)* |
 
+#### Cross-Family Comparisons (Without Visual Clutter)
+
+<table>
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <img src="results/figures/comparison/unified_pareto.png" alt="Unified Pareto Frontier" width="460"><br>
+      <sub><b>1. Unified Pareto Frontier (Cost vs. Exceedance)</b></sub>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <img src="results/figures/comparison/targeted_learning_curves.png" alt="Targeted Learning Curves" width="460"><br>
+      <sub><b>2. Targeted Learning Curves (Competitive Methods)</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="top" colspan="2">
+      <img src="results/figures/comparison/grouped_cost_breakdown.png" alt="Grouped Cost Breakdown & Exceedance" width="760"><br>
+      <sub><b>3. Grouped Cost Breakdown & Exceedance across Environments</b></sub>
+    </td>
+  </tr>
+</table>
+
 ---
 
 ### Locked One-Shot Test Split Evaluation (2019 H2, 24 Weeks = 4,032 Hours)
