@@ -2,9 +2,9 @@ name,value,unit,source
 grid_import_cap_kw,368.15,kW,env/smartgrid_env.py DEFAULTS grid_import_cap_kw (fixed P90 of Train grid-only import)
 d_main_kw_per_step,0.05,kW/step,configs/config.yaml defaults cost_limit
 g2_cost_multiplier,1.05,ratio,G2 gate = 1.05 x PSM' Val cost
-g2_cost_eur,58308.55,EUR,1.05 x PSM' Val cost (results/tables/frozen_baselines.csv)
+g2_cost_eur,58306.73,EUR,1.05 x PSM' Val cost (results/tables/frozen_baselines.csv)
 lp_prime_val_eur,53292.09,EUR,LP oracle with SoC floor 0.10 on Val (frozen historical value)
-gap_psm_to_lp_eur,2239.86,EUR,PSM' Val cost minus LP' Val cost
+gap_psm_to_lp_eur,2238.13,EUR,PSM' Val cost minus LP' Val cost
 w_unserved_eur_kwh,1.00,EUR/kWh,env/smartgrid_env.py reward (unserved kWh)
 w_wear_eur_kwh,0.02,EUR/kWh,env/smartgrid_env.py DEFAULTS cost_wear_eur_kwh
 battery_soc_min,0.10,SoC fraction,env/smartgrid_env.py DEFAULTS battery_soc_min

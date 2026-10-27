@@ -1,4 +1,3 @@
-agent,split,cost_eur,exceedance_kw,violation_rate_pct,unserved_energy_pct,source
-Grid-Only,val,45337.92,3.2576,10.71,0.0,agents/heuristics.py GridOnlyPolicy (frozen historical table)
-PSM',val,55531.95,0.0,0.0,0.8273,agents/heuristics.py PSM' policy (frozen historical table)
-PS',val,71984.55,0.0,0.34,2.2037,frozen historical table (peak-shave variant policy archived)
+method,val_cost_eur,mean_exceedance_kw,feasible
+Grid-Only,45337.92,3.2571,False
+PSM',55530.22,0.0000,True

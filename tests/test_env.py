@@ -394,5 +394,60 @@ def test_data_preparation_parametric_zones_and_events():
     assert night_street > 5.0 * day_street
 
 
+def test_forecast_horizon_observation_shape_and_values():
+    """Verify forecast lookahead dimension and summary features."""
+    env17 = make_env(forecast_horizon_hours=0)
+    obs17, _ = env17.reset(seed=42)
+    assert obs17.shape == (17,)
+
+    env23 = make_env(forecast_horizon_hours=6)
+    obs23, _ = env23.reset(seed=42)
+    assert obs23.shape == (23,)
+    assert np.allclose(obs17, obs23[:17])
+
+    idx = env23._start_idx
+    expected_next_net = env23._net_load_kw_series[idx + 1]
+    expected_max_net = np.max(env23._net_load_kw_series[idx + 1:idx + 7])
+    expected_mean_net = np.mean(env23._net_load_kw_series[idx + 1:idx + 7])
+    expected_next_price = env23._price[idx + 1]
+    expected_min_price = np.min(env23._price[idx + 1:idx + 7])
+    expected_max_price = np.max(env23._price[idx + 1:idx + 7])
+
+    assert np.isclose(obs23[17], expected_next_net)
+    assert np.isclose(obs23[18], expected_max_net)
+    assert np.isclose(obs23[19], expected_mean_net)
+    assert np.isclose(obs23[20], expected_next_price)
+    assert np.isclose(obs23[21], expected_min_price)
+    assert np.isclose(obs23[22], expected_max_price)
+
+    # Boundary check at end of data
+    obs_end = env23._get_obs(env23._n_timesteps - 1)
+    assert obs_end.shape == (23,)
+    assert not np.isnan(obs_end).any()
+
+
+def test_residual_policy_compatible_with_forecast_observations():
+    """Verify PSM' heuristic and residual PPO handle 23-D observations."""
+    from agents.heuristics import psm_prime_policy
+    from agents.ppo import PPOAgent
+
+    env = make_env(forecast_horizon_hours=6)
+    obs, _ = env.reset(seed=42)
+    pol = psm_prime_policy()
+    act = pol.get_action(obs)
+    assert act.shape == (6,)
+
+    agent = PPOAgent(state_dim=23, action_dim=6, residual_policy=pol)
+    act_rl, _, _, _ = agent.select_action(obs, evaluate=True)
+    assert act_rl.shape == (6,)
+
+
+def test_ppo_defaults_to_cpu():
+    """Verify PPO defaults to CPU execution."""
+    from agents.ppo import PPOAgent
+    agent = PPOAgent(state_dim=17, action_dim=6)
+    assert agent.device.type == "cpu"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-q", "-x"])

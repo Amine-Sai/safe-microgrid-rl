@@ -149,6 +149,10 @@ class SmartGridEnv(gym.Env):
         # "deadzone" = s=max(0,a), so a<=0 means no shed (removes the a<0 dead zone).
         self.shed_mapping = cfg.get("shed_mapping", "linear")
 
+        # Forecast horizon
+        self.forecast_horizon_hours = int(cfg.get("forecast_horizon_hours", 0))
+        self.forecast_features_dim = 6 if self.forecast_horizon_hours > 0 else 0
+
         # Load data
         self._load_data(cfg["data_path"], cfg["split"])
 
@@ -156,8 +160,8 @@ class SmartGridEnv(gym.Env):
         self.action_dim = 1 + self.n_zones
         self.action_space = spaces.Box(-1.0, 1.0, shape=(self.action_dim,), dtype=np.float32)
 
-        # Observation: 17 dims
-        self.obs_dim = 17
+        # Observation dimension
+        self.obs_dim = 17 + self.forecast_features_dim
         self.observation_space = spaces.Box(-np.inf, np.inf, shape=(self.obs_dim,), dtype=np.float32)
 
         # Episode state
@@ -210,6 +214,13 @@ class SmartGridEnv(gym.Env):
         if len(self._event_active) > 1:
             self._event_in_next_hour[:-1] = self._event_active[1:]
 
+        # Precompute series for fast step lookups
+        self._pv_scale = np.float32(
+            self.pv_area_m2 * self.pv_efficiency * self.pv_performance_ratio / 1000.0
+        )
+        self._pv_kw_series = self._irradiance * self._pv_scale
+        self._net_load_kw_series = np.maximum(0.0, self._load_kw - self._pv_kw_series)
+
         self._n_timesteps = len(df)
 
         # Split report
@@ -221,11 +232,10 @@ class SmartGridEnv(gym.Env):
             self._split_report = {}
 
     def _compute_pv_kw(self, idx: int) -> float:
-        irr = self._irradiance[idx]
-        return float(irr * self.pv_area_m2 * self.pv_efficiency * self.pv_performance_ratio / 1000.0)
+        return float(self._pv_kw_series[idx])
 
     def _get_obs(self, idx: int) -> np.ndarray:
-        return np.array([
+        base_obs = [
             self._soc,
             self._compute_pv_kw(idx),
             self._zone_loads[idx, 0],
@@ -243,7 +253,31 @@ class SmartGridEnv(gym.Env):
             self._pressure[idx],
             self._event_active[idx],
             self._event_in_next_hour[idx],
-        ], dtype=np.float32)
+        ]
+        if self.forecast_horizon_hours <= 0:
+            return np.array(base_obs, dtype=np.float32)
+
+        # Lookahead window [idx + 1, idx + 1 + H] clamped to dataset end
+        horizon = self.forecast_horizon_hours
+        n = self._n_timesteps
+        start = min(idx + 1, n - 1)
+        end = min(idx + 1 + horizon, n)
+        if start >= end:
+            start = max(0, n - 1)
+            end = n
+
+        net_slice = self._net_load_kw_series[start:end]
+        price_slice = self._price[start:end]
+
+        forecast_obs = [
+            float(self._net_load_kw_series[start]),
+            float(np.max(net_slice)),
+            float(np.mean(net_slice)),
+            float(self._price[start]),
+            float(np.min(price_slice)),
+            float(np.max(price_slice)),
+        ]
+        return np.array(base_obs + forecast_obs, dtype=np.float32)
 
     def reset(self, *, seed=None, options=None):
         if seed is not None:
@@ -411,6 +445,7 @@ def default_config() -> dict:
         "action_sat_threshold": 0.99,
         "soc_pinned_tolerance": 0.005,
         "soc_pin_tol": 0.005,
+        "forecast_horizon_hours": 0,
     }
 
 

@@ -132,7 +132,7 @@ ENV_KEYS = (
     "ind_off_threshold", "cap_clamp_tolerance_kw", "cap_clamp_tol_kw",
     "violation_tolerance_kw", "violation_tol_kw",
     "action_saturation_threshold", "action_sat_threshold",
-    "soc_pinned_tolerance", "soc_pin_tol",
+    "soc_pinned_tolerance", "soc_pin_tol", "forecast_horizon_hours",
 )
 
 
@@ -226,8 +226,12 @@ def load_agent_for_method(method_name: str, cfg: dict):
 
 def _ppo_kwargs(cfg: dict, method_name: str) -> dict:
     """PPOAgent constructor kwargs shared by training and agent restoration."""
+    state_dim = cfg.get("state_dim")
+    if state_dim is None:
+        state_dim = 17 + (6 if int(cfg.get("forecast_horizon_hours", 0)) > 0 else 0)
+
     return dict(
-        state_dim=cfg["state_dim"], action_dim=cfg["action_dim"],
+        state_dim=state_dim, action_dim=cfg["action_dim"],
         shed_mapping=cfg.get("shed_mapping", "linear"),
         lr_policy=cfg.get("lr_policy", 3e-4), lr_value=cfg.get("lr_value", 1e-3),
         lr_dual=cfg.get("lr_dual", 0.01),
@@ -249,6 +253,7 @@ def _ppo_kwargs(cfg: dict, method_name: str) -> dict:
         store_raw_action=cfg.get("ppo_store_raw_action", False),
         init_log_std=cfg.get("ppo_init_log_std", -1.0),
         init_log_std_shed=cfg.get("ppo_init_log_std_shed", None),
+        device=cfg.get("device", "cpu"),
     )
 
 

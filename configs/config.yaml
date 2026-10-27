@@ -46,6 +46,8 @@ defaults:
   action_sat_threshold: 0.99
   soc_pinned_tolerance: 0.005
   soc_pin_tol: 0.005
+  forecast_horizon_hours: 0
+  device: cpu
 experiments:
   bench10k:
     charge_clamp: false
@@ -215,6 +217,48 @@ experiments:
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
+  clamped_forecast_ppo:
+    state_dim: 23
+    forecast_horizon_hours: 6
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+    ppo_store_raw_action: true
+    ppo_use_minibatches: true
+    ppo_value_epochs: 5
+  clamped_forecast_ppo_lagrangian:
+    state_dim: 23
+    forecast_horizon_hours: 6
+    method: ppo_lagrangian
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+    ppo_store_raw_action: true
+    ppo_use_minibatches: true
+    ppo_value_epochs: 5
+  clamped_forecast_ppo_residual:
+    state_dim: 23
+    forecast_horizon_hours: 6
+    method: ppo_lagrangian
+    residual_on_heuristic: true
+    residual_coef: 0.25
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+    ppo_store_raw_action: true
+    ppo_use_minibatches: true
+    ppo_value_epochs: 5
+  clamped_forecast_ppo_shielded:
+    state_dim: 23
+    forecast_horizon_hours: 6
+    action_dim: 1
+    shielded: true
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+    ppo_store_raw_action: true
+    ppo_use_minibatches: true
+    ppo_value_epochs: 5
   v2_a:
     charge_clamp: false
     reward_scale: 0.096879

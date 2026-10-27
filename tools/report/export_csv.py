@@ -170,7 +170,71 @@ def per_seed_table():
     return paths[0]
 
 
+def refresh_baselines():
+    """Evaluate Grid-Only and PSM' on Val split and update reference tables."""
+    import numpy as np
+    from agents.heuristics import GridOnlyPolicy, PeakShaveMinPolicy
+    from env.smartgrid_env import SmartGridEnv
+
+    policies = {"Grid-Only": GridOnlyPolicy(), "PSM'": PeakShaveMinPolicy()}
+    env = SmartGridEnv({"split": "val", "charge_clamp": True})
+    n_weeks = env._n_timesteps // env.episode_length
+    results = {}
+
+    for name, pol in policies.items():
+        cost = 0.0
+        exceedances = []
+        for w in range(n_weeks):
+            obs, _ = env.reset(options={"start_idx": w * env.episode_length})
+            for _ in range(env.episode_length):
+                obs, _, _, _, info = env.step(pol.get_action(obs))
+                cost += info["energy_cost"] + info["unserved_cost"] + info["battery_wear_cost"]
+                exceedances.append(max(0.0, info["grid_import_kw"] - env.grid_import_cap_kw))
+        results[name] = {
+            "val_cost_eur": round(float(cost), 2),
+            "mean_exceedance_kw": round(float(np.mean(exceedances)), 4),
+        }
+
+    baselines_path = os.path.join(TABLES, "frozen_baselines.csv")
+    with open(baselines_path, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["method", "val_cost_eur", "mean_exceedance_kw", "feasible"])
+        w.writeheader()
+        w.writerow({
+            "method": "Grid-Only",
+            "val_cost_eur": f"{results['Grid-Only']['val_cost_eur']:.2f}",
+            "mean_exceedance_kw": f"{results['Grid-Only']['mean_exceedance_kw']:.4f}",
+            "feasible": "False",
+        })
+        w.writerow({
+            "method": "PSM'",
+            "val_cost_eur": f"{results['PSM\'']['val_cost_eur']:.2f}",
+            "mean_exceedance_kw": f"{results['PSM\'']['mean_exceedance_kw']:.4f}",
+            "feasible": "True",
+        })
+
+    constants_path = os.path.join(TABLES, "project_constants.csv")
+    if os.path.exists(constants_path):
+        with open(constants_path, encoding="utf-8") as f:
+            c_rows = list(csv.DictReader(f))
+        psm_cost = results["PSM'"]["val_cost_eur"]
+        g2_cost = round(1.05 * psm_cost, 2)
+        for r in c_rows:
+            if r["name"] == "g2_cost_eur":
+                r["value"] = str(g2_cost)
+            elif r["name"] == "gap_psm_to_lp_eur":
+                lp = float([x["value"] for x in c_rows if x["name"] == "lp_prime_val_eur"][0])
+                r["value"] = str(round(psm_cost - lp, 2))
+        with open(constants_path, "w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["name", "value", "unit", "source"])
+            w.writeheader()
+            w.writerows(c_rows)
+    print(f"Refreshed baselines: Grid-Only={results['Grid-Only']['val_cost_eur']} EUR, PSM'={results['PSM\'']['val_cost_eur']} EUR")
+
+
 def main():
+    if "--refresh-baselines" in sys.argv:
+        refresh_baselines()
+
     os.makedirs(TABLES, exist_ok=True)
     written = []
 

@@ -11,8 +11,19 @@ data/processed/
 tests/test_data/
 checkpoints/
 .DS_Store
+
+# Private communication, notes and scratch
 NOTES.md
 notes.md
+[Nn]ote*
+*communication*
+scratch/
 *.log
 *.tmp
-scratch/
+
+# Platform-specific staging and bundles
+dist/
+*.zip
+kaggle/
+tools/kaggle/
+*kaggle*

@@ -109,14 +109,15 @@ def group_of(agent):
 
 
 def load_runs(family: str = "unclamped"):
-    """{group: [run dict, ...]} for the per-run JSONs under results/runs/<agent>/.
-
-    Filters by experiment family ("unclamped" vs "clamped") so the two physics
-    regimes are never pooled together in a single figure.
-    """
+    """Load runs filtered by experiment family."""
     out = dict((g[0], []) for g in GROUPS)
-    target_clamped = family in ("clamped", "s3v2", "v2")
-    prefix_filter = ("s3v2_", "clamped_") if target_clamped else ("s3_", "unclamped_")
+    target_clamped = family != "unclamped"
+    if family in ("clamped_forecast", "forecast"):
+        prefix_filter = ("clamped_forecast_",)
+    elif family in ("clamped", "s3v2", "v2"):
+        prefix_filter = ("s3v2_", "clamped_")
+    else:
+        prefix_filter = ("s3_", "unclamped_")
 
     for agent in sorted(os.listdir(RUNS)):
         agent_dir = os.path.join(RUNS, agent)
@@ -499,7 +500,9 @@ def main():
         if idx + 1 < len(sys.argv):
             family = sys.argv[idx + 1]
 
-    if family in ("clamped", "s3v2", "v2"):
+    if family in ("clamped_forecast", "forecast"):
+        FIGS = os.path.join(ROOT, "results", "figures", "clamped_forecast")
+    elif family in ("clamped", "s3v2", "v2"):
         FIGS = os.path.join(ROOT, "results", "figures", "clamped")
     else:
         FIGS = os.path.join(ROOT, "results", "figures")

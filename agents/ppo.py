@@ -155,7 +155,7 @@ class PPOAgent:
         self.store_raw_action = store_raw_action
         self._last_u = None
         self._rng = np.random.RandomState(0)   # trainer overwrites with the run seed
-        self.device = th.device(device or ("cuda:0" if th.cuda.is_available() else "cpu"))
+        self.device = th.device(device or "cpu")
 
         # log-std init (default -1.0). The shed dims (indices 1:) can take a
         # separate init, which limits how much load random exploration sheds early
