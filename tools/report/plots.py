@@ -1,5 +1,6 @@
 import io
 import json
+import math
 import os
 import statistics
 import sys
@@ -107,10 +108,11 @@ def load_runs(family: str = "unclamped"):
     """Load runs filtered by experiment family."""
     out = dict((g[0], []) for g in GROUPS)
     target_clamped = family != "unclamped"
-    if family in ("clamped_forecast", "forecast"):
+    target_forecast = family in ("clamped_forecast", "forecast")
+    if target_forecast:
         prefix_filter = ("clamped_forecast_",)
     elif family in ("clamped", "s3v2", "v2"):
-        prefix_filter = ("s3v2_", "clamped_")
+        prefix_filter = ("s3v2_", "clamped_ppo")
     else:
         prefix_filter = ("s3_", "unclamped_")
 
@@ -128,15 +130,16 @@ def load_runs(family: str = "unclamped"):
                 continue
             with io.open(os.path.join(agent_dir, fname), encoding="utf-8") as f:
                 run_data = json.load(f)
-            # Verify charge_clamp matches target family
-            is_clamped = bool((run_data.get("resolved_config") or {}).get("charge_clamp", False))
-            if is_clamped == target_clamped:
+            rc = run_data.get("resolved_config") or {}
+            is_clamped = bool(rc.get("charge_clamp", False))
+            has_forecast = int(rc.get("forecast_horizon_hours", 0)) > 0
+            if is_clamped == target_clamped and has_forecast == target_forecast:
                 out[label].append(run_data)
     return out
 
 
 def load_baselines():
-    """{agent name: row dict} from results/tables/frozen_baselines.csv."""
+    """Load baseline metrics from results/tables/frozen_baselines.csv."""
     import csv
     out = {}
     path = os.path.join(TABLES, "frozen_baselines.csv")
@@ -144,8 +147,15 @@ def load_baselines():
         return out
     with io.open(path, encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            if row.get("split") == "val":
-                out[row["agent"]] = row
+            if "split" in row and row.get("split") != "val":
+                continue
+            name = row.get("agent") or row.get("method")
+            if not name:
+                continue
+            out[name] = {
+                "cost_eur": row.get("cost_eur") or row.get("val_cost_eur"),
+                "exceedance_kw": row.get("exceedance_kw") or row.get("mean_exceedance_kw"),
+            }
     return out
 
 
@@ -189,24 +199,34 @@ def fig_learning_curves(runs, baselines):
     fig, axes = plt.subplots(2, 1, figsize=(9.5, 8.4), sharex=True)
 
     ax = axes[0]
+    max_cost_upper = G2_COST_EUR
     for label, _prefix, colour in GROUPS:
         steps, costs, _ = eval_curve(runs[label])
         if not steps:
             continue
         mean, sd = mean_sd(costs)
         x = [s / 1000 for s in steps]
+        upper = [m + s for m, s in zip(mean, sd)]
+        if upper:
+            max_cost_upper = max(max_cost_upper, max(upper))
         ax.plot(x, mean, color=colour, marker="o", markersize=4.5, label=label,
                 zorder=3)
         ax.fill_between(x, [m - s for m, s in zip(mean, sd)],
-                        [m + s for m, s in zip(mean, sd)],
-                        color=colour, alpha=0.18, linewidth=0)
+                        upper, color=colour, alpha=0.18, linewidth=0)
     ax.axhline(G2_COST_EUR, ls="--", color=GATE, lw=1.4, zorder=2,
                label="G2 gate  %.0f EUR" % G2_COST_EUR)
-    ax.set_ylim(*COST_YLIM)
-    ax.yaxis.set_major_locator(FixedLocator([45000, 50000, 55000, 60000]))
+    for name, style in (("Grid-Only", "--"), ("PSM'", ":")):
+        if name in baselines:
+            ax.axhline(float(baselines[name]["cost_eur"]), ls=style, color=BASE,
+                       lw=1.3, zorder=2)
+
+    ymax = 61500 if max_cost_upper <= 60500 else int(math.ceil((max_cost_upper + 2500) / 5000.0) * 5000)
+    tick_step = 5000 if ymax <= 70000 else 10000
+    ax.set_ylim(COST_YLIM[0], ymax)
+    ax.yaxis.set_major_locator(FixedLocator(list(range(45000, ymax + 1, tick_step))))
     ax.yaxis.set_major_formatter(FuncFormatter(fmt_k))
     ax.set_ylabel("Val cost (EUR)")
-    ax.set_title("A.  Val cost over training - flat for every method")
+    ax.set_title("A. Validation Cost over Training")
     ax.margins(x=0.02)
 
     ax = axes[1]
@@ -229,12 +249,9 @@ def fig_learning_curves(runs, baselines):
     log_axis(ax, "y", EXC_TICKS)
     ax.set_ylabel("Mean exceedance above cap\n(kW/step, log scale)")
     ax.set_xlabel("Training steps (thousands, evaluated every 50k)")
-    ax.set_title("B.  Val exceedance over training - only the shield reaches G1")
+    ax.set_title("B. Mean Grid Exceedance over Training")
     ax.set_xticks(STEP_TICKS)
     ax.margins(x=0.02)
-    ax.annotate("shielded runs are 0 kW\n(floored at %g for the log axis)" % FLOOR,
-                xy=(280, FLOOR), xytext=(275, 2.0e-3), ha="center", va="top",
-                fontsize=8.5, color="#444444")
 
     handles = [group_handle(g[0]) for g in GROUPS]
     handles += [
@@ -258,24 +275,7 @@ def fig_cost_vs_exceedance(runs, baselines):
     """Fig 2 - the cost / exceedance frontier, one marker per (method, seed)."""
     fig, ax = plt.subplots(figsize=(9.4, 6.6))
 
-    ax.set_xscale("log")
-    ax.set_xlim(FLOOR, 12)
-    ax.set_ylim(43500, 76000)
-    log_axis(ax, "x", EXC_TICKS)
-    ax.yaxis.set_major_locator(FixedLocator([45000, 50000, 55000, 60000, 65000,
-                                             70000, 75000]))
-    ax.yaxis.set_major_formatter(FuncFormatter(fmt_k))
-
-    # Feasible region: below G2 cost and left of G1 exceedance
-    ax.add_patch(plt.Rectangle((FLOOR, COST_YLIM[0]),
-                                G1_EXC_KW - FLOOR,
-                                G2_COST_EUR - COST_YLIM[0],
-                                color="#009E73", alpha=0.09, zorder=0))
-    ax.axhline(G2_COST_EUR, ls="--", color=GATE, lw=1.5, zorder=2,
-               label="G2 gate  %.0f EUR (1.05 x PSM')" % G2_COST_EUR)
-    ax.axvline(G1_EXC_KW, ls="--", color=GATE, lw=1.5, zorder=2,
-               label="G1 gate  %.2f kW/step" % G1_EXC_KW)
-
+    max_y = G2_COST_EUR
     handles = []
     for label, _prefix, colour in GROUPS:
         xs, ys = [], []
@@ -285,6 +285,7 @@ def fig_cost_vs_exceedance(runs, baselines):
             ys.append(float(m["total_cost_eur"]))
         if not xs:
             continue
+        max_y = max(max_y, max(ys))
         ax.scatter(xs, ys, s=80, color=colour, edgecolor="white", linewidth=1.1,
                    zorder=4)
         handles.append(group_handle(label, "  (5 seeds)"))
@@ -295,25 +296,47 @@ def fig_cost_vs_exceedance(runs, baselines):
         if name not in baselines:
             continue
         b = baselines[name]
+        by = float(b["cost_eur"])
+        max_y = max(max_y, by)
         ax.scatter([max(float(b["exceedance_kw"]), FLOOR)],
-                   [float(b["cost_eur"])], marker=marker, s=175, color=colour,
+                   [by], marker=marker, s=175, color=colour,
                    edgecolor="white", linewidth=1.2, zorder=5)
         handles.append(Line2D([], [], marker=marker, ls="", color=colour,
                               markersize=9,
                               label="%s (frozen)  %.0f EUR, %.2f kW"
-                                    % (name, float(b["cost_eur"]),
-                                       float(b["exceedance_kw"]))))
+                                    % (name, by, float(b["exceedance_kw"]))))
+
+    ymax = 62000 if max_y <= 60500 else int(math.ceil((max_y + 2500) / 5000.0) * 5000)
+    tick_step = 5000 if ymax <= 75000 else 10000
+
+    ax.set_xscale("log")
+    ax.set_xlim(FLOOR * 0.65, 12)
+    ax.set_ylim(COST_YLIM[0], ymax)
+    log_axis(ax, "x", EXC_TICKS)
+    ax.yaxis.set_major_locator(FixedLocator(list(range(45000, ymax + 1, tick_step))))
+    ax.yaxis.set_major_formatter(FuncFormatter(fmt_k))
+
+    # Feasible region: below G2 cost and left of G1 exceedance
+    ax.add_patch(plt.Rectangle((FLOOR * 0.65, COST_YLIM[0]),
+                                G1_EXC_KW - FLOOR * 0.65,
+                                G2_COST_EUR - COST_YLIM[0],
+                                color="#009E73", alpha=0.09, zorder=0))
+    ax.axhline(G2_COST_EUR, ls="--", color=GATE, lw=1.5, zorder=2,
+               label="G2 gate  %.0f EUR (1.05 x PSM')" % G2_COST_EUR)
+    ax.axvline(G1_EXC_KW, ls="--", color=GATE, lw=1.5, zorder=2,
+               label="G1 gate  %.2f kW/step" % G1_EXC_KW)
+    handles += [
+        Line2D([], [], ls="--", color=GATE, lw=1.5,
+               label="G2 gate  %.0f EUR" % G2_COST_EUR),
+        Line2D([], [], ls="--", color=GATE, lw=1.5,
+               label="G1 gate  %.2f kW/step" % G1_EXC_KW),
+    ]
 
     ax.set_xlabel("Mean exceedance above cap (kW/step, log scale; 0 floored at %g)"
-                   % FLOOR)
+                  % FLOOR)
     ax.set_ylabel("Val cost (EUR)")
-    ax.set_title("No learned policy is both cap-feasible and cheap\n"
-                 "(green box = passes G1 and G2)")
-    ax.legend(handles=handles, loc="upper right")
-    ax.annotate("shielded PPO:\nfeasible, but\nabove the G2 line",
-                xy=(FLOOR * 1.3, 58900), xytext=(0.0022, 66500), fontsize=9,
-                color="#7D3C98", va="center",
-                arrowprops=dict(arrowstyle="->", color="#7D3C98", lw=1.2))
+    ax.set_title("Validation Cost vs. Mean Grid Exceedance")
+    fig.legend(handles=handles, loc="outside lower center", ncol=3)
     fig.savefig(os.path.join(FIGS, "cost_vs_exceedance.png"))
     plt.close(fig)
 
@@ -338,22 +361,18 @@ def fig_lambda(runs):
             handles.append(Line2D([], [], color=colour, lw=2.4,
                                   label="%s   lambda at 300k: %s"
                                         % (label,
-                                           ", ".join("%.1f" % e
+                                           ", ".join("%.2f" % e
                                                      for e in sorted(ends)))))
 
     ax.set_yscale("log")
-    ax.set_ylim(1e-3, 200)
-    ax.set_xlim(0, 300)
+    ax.set_ylim(1e-3, 100)
+    ax.set_xlim(-5, 305)
     log_axis(ax, "y", [1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0])
     ax.set_xticks(STEP_TICKS)
     ax.set_xlabel("Training steps (thousands)")
     ax.set_ylabel("Lagrange multiplier lambda (log scale)")
-    ax.set_title("The multiplier diverges for plain PPO-Lagrangian and never\n"
-                 "transmits pressure to the policy (5 seeds each)")
-    ax.legend(handles=handles, loc="lower right")
-    ax.annotate("lambda still climbing at 300k\n-> no stable point reached",
-                xy=(292, 11), xytext=(110, 55), fontsize=9, color="#D55E00",
-                arrowprops=dict(arrowstyle="->", color="#D55E00", lw=1.2))
+    ax.set_title("Lagrange Multiplier Trajectory over Training")
+    fig.legend(handles=handles, loc="outside lower center", ncol=1)
     fig.savefig(os.path.join(FIGS, "lambda_trajectory.png"))
     plt.close(fig)
 
@@ -366,11 +385,13 @@ def fig_per_seed(runs, baselines):
     ypos = list(range(len(labels)))[::-1]
 
     ax = axes[0]
+    max_cost = G2_COST_EUR
     for y, label in zip(ypos, labels):
         vals = sorted(float(final_metrics(r)["total_cost_eur"])
                       for r in runs[label])
         if not vals:
             continue
+        max_cost = max(max_cost, max(vals))
         ax.scatter(vals, [y] * len(vals), s=85, color="#0072B2", zorder=4,
                    edgecolor="white", linewidth=1.1)
         ax.scatter([sum(vals) / len(vals)], [y], marker="D", s=95,
@@ -382,13 +403,16 @@ def fig_per_seed(runs, baselines):
     if "PSM'" in baselines:
         ax.axvline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE,
                    lw=1.3, zorder=2)
-    ax.set_xlim(44000, 60500)
-    ax.xaxis.set_major_locator(FixedLocator([45000, 50000, 55000, 60000]))
+
+    xmax = 61000 if max_cost <= 60000 else int(math.ceil((max_cost + 2500) / 5000.0) * 5000)
+    tick_step = 5000 if xmax <= 70000 else 10000
+    ax.set_xlim(44000, xmax)
+    ax.xaxis.set_major_locator(FixedLocator(list(range(45000, xmax + 1, tick_step))))
     ax.xaxis.set_major_formatter(FuncFormatter(fmt_k))
     ax.set_yticks(ypos)
     ax.set_yticklabels(labels)
     ax.set_xlabel("Val cost (EUR)")
-    ax.set_title("A.  Cost per seed")
+    ax.set_title("A. Validation Cost per Seed")
     ax.margins(y=0.20)
 
     ax = axes[1]
@@ -403,12 +427,12 @@ def fig_per_seed(runs, baselines):
                    color="#145A32", zorder=5)
     ax.axvline(G1_EXC_KW, ls="--", color=GATE, lw=1.5, zorder=2)
     ax.set_xscale("log")
-    ax.set_xlim(FLOOR, 12)
+    ax.set_xlim(FLOOR * 0.65, 12)
     log_axis(ax, "x", EXC_TICKS)
     ax.set_yticks(ypos)
     ax.set_yticklabels(labels)
     ax.set_xlabel("Mean exceedance above cap (kW/step, log scale; 0 floored)")
-    ax.set_title("B.  Exceedance per seed")
+    ax.set_title("B. Mean Grid Exceedance per Seed")
     ax.margins(y=0.20)
 
     handles = [
@@ -443,6 +467,7 @@ def fig_cost_breakdown(runs, baselines):
     colours = ("#0072B2", "#E67E22", "#7F8C8D")
 
     ypos = list(range(len(GROUPS)))[::-1]
+    max_total = G2_COST_EUR
     for y, (label, _prefix, _c) in zip(ypos, GROUPS):
         left = 0.0
         totals = []
@@ -454,12 +479,13 @@ def fig_cost_breakdown(runs, baselines):
             totals.append(v)
             ax.barh(y, v, left=left, height=0.52, color=colours[i],
                     edgecolor="white", linewidth=0.8)
-            if v / max(totals) > 0.02:
+            if v >= 4000:
                 ax.text(left + v / 2, y, "%.0f" % v, ha="center", va="center",
                         color="white", fontsize=9, fontweight="bold")
             left += v
         if totals and sum(totals) > 0:
-            ax.text(left + 500, y, "wear %.2f%%" % (100 * totals[2] / sum(totals)),
+            max_total = max(max_total, left)
+            ax.text(left + 600, y, "wear %.2f%%" % (100 * totals[2] / sum(totals)),
                     va="center", fontsize=8.5, color="#555555")
 
     handles = [Patch(facecolor=c, label=n) for c, n in zip(colours, names)]
@@ -472,12 +498,13 @@ def fig_cost_breakdown(runs, baselines):
                                         % (name,
                                            float(baselines[name]["cost_eur"]))))
 
+    xmax = max(68000, int(math.ceil((max_total + 9000) / 10000.0) * 10000))
     ax.set_yticks(ypos)
     ax.set_yticklabels([g[0] for g in GROUPS])
     ax.set_xlabel("Val cost (EUR, mean over 5 seeds)")
-    ax.set_title("Feasibility is bought with unserved energy, not with wear")
-    ax.set_xlim(0, 66000)
-    ax.xaxis.set_major_locator(FixedLocator([0, 20000, 40000, 60000]))
+    ax.set_title("Validation Cost Breakdown by Component")
+    ax.set_xlim(0, xmax)
+    ax.xaxis.set_major_locator(FixedLocator(list(range(0, xmax + 1, 20000))))
     ax.xaxis.set_major_formatter(FuncFormatter(fmt_k))
     fig.legend(handles=handles, loc="outside lower center", ncol=3)
     fig.savefig(os.path.join(FIGS, "cost_breakdown.png"))

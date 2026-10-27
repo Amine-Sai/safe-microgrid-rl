@@ -249,7 +249,7 @@ def main():
         print(f"Wrote {stress_csv} ({len(stress_records)} rows)")
 
     lock_record = {
-        "timestamp_utc": str(pd.Timestamp.utcnow()),
+        "timestamp_utc": str(pd.Timestamp.now("UTC")),
         "git_commit": _get_git_commit(),
         "split": split_name,
         "n_hours": env._n_timesteps,
