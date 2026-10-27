@@ -76,7 +76,8 @@ def main():
     out = []
     out.append(f"PYTEST: {pytest_status()}")
     out.append("TEST-LOCK: " + ("PRESENT (the published grid already ran)"
-                                if os.path.exists("results/TEST_RUN.lock")
+                                if (os.path.exists("results/TEST_RUN.lock")
+                                    or os.path.exists("results/runs/test_lock.json"))
                                 else "absent (Test split untouched)"))
     n = sum(len(re.findall(r"""["']test["']""",
                            open(f, encoding="utf-8", errors="replace").read()))

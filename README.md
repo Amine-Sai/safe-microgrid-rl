@@ -65,7 +65,7 @@ Three ways of making RL respect the cap, against two reference controllers:
 
 `env/smartgrid_env.py` is a [Gymnasium](https://gymnasium.farama.org/) environment with hourly steps and weekly episodes.
 
-- **Observation (17 values):** battery charge, solar power, the five zone loads, price, hour and weekday (sin/cos), weather, and event flags.
+- **Observation (17 values, or 23 with 6h lookahead):** battery charge, solar power, the five zone loads, price, hour and weekday (sin/cos), weather, event flags, plus optional 6-hour rolling PV and load forecasts (`forecast_horizon_hours: 6`).
 - **Action (6 values):** one battery command in [-1, 1] and five shed fractions in [0, 1].
 - **Battery:** 500 kWh, 250 kW, charge kept between 10 % and 90 %.
 - **Solar:** about 250 kW peak.
@@ -93,7 +93,7 @@ Datasets are fetched at run time and are **not** committed.
 | Solar irradiance | PVGIS (EU Joint Research Centre) |
 | Temperature, humidity, pressure | Open-Meteo |
 
-The zone split of the load and the stadium-event calendar are **synthetic**, configured under `data_preparation` in `configs/config.yaml` and generated in `Europe/Paris` local time using parametric activity profiles (bimodal peaks for residential, business windows for commercial and industrial, solar-irradiance-driven street lighting, and event-coupled stadium demand). Data is split by whole weeks into Train (2017–2018), Val (2019 H1) and Test (2019 H2). The Test split is kept closed and is not used by any code here.
+The zone split of the load and the stadium-event calendar are **synthetic**, configured under `data_preparation` in `configs/config.yaml` and generated in `Europe/Paris` local time using parametric activity profiles (bimodal peaks for residential, business windows for commercial and industrial, solar-irradiance-driven street lighting, and event-coupled stadium demand). Data is split by whole weeks into Train (2017–2018), Val (2019 H1) and Test (2019 H2). The Test split is kept closed during all training and tuning, and evaluated only once via `tools/report/evaluate_test_split.py --unlock-test-split`.
 
 ## Project layout
 
@@ -133,9 +133,10 @@ existing result. A full 300k-step run writes
 `results/runs/<agent>/<run-id>_seed<seed>.json` and a checkpoint under
 `checkpoints/`.
 
-`tools/report/plots.py --family unclamped` builds the unclamped figures under
-`results/figures/`; `--family clamped` builds the clamped figures under
-`results/figures/clamped/`.
+`tools/report/plots.py --family all` builds the per-family figures under
+`results/figures/unclamped/`, `results/figures/clamped/`, and
+`results/figures/clamped_forecast/`, plus the cross-family comparisons under
+`results/figures/comparison/`.
 
 ### Tests
 
@@ -189,14 +190,14 @@ Full figure sets across all three experimental families (`unclamped`, `clamped`,
 
 #### Cross-Family Validation Summary (300k steps, 5 seeds per method)
 
-| Method | Unclamped (17-D) Val Cost (EUR) | Clamped (17-D) Val Cost (EUR) | Clamped + Forecast (23-D) Val Cost (EUR) | Mean Exceedance (kW) | Feasible? ($d_{\text{main}} \le 0.05\text{ kW}$) |
+| Method | Unclamped (17-D) Val Cost (EUR) | Clamped (17-D) Val Cost (EUR) | Clamped + Forecast (23-D) Val Cost (EUR) | Mean Exceedance (kW, U / C / C+F) | Feasible? ($d_{\text{main}} \le 0.05\text{ kW}$) |
 |---|---:|---:|---:|:---:|:---:|
-| **PPO** | 45,513 ± 172 | 45,517 ± 177 | 45,630 ± 195 | ~3.25 kW | No |
-| **PPO-Lagrangian** | 45,539 ± 138 | 45,558 ± 129 | 45,649 ± 147 | ~3.26 kW | No |
-| **PPO-Residual** | 54,241 ± 1,230 | 54,571 ± 971 | 55,627 ± 914 | 0.24–0.28 kW | Close (2 seeds pass G1+G2) |
-| **Shielded PPO** | 58,937 ± 505 | 58,910 ± 10 | 58,110 ± 103 | **0.0000 kW** | **Yes (0.00% violations)** |
+| **PPO** | 45,513 ± 192 | 45,517 ± 198 | 49,098 ± 1,324 | 3.35 / 3.24 / 2.81 kW | No |
+| **PPO-Lagrangian** | 45,539 ± 154 | 45,558 ± 144 | 70,572 ± 5,906 | 3.34 / 3.26 / 1.13 kW | No |
+| **PPO-Residual** | 54,241 ± 1,375 | 54,571 ± 1,085 | 60,001 ± 2,786 | 0.38 / 0.24 / 0.26 kW | Close (2 Clamped seeds pass G1+G2) |
+| **Shielded PPO** | 58,937 ± 565 | 58,910 ± 11 | 59,526 ± 1,203 | **0.0000 kW** | **Yes (0.00% violations in C & C+F)** |
 | *Grid-Only* | *45,338* | *45,338* | *45,338* | *3.26 kW* | *No* |
-| *PSM' (tuned rule)* | *55,532* | *55,532* | *55,532* | *0.0000 kW* | *Yes (0.00% violations)* |
+| *PSM' (tuned rule)* | *55,530* | *55,530* | *55,530* | *0.0000 kW* | *Yes (0.00% violations)* |
 
 #### Cross-Family Comparisons (Without Visual Clutter)
 
