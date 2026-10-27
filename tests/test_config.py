@@ -25,6 +25,7 @@ def test_base_yaml_documents_every_key_with_a_default():
     assert BASE["ppo_clip_ratio"] == 0.2
     assert BASE["rollout_steps"] == 2048
     assert BASE["torch_threads"] == 1
+    assert BASE["charge_clamp"] is True
 
 
 def test_unknown_key_raises():
@@ -81,6 +82,21 @@ def test_every_override_key_actually_moves_the_resolved_config():
                 f"{exp_id}: override {k}={v!r} equals the base default — "
                 f"this probe would change nothing"
             )
+
+
+def test_resolved_config_charge_clamp_matches_env():
+    """Gate 3: resolved_config["charge_clamp"] matches build_env charge_clamp."""
+    from experiments.train_core import build_env
+    for config_id, expected_clamp in (
+        ("s3_ppo", False),
+        ("s3v2_ppo", True),
+        ("unclamped_ppo", False),
+        ("clamped_ppo", True),
+    ):
+        cfg = load_config_with_base(config_id)
+        env = build_env(cfg)
+        assert env.charge_clamp is expected_clamp
+        assert cfg["charge_clamp"] is expected_clamp
 
 
 @pytest.mark.needs_real_data

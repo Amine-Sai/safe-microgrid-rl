@@ -25,8 +25,7 @@ def _create_test_data():
     zones = {"residential": 0.35, "commercial": 0.25, "stadium": 0.10, "street": 0.05, "industrial": 0.25}
     d = {"load_kw": load, "price_eur_mwh": price, "irradiance_wm2": irr,
          "temperature_c": 10 + rng.normal(0, 2, n), "humidity_pct": np.clip(60 + rng.normal(0, 10, n), 20, 100),
-         "pressure_msl_hpa": 1013 + rng.normal(0, 8, n), "stadium_event": np.zeros(n, dtype=bool),
-         "event_phase": ["NONE"] * n, "day_period": ["DAY"] * n, "weather_rule": ["NORMAL"] * n}
+         "pressure_msl_hpa": 1013 + rng.normal(0, 8, n), "stadium_event": np.zeros(n, dtype=bool)}
     for z, s in zones.items():
         d[f"load_{z}_kw"] = load * s
     df = pd.DataFrame(d, index=ts); df.index.name = "timestamp"
@@ -252,6 +251,79 @@ def test_cap_shield_defaults_to_env_cap():
     assert CapShield(env, cap_kw=50.0).cap_kw == 50.0
 
 
+def test_cap_shield_agreement_with_env():
+    """Gate 2: Shield action in env does not over-shed and respects cap when charging."""
+    from env.cap_shield import CapShield
+    env = make_env(seed=42, charge_clamp=True)
+    shield = CapShield(env)
+    rng = np.random.RandomState(42)
+    obs, _ = shield.reset(seed=42)
+    for _ in range(48):
+        b_act = rng.uniform(-1.0, 1.0, size=(1,)).astype(np.float32)
+        full = shield.compose_action(b_act, obs)
+        assert -1.0 <= full[0] <= 1.0
+        obs, r, term, trunc, info = shield.step_with_obs(b_act, obs)
+        # When battery charges, import must not exceed cap (within float tolerance)
+        if info["battery_power_kw"] > 0:
+            assert info["grid_import_kw"] <= shield.cap_kw + 1e-6
+        # Power balance consistency (no double clipping)
+        net_calc = info["total_served_kw"] + info["battery_power_kw"] - info["pv_kw"]
+        assert abs(info["grid_import_kw"] - max(0.0, net_calc)) < 1e-6
+
+
+def test_charge_clipped_by_cap_vs_soc_separation():
+    """Verify that charge_clipped_by_cap_kw is 0 when clipping is purely SoC-induced."""
+    from env.smartgrid_env import battery_power_kw
+    env = make_env(seed=42, charge_clamp=True)
+    # SoC is at bat_soc_max (0.90), headroom is huge (400 kW cap, 50 kW served)
+    cmd = 1.0  # requests +250 kW
+    p, info = battery_power_kw(cmd, soc=0.90, served_load_kw=50.0, pv_generation_kw=0.0, env=env, return_info=True)
+    assert p == pytest.approx(0.0)
+    assert info["charge_requested_kw"] == pytest.approx(250.0)
+    assert info["charge_soc_bounded_kw"] == pytest.approx(0.0)
+    assert info["charge_clipped_by_soc_kw"] == pytest.approx(250.0)
+    assert info["charge_clipped_by_cap_kw"] == pytest.approx(0.0)
+    assert info["is_charge_clipped_by_cap"] is False
+
+    # Now SoC is low (0.50), but headroom is tiny (cap=400, served=380, headroom=20 kW)
+    p_cap, info_cap = battery_power_kw(cmd, soc=0.50, served_load_kw=380.0, pv_generation_kw=0.0, env=env, return_info=True)
+    assert p_cap == pytest.approx(20.0, abs=1e-5)
+    assert info_cap["charge_requested_kw"] == pytest.approx(250.0)
+    assert info_cap["charge_soc_bounded_kw"] == pytest.approx(210.5263, abs=0.1)
+    assert info_cap["charge_clipped_by_cap_kw"] == pytest.approx(210.5263 - 20.0, abs=0.1)
+    assert info_cap["is_charge_clipped_by_cap"] is True
+
+
+def test_cap_shield_zero_violations_with_float32_margin():
+    """Verify that CapShield produces 0 violations (no float32 under-shedding)."""
+    from env.cap_shield import CapShield
+    env = make_env(seed=42, charge_clamp=True)
+    shield = CapShield(env)
+    rng = np.random.RandomState(123)
+    obs, _ = shield.reset(seed=123)
+    for _ in range(100):
+        b_act = rng.uniform(-1.0, 1.0, size=(1,)).astype(np.float32)
+        obs, r, term, trunc, info = shield.step_with_obs(b_act, obs)
+        assert info["grid_exceedance_kw"] <= env.violation_tolerance_kw
+        assert info["is_violation"] is False
+
+
+def test_heuristics_env_parameter_alignment():
+    """Verify that PeakShaveMinPolicy defaults align with SmartGridEnv.default_config()."""
+    from agents.heuristics import PeakShaveMinPolicy
+    from env.smartgrid_env import default_config
+    cfg = default_config()
+    pol = PeakShaveMinPolicy()
+    assert pol.p_max == cfg["battery_max_power_kw"]
+    assert pol.c_bat == cfg["battery_capacity_kwh"]
+    assert pol.soc_floor == cfg["battery_soc_min"]
+    assert pol.soc_max == cfg["battery_soc_max"]
+    assert pol.eta_c == cfg["battery_eta_charge"]
+    assert pol.eta_d == cfg["battery_eta_discharge"]
+    assert pol.dt == cfg["dt_hours"]
+    assert pol.motor_min_pct == cfg["motor_min_pct"]
+
+
 def test_persisted_cap_matches_recomputed_p90():
     """split_report.json must agree with a fresh derivation from the train split."""
     import pandas as pd
@@ -277,6 +349,49 @@ def test_persisted_cap_matches_recomputed_p90():
     expected = round(float(np.quantile(net_import, derived["quantile"])), 6)
 
     assert derived["value_kw"] == pytest.approx(expected, abs=1e-6)
+
+
+def test_data_preparation_parametric_zones_and_events():
+    """Verify config-driven parametric zone disaggregation, event coupling, and clean schema."""
+    import pandas as pd
+    from data.prepare import (
+        apply_zone_disaggregation,
+        generate_event_calendar,
+        load_preparation_config,
+    )
+
+    prep_cfg = load_preparation_config()
+    assert set(prep_cfg["zones"]) == {
+        "residential",
+        "commercial",
+        "stadium",
+        "street",
+        "industrial",
+    }
+
+    ts = pd.date_range("2018-06-01", periods=168 * 2, freq="h")
+    df = pd.DataFrame(
+        {
+            "load_kw": np.full(len(ts), 300.0, dtype=np.float64),
+            "irradiance_wm2": np.where((ts.hour >= 7) & (ts.hour <= 19), 500.0, 0.0),
+        },
+        index=ts,
+    )
+    df = generate_event_calendar(df, prep_cfg)
+    df = apply_zone_disaggregation(df, prep_cfg)
+
+    zone_cols = [f"load_{z}_kw" for z in prep_cfg["zones"]]
+    assert np.allclose(df[zone_cols].sum(axis=1), df["load_kw"], atol=1e-6)
+
+    # Stadium load must surge during active stadium events relative to non-event hours
+    active_stadium = df.loc[df["stadium_event"], "load_stadium_kw"].mean()
+    idle_stadium = df.loc[~df["stadium_event"] & ~df["event_warmup"], "load_stadium_kw"].mean()
+    assert active_stadium > 2.5 * idle_stadium
+
+    # Street lighting must be higher at night (irradiance == 0) than during daylight
+    night_street = df.loc[df["irradiance_wm2"] == 0.0, "load_street_kw"].mean()
+    day_street = df.loc[df["irradiance_wm2"] >= 200.0, "load_street_kw"].mean()
+    assert night_street > 5.0 * day_street
 
 
 if __name__ == "__main__":

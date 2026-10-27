@@ -12,3 +12,7 @@ tests/test_data/
 checkpoints/
 .DS_Store
 NOTES.md
+notes.md
+*.log
+*.tmp
+scratch/

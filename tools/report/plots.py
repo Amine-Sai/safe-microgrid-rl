@@ -20,6 +20,22 @@ TABLES = os.path.join(ROOT, "results", "tables")
 RUNS = os.path.join(ROOT, "results", "runs")
 FIGS = os.path.join(ROOT, "results", "figures")
 
+
+def load_project_constants():
+    """Load evaluation gates and physical constants from results/tables/project_constants.csv."""
+    import csv
+    constants_path = os.path.join(TABLES, "project_constants.csv")
+    constants = {}
+    if os.path.exists(constants_path):
+        with open(constants_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                constants[row["name"]] = float(row["value"])
+    exceedance_gate_kw = constants.get("d_main_kw_per_step", 0.05)
+    cost_gate_eur = constants.get("g2_cost_eur", 58308.55)
+    return exceedance_gate_kw, cost_gate_eur
+
+
 # ---------------------------------------------------------------------------
 # experiment groups, in the order we want them drawn
 # (label, agent folder under results/runs/, colour)
@@ -32,8 +48,7 @@ GROUPS = [
 ]
 COLOURS = dict((g[0], g[2]) for g in GROUPS)
 
-G1_EXC_KW = 0.05          # pre-registered exceedance gate, kW/step
-G2_COST_EUR = 58308.55   # 1.05 x PSM' Val cost
+G1_EXC_KW, G2_COST_EUR = load_project_constants()
 FLOOR = 1e-4             # floor used when a log axis has to show a zero
 
 GATE = "#C0392B"         # gate lines
@@ -93,9 +108,16 @@ def group_of(agent):
     return None
 
 
-def load_runs():
-    """{group: [run dict, ...]} for the per-run JSONs under results/runs/<agent>/."""
+def load_runs(family: str = "unclamped"):
+    """{group: [run dict, ...]} for the per-run JSONs under results/runs/<agent>/.
+
+    Filters by experiment family ("unclamped" vs "clamped") so the two physics
+    regimes are never pooled together in a single figure.
+    """
     out = dict((g[0], []) for g in GROUPS)
+    target_clamped = family in ("clamped", "s3v2", "v2")
+    prefix_filter = ("s3v2_", "clamped_") if target_clamped else ("s3_", "unclamped_")
+
     for agent in sorted(os.listdir(RUNS)):
         agent_dir = os.path.join(RUNS, agent)
         if not os.path.isdir(agent_dir):
@@ -106,8 +128,14 @@ def load_runs():
         for fname in sorted(os.listdir(agent_dir)):
             if not fname.endswith(".json") or fname.endswith("_grid.json"):
                 continue
+            if not any(fname.startswith(p) for p in prefix_filter):
+                continue
             with io.open(os.path.join(agent_dir, fname), encoding="utf-8") as f:
-                out[label].append(json.load(f))
+                run_data = json.load(f)
+            # Verify charge_clamp matches target family
+            is_clamped = bool((run_data.get("resolved_config") or {}).get("charge_clamp", False))
+            if is_clamped == target_clamped:
+                out[label].append(run_data)
     return out
 
 
@@ -464,15 +492,27 @@ def fig_cost_breakdown(runs, baselines):
 
 # ---------------------------------------------------------------------------
 def main():
+    global FIGS
+    family = "unclamped"
+    if "--family" in sys.argv:
+        idx = sys.argv.index("--family")
+        if idx + 1 < len(sys.argv):
+            family = sys.argv[idx + 1]
+
+    if family in ("clamped", "s3v2", "v2"):
+        FIGS = os.path.join(ROOT, "results", "figures", "clamped")
+    else:
+        FIGS = os.path.join(ROOT, "results", "figures")
     os.makedirs(FIGS, exist_ok=True)
-    runs = load_runs()
+
+    runs = load_runs(family=family)
     baselines = load_baselines()
 
     total = sum(len(v) for v in runs.values())
     if total == 0:
-        print("no run JSONs found in %s - nothing to plot" % RUNS)
+        print("no run JSONs found in %s for family %r - nothing to plot" % (RUNS, family))
         return 1
-    print("loaded %d runs in %d groups" % (total, len(runs)))
+    print("loaded %d runs in %d groups (family: %s)" % (total, len(runs), family))
 
     for fn, args in ((fig_learning_curves, (runs, baselines)),
                      (fig_cost_vs_exceedance, (runs, baselines)),

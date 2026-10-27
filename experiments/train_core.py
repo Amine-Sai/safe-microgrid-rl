@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import json
+from typing import Optional
 import yaml
 import numpy as np
 import torch as th
@@ -20,7 +21,17 @@ def set_seed(seed: int = 42):
 
 
 def evaluate_deterministic_val(env_val: SmartGridEnv, agent, extra_log=None) -> dict:
-    """Evaluate an agent deterministically on all 26 validation weeks."""
+    """Evaluate an agent deterministically on all validation weeks."""
+    base_env = getattr(env_val, "env", env_val)
+    episode_hours = base_env.episode_length
+    num_val_weeks = base_env._n_timesteps // episode_hours
+    total_val_hours = num_val_weeks * episode_hours
+
+    sat_thresh = float(getattr(base_env, "action_saturation_threshold", 0.99))
+    soc_pin_tol = float(getattr(base_env, "soc_pinned_tolerance", 0.005))
+    soc_lower_pin = base_env.bat_soc_min + soc_pin_tol
+    soc_upper_pin = base_env.bat_soc_max - soc_pin_tol
+
     total_purchase = 0.0
     total_unserved = 0.0
     total_wear = 0.0
@@ -28,34 +39,45 @@ def evaluate_deterministic_val(env_val: SmartGridEnv, agent, extra_log=None) -> 
     unserved_kwh = 0.0
     demand_kwh = 0.0
     exceedances = []
-    total_hours = 26 * 168
     sat_fracs = []
     soc_pins = []
+    cap_clipped_kw_list = []
+    soc_clipped_kw_list = []
+    is_cap_clipped_list = []
 
     # The observation normalizer stays frozen during evaluation.
-    for week in range(26):
-        obs, _ = env_val.reset(options={"start_idx": week * 168})
-        for _ in range(168):
+    for week in range(num_val_weeks):
+        obs, _ = env_val.reset(options={"start_idx": week * episode_hours})
+        for _ in range(episode_hours):
             # PPOAgent applies the residual internally; evaluate=True uses the mean action.
             action = agent.select_action(obs, evaluate=True)[0]
-            sat_fracs.append(float(np.mean(np.abs(np.asarray(action)) >= 0.99)))
-            soc_pins.append(float(obs[0] <= 0.105 or obs[0] >= 0.895))
+            sat_fracs.append(float(np.mean(np.abs(np.asarray(action)) >= sat_thresh)))
+            soc_pins.append(float(obs[0] <= soc_lower_pin or obs[0] >= soc_upper_pin))
 
             obs, _, _, _, info = env_val.step(action)
             total_purchase += info["energy_cost"]
             total_unserved += info["unserved_cost"]
             total_wear += info["battery_wear_cost"]
-            unserved_kwh += info["total_unserved_kw"] * env_val.dt_hours
-            demand_kwh += (info["total_served_kw"] + info["total_unserved_kw"]) * env_val.dt_hours
+            unserved_kwh += info["total_unserved_kw"] * base_env.dt_hours
+            demand_kwh += (info["total_served_kw"] + info["total_unserved_kw"]) * base_env.dt_hours
 
             grid_import = info["grid_import_kw"]
-            excess = max(0.0, grid_import - env_val.grid_import_cap_kw)
+            excess = max(0.0, grid_import - base_env.grid_import_cap_kw)
             exceedances.append(excess)
-            if grid_import > env_val.grid_import_cap_kw:
+            if info.get("is_violation", excess > base_env.violation_tolerance_kw):
                 violation_hours += 1
 
+            if "charge_clipped_by_cap_kw" in info:
+                cap_clipped_kw_list.append(info["charge_clipped_by_cap_kw"])
+                soc_clipped_kw_list.append(info.get("charge_clipped_by_soc_kw", 0.0))
+                is_cap_clipped_list.append(bool(info.get("is_charge_clipped_by_cap", False)))
+            elif "charge_clipped_kw" in info:
+                cap_clipped_kw_list.append(info["charge_clipped_kw"])
+                soc_clipped_kw_list.append(0.0)
+                is_cap_clipped_list.append(bool(info.get("charge_clipped_by_cap", False)))
+
     total_cost = total_purchase + total_unserved + total_wear
-    violation_rate = (violation_hours / total_hours) * 100.0
+    violation_rate = (violation_hours / total_val_hours) * 100.0
     unserved_pct = (unserved_kwh / demand_kwh) * 100.0
     mean_exceedance = float(np.mean(exceedances))
     out = {
@@ -70,6 +92,13 @@ def evaluate_deterministic_val(env_val: SmartGridEnv, agent, extra_log=None) -> 
         "frac_saturated": float(np.mean(sat_fracs)),
         "soc_pinned_pct": float(np.mean(soc_pins)) * 100.0,
     }
+    if cap_clipped_kw_list:
+        out["mean_charge_clipped_by_cap_kw"] = float(np.mean(cap_clipped_kw_list))
+        out["mean_charge_clipped_by_soc_kw"] = float(np.mean(soc_clipped_kw_list))
+        out["cap_clipped_steps_pct"] = float(np.mean(is_cap_clipped_list)) * 100.0
+        # Backward compatibility aliases
+        out["charge_clipped_kw_mean"] = out["mean_charge_clipped_by_cap_kw"]
+        out["clipped_pct"] = out["cap_clipped_steps_pct"]
     if extra_log:
         out.update(extra_log)
     return out
@@ -91,6 +120,35 @@ PPO_METHODS = (
     "ppo_potential_shaping",
     "ppo_lagrangian_potential_shaping",
 )
+
+ENV_KEYS = (
+    "data_path", "battery_capacity_kwh", "battery_max_power_kw",
+    "battery_eta_charge", "battery_eta_discharge", "battery_soc_min",
+    "battery_soc_max", "battery_soc_init", "cost_unserved_eur_kwh",
+    "cost_wear_eur_kwh", "grid_import_cap_kw", "soc_reserve_floor",
+    "pv_area_m2", "pv_efficiency", "pv_performance_ratio",
+    "motor_min_pct", "episode_length_hours", "shed_mapping",
+    "charge_clamp", "dt_hours", "industrial_shutdown_threshold",
+    "ind_off_threshold", "cap_clamp_tolerance_kw", "cap_clamp_tol_kw",
+    "violation_tolerance_kw", "violation_tol_kw",
+    "action_saturation_threshold", "action_sat_threshold",
+    "soc_pinned_tolerance", "soc_pin_tol",
+)
+
+
+def build_env(cfg: dict, split: str = "train", seed: Optional[int] = None) -> SmartGridEnv:
+    """Build a SmartGridEnv forwarding whitelisted env configuration keys from cfg."""
+    env_cfg = {"split": split}
+    if seed is not None:
+        env_cfg["seed"] = seed
+    elif "seed" in cfg:
+        env_cfg["seed"] = cfg["seed"]
+
+    for k in ENV_KEYS:
+        if k in cfg:
+            env_cfg[k] = cfg[k]
+
+    return SmartGridEnv(env_cfg)
 
 
 def agent_name(method_name: str, cfg: dict) -> str:
@@ -121,22 +179,23 @@ def grid_only_reward_scale(cfg: dict, shed_mapping: str, method_name: str = "age
         return reward_scale
     from agents.heuristics import GridOnlyPolicy
 
-    env = SmartGridEnv({"split": "train", "seed": cfg["seed"], "shed_mapping": shed_mapping})
+    env = build_env(dict(cfg, shed_mapping=shed_mapping), split="train", seed=cfg["seed"])
     env.action_space.seed(cfg["seed"])
     env.reset()
     policy = GridOnlyPolicy()
     rewards = []
-    n_episodes = env._n_timesteps // 168
+    ep_hours = env.episode_length
+    n_episodes = env._n_timesteps // ep_hours
     for episode in range(n_episodes):
-        obs, _ = env.reset(options={"start_idx": episode * 168})
-        for _ in range(168):
+        obs, _ = env.reset(options={"start_idx": episode * ep_hours})
+        for _ in range(ep_hours):
             next_obs, reward, _, truncated, _ = env.step(policy.get_action(obs))
             rewards.append(abs(reward))
             obs = next_obs
             # Reset only while another episode remains: a trailing reset would index
             # past the end of the split.
             if truncated and episode + 1 < n_episodes:
-                obs, _ = env.reset(options={"start_idx": (episode + 1) * 168})
+                obs, _ = env.reset(options={"start_idx": (episode + 1) * ep_hours})
     scale = 1.0 / float(sum(rewards) / len(rewards))
     print(f"[{method_name}] reward_scale c = 1/mean|r| = {scale:.6f} "
           f"(Grid-Only Train, {len(rewards)} steps, {n_episodes} episodes)", flush=True)
@@ -223,9 +282,9 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
 
     set_seed(cfg["seed"])
     shed_mapping = cfg.get("shed_mapping", "linear")
-    env_train = SmartGridEnv({"split": "train", "seed": cfg["seed"], "shed_mapping": shed_mapping})
+    env_train = build_env(dict(cfg, shed_mapping=shed_mapping), split="train", seed=cfg["seed"])
     env_train.action_space.seed(cfg["seed"])
-    env_val = SmartGridEnv({"split": "val", "seed": cfg["seed"] + 100})
+    env_val = build_env(dict(cfg, shed_mapping=shed_mapping), split="val", seed=cfg["seed"] + 100)
 
     # CapShield wraps the env and only sheds the excess over the cap.
     shielded = bool(cfg.get("shielded", False))
@@ -233,6 +292,9 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
         from env.cap_shield import CapShield
         env_train = CapShield(env_train)
         env_val = CapShield(env_val)
+
+    base_env_val = getattr(env_val, "env", env_val)
+    base_env_train = getattr(env_train, "env", env_train)
 
     total_steps = cfg["total_steps"]
     eval_interval = cfg["eval_interval_steps"]
@@ -339,8 +401,10 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
 
     if not eval_checkpoints and eval_interval <= total_steps:
         raise RuntimeError(f"No evaluation was recorded for {method_name}")
-    feasible_checkpoints = [(k, v) for k, v in eval_checkpoints.items()
-                            if v["mean_exceedance_kw"] <= cost_limit + 1e-4]
+    feasible_checkpoints = [
+        (k, v) for k, v in eval_checkpoints.items()
+        if v["mean_exceedance_kw"] <= cost_limit + base_env_val.violation_tolerance_kw
+    ]
     if feasible_checkpoints:
         best_ckpt_key, best_ckpt_val = min(feasible_checkpoints, key=lambda x: x[1]["total_cost_eur"])
     else:
@@ -349,7 +413,9 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
 
     train_mean_exceedance = float(np.mean(all_train_exceedances))
     train_total_cost_eur = float(np.sum(all_train_costs_eur))
-    train_violation_rate_pct = float(np.mean(np.array(all_train_exceedances) > 0.0)) * 100.0
+    train_violation_rate_pct = (
+        float(np.mean(np.array(all_train_exceedances) > base_env_train.violation_tolerance_kw)) * 100.0
+    )
 
     if is_lagrangian:
         lambda_start = lambda_trajectory[0]["lambda"] if lambda_trajectory else 0.0
@@ -366,7 +432,9 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
     mean_battery_action = float(np.mean(action_array[:, 0]))
     # 1-D shielded actions have no shed dims.
     mean_shed_action = float(np.mean(action_array[:, 1:])) if action_array.shape[1] > 1 else 0.0
-    soc_pinned_pct = float(np.mean((soc_array <= 0.205) | (soc_array >= 0.895))) * 100.0
+    soc_pinned_lo = base_env_train.soc_reserve_floor + base_env_train.soc_pinned_tolerance
+    soc_pinned_hi = base_env_train.bat_soc_max - base_env_train.soc_pinned_tolerance
+    soc_pinned_pct = float(np.mean((soc_array <= soc_pinned_lo) | (soc_array >= soc_pinned_hi))) * 100.0
     degenerate_flags = []
     if np.all(action_array[:, 0] <= 0.01):
         degenerate_flags.append("Never charges battery")
@@ -390,6 +458,7 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
         "resolved_config": dict(
             cfg,
             grid_import_cap_kw=env_train.grid_import_cap_kw,
+            charge_clamp=env_train.charge_clamp,
             reward_scale_effective=cfg.get("reward_scale", 1.0),
         ),
         "wall_clock_sec": total_wall_clock,

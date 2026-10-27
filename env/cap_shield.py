@@ -1,4 +1,6 @@
+from typing import Optional
 import numpy as np
+from env.smartgrid_env import battery_power_kw
 
 # (obs index of zone load, action dim of its shed, industrial flag)
 # Order: street -> stadium -> commercial -> residential -> industrial (PSM').
@@ -11,63 +13,90 @@ SHED_ORDER = (
 )
 
 
-def predict_battery_kw(batt_cmd: float, soc: float, env) -> float:
+def predict_battery_kw(
+    batt_cmd: float,
+    soc: float,
+    env,
+    served_kw: Optional[float] = None,
+    pv_kw: float = 0.0,
+    clamp: Optional[bool] = None,
+) -> float:
     """Post-battery power in kW, mirroring the env's clipping without mutating it.
 
-    Positive means charging (raises grid import), negative means discharging. Only
-    the env's public constants are used; the env's step applies the full physics.
+    Positive means charging (raises grid import), negative means discharging.
+    Delegates to the shared battery_power_kw in env.smartgrid_env.
     """
-    p = float(np.clip(batt_cmd, -1.0, 1.0)) * env.bat_max_power_kw
-    if p > 0:
-        max_charge = ((env.bat_soc_max - soc) * env.bat_capacity_kwh
-                      / (env.bat_eta_charge * env.dt_hours))
-        p = max(0.0, min(p, max_charge))
-    else:
-        max_discharge = ((soc - env.bat_soc_min) * env.bat_capacity_kwh
-                         * (env.bat_eta_discharge / env.dt_hours))
-        p = min(0.0, max(p, -max_discharge))
-    return p
+    if served_kw is None:
+        clamp = False if clamp is None else clamp
+        served_kw = 0.0
+    return battery_power_kw(batt_cmd, soc, served_kw, pv_kw, env, clamp=clamp)
 
 
-def shed_actions_for(excess_kw: float, obs: np.ndarray) -> np.ndarray:
+def shed_actions_for(
+    excess_kw: float,
+    obs: np.ndarray,
+    motor_min_fraction: float = 0.70,
+    industrial_shutdown_threshold: float = 0.90,
+) -> np.ndarray:
     """Minimum-excess shed actions (5 dims, linear mapping a = 2s-1), PSM' order."""
-    shed_kw = np.zeros(5)
-    rem = max(0.0, float(excess_kw))
+    zone_shed_kw = np.zeros(5, dtype=np.float64)
+    remaining_excess_kw = max(0.0, float(excess_kw))
+    max_linear_industrial_shed_fraction = 1.0 - motor_min_fraction
+
     for entry in SHED_ORDER:
-        if rem <= 0:
+        if remaining_excess_kw <= 0.0:
             break
-        d = max(0.0, float(obs[entry["obs_idx"]]))
-        if d <= 0:
+        zone_demand_kw = max(0.0, float(obs[entry["obs_idx"]]))
+        if zone_demand_kw <= 0.0:
             continue
-        k = entry["obs_idx"] - 2  # zone position 0..4 == shed dim 0..4
+        zone_index = entry["obs_idx"] - 2  # zone position 0..4 == shed dim 0..4
+
         if entry["industrial"]:
-            # partial cover within the 30% band, otherwise fully off
-            if rem <= 0.30 * d:
-                shed_kw[k] = rem
-                rem = 0.0
+            # partial cover within the linear motor band, otherwise fully off
+            max_linear_kw = max_linear_industrial_shed_fraction * zone_demand_kw
+            if remaining_excess_kw <= max_linear_kw:
+                zone_shed_kw[zone_index] = remaining_excess_kw
+                remaining_excess_kw = 0.0
             else:
-                shed_kw[k] = d
-                rem -= d
+                zone_shed_kw[zone_index] = zone_demand_kw
+                remaining_excess_kw -= zone_demand_kw
         else:
-            take = min(rem, d)
-            shed_kw[k] = take
-            rem -= take
-    # invert to linear-mapping actions
-    act = np.full(5, -1.0, dtype=np.float32)  # s = 0
+            allocated_shed_kw = min(remaining_excess_kw, zone_demand_kw)
+            zone_shed_kw[zone_index] = allocated_shed_kw
+            remaining_excess_kw -= allocated_shed_kw
+
+    # Invert to linear-mapping actions: s = (a + 1) / 2 -> a = 2s - 1.
+    # Nudge active continuous actions up by 1 float32 ULP so float32 round-trip
+    # in SmartGridEnv.step never under-sheds due to floating-point truncation.
+    zone_shed_actions = np.full(5, -1.0, dtype=np.float32)  # s = 0 default
     for entry in SHED_ORDER:
-        k = entry["obs_idx"] - 2
-        d = max(0.0, float(obs[entry["obs_idx"]]))
-        if shed_kw[k] <= 0 or d <= 0:
+        zone_index = entry["obs_idx"] - 2
+        zone_demand_kw = max(0.0, float(obs[entry["obs_idx"]]))
+        allocated_shed_kw = zone_shed_kw[zone_index]
+        if allocated_shed_kw <= 0.0 or zone_demand_kw <= 0.0:
             continue
+
+        action_dim_idx = entry["act_dim"] - 1
         if entry["industrial"]:
-            if shed_kw[k] >= d - 1e-9:
-                act[entry["act_dim"] - 1] = 1.0  # fully off
+            if allocated_shed_kw >= zone_demand_kw - 1e-9:
+                zone_shed_actions[action_dim_idx] = 1.0  # fully off
             else:
-                s = shed_kw[k] * 0.9 / (0.30 * d)
-                act[entry["act_dim"] - 1] = float(np.clip(2.0 * s - 1.0, -1.0, 0.80))
+                linear_s = (
+                    (allocated_shed_kw / (max_linear_industrial_shed_fraction * zone_demand_kw))
+                    * industrial_shutdown_threshold
+                )
+                raw_action_f32 = np.float32(2.0 * linear_s - 1.0)
+                nudged_action = np.nextafter(raw_action_f32, np.float32(1.0))
+                max_linear_action = float(2.0 * industrial_shutdown_threshold - 1.0)
+                zone_shed_actions[action_dim_idx] = float(
+                    np.clip(nudged_action, -1.0, max_linear_action)
+                )
         else:
-            act[entry["act_dim"] - 1] = float(2.0 * (shed_kw[k] / d) - 1.0)
-    return np.clip(act, -1.0, 1.0).astype(np.float32)
+            raw_action_f32 = np.float32(2.0 * (allocated_shed_kw / zone_demand_kw) - 1.0)
+            nudged_action = np.nextafter(raw_action_f32, np.float32(1.0))
+            zone_shed_actions[action_dim_idx] = float(np.clip(nudged_action, -1.0, 1.0))
+
+    return zone_shed_actions.astype(np.float32)
 
 
 class CapShield:
@@ -91,32 +120,51 @@ class CapShield:
         self._last_obs = obs.copy()
         return obs, info
 
-    def compose_action(self, batt_cmd_1d, obs: np.ndarray) -> np.ndarray:
+    def compose_action(self, battery_command_1d, obs: np.ndarray) -> np.ndarray:
         """1-D battery command + obs -> full 6-D env action with minimum-excess shed."""
-        b = float(np.asarray(batt_cmd_1d, dtype=np.float32).ravel()[0])
+        battery_command = float(np.asarray(battery_command_1d, dtype=np.float32).ravel()[0])
         soc = float(obs[0])
-        pv = float(obs[1])
-        demand = float(sum(float(obs[i]) for i in (2, 3, 4, 5, 6)))
-        batt_kw = predict_battery_kw(b, soc, self.env)
-        predicted_import = max(0.0, demand - pv + batt_kw)
-        excess = predicted_import - self.cap_kw
-        shed = shed_actions_for(excess, obs)
-        full = np.concatenate([[np.clip(b, -1.0, 1.0)], shed]).astype(np.float32)
-        return full
+        pv_kw = float(obs[1])
+        total_demand_kw = float(sum(float(obs[i]) for i in (2, 3, 4, 5, 6)))
 
-    def step(self, batt_cmd_1d):
+        clamp_enabled = getattr(self.env, "charge_clamp", True)
+        motor_min_pct = getattr(self.env, "motor_min_pct", 0.70)
+        ind_off_thresh = getattr(self.env, "industrial_shutdown_threshold", 0.90)
+
+        if not clamp_enabled:
+            batt_kw = predict_battery_kw(battery_command, soc, self.env)
+            predicted_import_kw = max(0.0, total_demand_kw - pv_kw + batt_kw)
+            excess_kw = predicted_import_kw - self.cap_kw
+            shed_actions = shed_actions_for(
+                excess_kw, obs, motor_min_fraction=motor_min_pct, industrial_shutdown_threshold=ind_off_thresh
+            )
+            full_action = np.concatenate([[np.clip(battery_command, -1.0, 1.0)], shed_actions]).astype(np.float32)
+            return full_action
+
+        # Charge-clamped composition:
+        # Pre-clamp battery power against total un-shed demand. When demand - pv >= cap,
+        # available import headroom is zero so positive charge is clamped to zero,
+        # preventing unnecessary load shedding to accommodate charging.
+        batt_kw = battery_power_kw(battery_command, soc, total_demand_kw, pv_kw, self.env, clamp=True)
+        predicted_import_kw = max(0.0, total_demand_kw - pv_kw + batt_kw)
+        excess_kw = predicted_import_kw - self.cap_kw
+
+        shed_actions = shed_actions_for(
+            excess_kw, obs, motor_min_fraction=motor_min_pct, industrial_shutdown_threshold=ind_off_thresh
+        )
+        full_action = np.concatenate([[np.clip(battery_command, -1.0, 1.0)], shed_actions]).astype(np.float32)
+        return full_action
+
+    def step(self, battery_command_1d):
         """Drop-in env step with a 1-D battery action (uses the obs from reset/last step)."""
         if not hasattr(self, "_last_obs"):
             raise RuntimeError("CapShield.step called before reset")
-        return self.step_with_obs(batt_cmd_1d, self._last_obs)
+        return self.step_with_obs(battery_command_1d, self._last_obs)
 
-    def step_with_obs(self, batt_cmd_1d, obs: np.ndarray):
-        full = self.compose_action(batt_cmd_1d, obs)
-        obs2, r, term, trunc, info = self.env.step(full)
-        self._last_obs = obs2.copy()
+    def step_with_obs(self, battery_command_1d, obs: np.ndarray):
+        full_action = self.compose_action(battery_command_1d, obs)
+        next_obs, reward, terminated, truncated, info = self.env.step(full_action)
+        self._last_obs = next_obs.copy()
         info = dict(info)
-        info["shield_shed_kw"] = float(np.sum([
-            max(0.0, float(obs[i])) * max(0.0, (float(full[d]) + 1.0) / 2.0)
-            for i, d in ((2, 1), (3, 2), (4, 3), (5, 4))
-        ]))
-        return obs2, r, term, trunc, info
+        info["shield_shed_kw"] = float(info.get("total_unserved_kw", 0.0))
+        return next_obs, reward, terminated, truncated, info

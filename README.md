@@ -74,10 +74,14 @@ Three ways of making RL respect the cap, against two reference controllers:
   `data/prepare.py` and stored in `data/processed/split_report.json`. It is a
   peak-reduction **target**, not a hardware rating: 10.0 % of train hours and 10.7 %
   of val hours exceed it before any control, and 6 of the 104 train weeks need more
-  peak-shaving energy than the battery can deliver at one full cycle per day. Runs
-  record the resolved value under `resolved_config.grid_import_cap_kw`.
+  peak-shaving energy than the battery can deliver at one full cycle per day.
+  Under `charge_clamp: true` (default in v2), an operator interlock enforces that
+  battery charging cannot draw power above available import headroom, removing
+  charging-induced violations by construction while keeping load-side violations
+  as the soft constraint learning target. Runs record the resolved value under
+  `resolved_config.grid_import_cap_kw` and `resolved_config.charge_clamp`.
 
-`env/cap_shield.py` is the shield wrapper. It clips the battery command so the cap cannot be exceeded and turns any remaining violation into shed load.
+`env/cap_shield.py` is the shield wrapper. It shares the environment's battery power clipping function so shedding is never triggered to make room for charging that the env would reject, and sheds minimal excess load to keep total import at or below the cap.
 
 ## The data
 
@@ -89,7 +93,7 @@ Datasets are fetched at run time and are **not** committed.
 | Solar irradiance | PVGIS (EU Joint Research Centre) |
 | Temperature, humidity, pressure | Open-Meteo |
 
-The zone split of the load and the stadium-event calendar are **synthetic**. Data is split by whole weeks into Train (2017–2018), Val (2019 H1) and Test (2019 H2). The Test split is kept closed and is not used by any code here.
+The zone split of the load and the stadium-event calendar are **synthetic**, configured under `data_preparation` in `configs/config.yaml` and generated in `Europe/Paris` local time using parametric activity profiles (bimodal peaks for residential, business windows for commercial and industrial, solar-irradiance-driven street lighting, and event-coupled stadium demand). Data is split by whole weeks into Train (2017–2018), Val (2019 H1) and Test (2019 H2). The Test split is kept closed and is not used by any code here.
 
 ## Project layout
 
@@ -116,16 +120,22 @@ python data/download.py
 python data/prepare.py
 python -m pytest tests/ -v
 
-python experiments/train.py --config s3_ppo --seed 101
+# Train a run (readable experiment names or legacy aliases)
+python experiments/train.py --config clamped_ppo --seed 101
 python tools/report/export_csv.py
-python tools/report/plots.py
+python tools/report/plots.py --family clamped
 ```
 
 `--config` takes an experiment name from `configs/config.yaml` (for example
-`s3_ppo`, `s3_ppo_lag`, `s3_ppo_res`, `s3_sh_ppo`). Use `--overwrite` to replace an
+`clamped_ppo`, `clamped_ppo_lagrangian`, `clamped_ppo_residual`, `clamped_ppo_shielded`,
+or unclamped baselines `unclamped_ppo`, `s3_ppo`, etc.). Use `--overwrite` to replace an
 existing result. A full 300k-step run writes
 `results/runs/<agent>/<run-id>_seed<seed>.json` and a checkpoint under
 `checkpoints/`.
+
+`tools/report/plots.py --family unclamped` builds the unclamped figures under
+`results/figures/`; `--family clamped` builds the clamped figures under
+`results/figures/clamped/`.
 
 ### Tests
 
@@ -158,22 +168,25 @@ All four figures and the per-seed JSONs behind them are committed under
 [`results/`](results/README.md). That folder also carries a λ-trajectory
 diagnostic (`lambda_trajectory.png`) regenerated from the same runs.
 
-| Method | Val cost (EUR) | Within the cap? |
-|---|---:|---:|
-| PPO | 45,513 | no |
-| PPO-Lagrangian | 45,539 | no |
-| PPO-Residual | 54,241 | no (close) |
-| Shielded PPO | 58,937 | **yes** |
-| *Grid-Only* | *45,338* | *no* |
-| *PSM' (tuned rule)* | *55,532* | *yes* |
+### Results summary (300k steps, 5 seeds per method)
 
-"Within the cap" means mean exceedance at most 0.05 kW per hourly step.
+| Method | Unclamped Val Cost (EUR) | Unclamped Feasible? | Clamped Val Cost (EUR) | Clamped Feasible? |
+|---|---:|:---:|---:|:---:|
+| PPO | 45,513 ± 172 | no (3.35 kW) | 45,517 ± 177 | no (3.24 kW) |
+| PPO-Lagrangian | 45,539 ± 138 | no (3.34 kW) | 45,558 ± 129 | no (3.26 kW) |
+| PPO-Residual | 54,241 ± 1,230 | no (0.38 kW) | 54,571 ± 971 | close (0.24 kW, 2 seeds ≤ 0.05) |
+| Shielded PPO | 58,937 ± 505 | **yes** (0.00 kW) | 58,910 ± 10 | **yes** (0.00 kW) |
+| *Grid-Only* | *45,338* | *no (3.26 kW)* | *45,338* | *no (3.26 kW)* |
+| *PSM' (tuned rule)* | *55,532* | *yes (0.00 kW)* | *55,532* | *yes (0.00 kW)* |
+
+"Feasible" means mean exceedance at most 0.05 kW per hourly step (the $d_{\text{main}}$ constraint budget).
 
 **Takeaways**
 
-- **No learned policy beats the tuned rule while staying within the cap.** The cheap ones (PPO, PPO-Lagrangian) are cheap because they ignore the cap and behave like Grid-Only.
-- **The residual comes closest** (about 2 % cheaper than PSM'), but it still breaks the cap slightly on every seed.
-- **The shield is the only method that is always within the cap, but it works by construction**: it clips the actions, so the policy is effectively removed from the loop. Passing a feasibility test that way says nothing about learning.
+- **The charge clamp removes charging-induced exceedances only.** For plain PPO and PPO-Lagrangian, 96.5%–97.0% of their ~3.35 kW exceedance is load-induced (drawing from the grid when local load exceeds the cap without discharging). The clamp trims only ~0.10–0.12 kW (`mean_charge_clipped_by_cap_kw` = 0.37–0.77 kW on 1.9%–3.2% of steps).
+- **The residual benefits directly from the clamp.** The cap clamp binds on 7.31% of steps (0.114 kW mean cap clip), reducing mean exceedance from 0.35 kW (counterfactual clamp off on the same weights; 0.38 kW in unclamped training) to 0.24 kW in the clamped family, with 2 of the 5 seeds achieving $d_{\text{main}}$ feasibility (seeds 104 and 105 at 0.036 kW and 0.044 kW exceedance).
+- **The shield eliminates over-shedding under the shared physics function.** In the unclamped formulation, the shield over-shed load to make room for charging that hit the `soc_max` ceiling; with unified battery clamping, cross-seed cost drops by ~554 EUR to 58,910 ± 10 EUR with zero cap exceedances. All 5 clamped seeds converge to a stationary charge-and-park policy (SoC pinned at 0.90 for 98.8% of steps), delegating peak shaving entirely to the shield's load shedding.
+- **No learned policy beats the tuned rule while staying universally within the cap across all seeds.** The cheap ones are cheap because they behave like Grid-Only.
 
 So the gap to the original paper comes mostly from the **strength of the comparator** and the **presence of a grid-import constraint**, not from RL being unable to learn.
 

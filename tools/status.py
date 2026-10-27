@@ -11,10 +11,9 @@ os.chdir(ROOT)
 def pytest_status():
     """The unit suite is ~6 s, so run it rather than trust a stale pytest cache."""
     try:
-        # No extra -q on the command line: a second -q suppresses the
-        # "N passed" summary line this parses.
+        env = dict(os.environ, CUDA_VISIBLE_DEVICES="")
         r = subprocess.run(["python", "-m", "pytest", "tests/"],
-                           capture_output=True, text=True, timeout=300)
+                           capture_output=True, text=True, timeout=300, env=env)
         txt = r.stdout + r.stderr
         m = re.search(r"^.*\b(\d+) passed.*$", txt, re.M)
         fail = re.search(r"^.*\b(\d+) failed.*$", txt, re.M)
@@ -61,7 +60,7 @@ def collect():
         # the run id is the file stem
         rid = os.path.basename(f)[:-5]
         rows.append((
-            ("%s/%s" % (agent_dir, rid))[:32],
+            ("%s/%s" % (agent_dir, rid))[:44],
             variant(d)[:16], steps,
             d.get("seed"), j,
             (met or {}).get("mean_exceedance_kw"),
@@ -83,16 +82,21 @@ def main():
                            open(f, encoding="utf-8", errors="replace").read()))
             for f in glob.glob("agents/**/*.py", recursive=True))
     out.append(f"TEST-READS under agents/: {n}  (must be 0 before the published grid runs)")
-    out.append("RUNS  agent/run-id | variant | steps | seed | J | exc | V% | lambda | wall")
+    out.append("RUNS  agent/run-id                                 | variant          | steps | seed | J | exc | V% | lambda | wall")
     fmt = lambda x, k=2: "-" if x is None else (f"{x:,.{k}f}" if isinstance(x, float) else str(x))
     for rid, m, st, sd, j, e, v, lam, w, _ in collect()[-10:]:
-        out.append(f"  {rid:32s}{m:16s}{str(st):>6}{str(sd):>4} "
+        out.append(f"  {rid:44s} {m:16s} {str(st):>6} {str(sd):>4} "
                    f"J={fmt(j):>12} exc={fmt(e, 4):>8} V%={fmt(v, 2):>6} "
                    f"lam={fmt(lam, 3):>7} {fmt(w, 0):>6}s")
     try:
-        t = subprocess.run('tasklist /fi "imagename eq python.exe"', shell=True,
-                           capture_output=True, text=True, timeout=30).stdout
-        n_py = sum(1 for l in t.splitlines() if "python.exe" in l)
+        if os.name == "nt":
+            t = subprocess.run('tasklist /fi "imagename eq python.exe"', shell=True,
+                               capture_output=True, text=True, timeout=30).stdout
+            n_py = sum(1 for l in t.splitlines() if "python.exe" in l)
+        else:
+            t = subprocess.run(["pgrep", "-c", "-f", "python"],
+                               capture_output=True, text=True, timeout=30).stdout.strip()
+            n_py = int(t) if t.isdigit() else "?"
     except Exception:
         n_py = "?"
     out.append(f"PY PROCS: {n_py} | results/runs/: {len(glob.glob('results/runs/*/*.json'))} files")

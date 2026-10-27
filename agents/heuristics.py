@@ -60,23 +60,28 @@ class PeakShaveMinPolicy:
     """PSM': battery peak shaving + cheap-price charging + minimal load shedding.
 
     The last resort sheds only the excess import, in fixed priority order:
-    street -> stadium -> commercial -> residential -> industrial (max 30 % shed).
+    street -> stadium -> commercial -> residential -> industrial (max linear shed).
     """
 
     def __init__(self, params: Optional[dict] = None):
+        from env.smartgrid_env import default_config
+        env_defaults = default_config()
+
         self.params = {
             "theta_hi": 1.00,
             "q": 0.60,
             "price_threshold": None,   # filled in below when not given
             "charge_power_frac": 0.50,
             "cap_kw": None,            # filled in below (the env's import cap)
-            "max_power_kw": 250.0,
-            "battery_capacity_kwh": 500.0,
-            "soc_floor": 0.10,
-            "soc_max": 0.90,
-            "eta_charge": 0.95,
-            "eta_discharge": 0.95,
-            "dt_hours": 1.0,
+            "max_power_kw": env_defaults["battery_max_power_kw"],
+            "battery_capacity_kwh": env_defaults["battery_capacity_kwh"],
+            "soc_floor": env_defaults["battery_soc_min"],
+            "soc_max": env_defaults["battery_soc_max"],
+            "eta_charge": env_defaults["battery_eta_charge"],
+            "eta_discharge": env_defaults["battery_eta_discharge"],
+            "dt_hours": env_defaults["dt_hours"],
+            "motor_min_pct": env_defaults["motor_min_pct"],
+            "safety_margin_kw": 0.05,
         }
         if params:
             self.params.update(params)
@@ -98,6 +103,8 @@ class PeakShaveMinPolicy:
         self.eta_c = float(p["eta_charge"])
         self.eta_d = float(p["eta_discharge"])
         self.dt = float(p["dt_hours"])
+        self.motor_min_pct = float(p["motor_min_pct"])
+        self.safety_margin_kw = float(p["safety_margin_kw"])
 
     def reset(self):
         pass
@@ -105,8 +112,20 @@ class PeakShaveMinPolicy:
     def get_action(self, obs: np.ndarray, info: Optional[dict] = None) -> np.ndarray:
         soc = float(obs[0])
         pv_kw = float(obs[1])
-        l_res, l_com, l_stad, l_street, l_ind = (float(obs[i]) for i in range(2, 7))
-        total_load = l_res + l_com + l_stad + l_street + l_ind
+        (
+            residential_load_kw,
+            commercial_load_kw,
+            stadium_load_kw,
+            street_load_kw,
+            industrial_load_kw,
+        ) = (float(obs[i]) for i in range(2, 7))
+        total_load = (
+            residential_load_kw
+            + commercial_load_kw
+            + stadium_load_kw
+            + street_load_kw
+            + industrial_load_kw
+        )
         price_mwh = float(obs[7])
 
         net_import_raw = max(0.0, total_load - pv_kw)
@@ -139,32 +158,34 @@ class PeakShaveMinPolicy:
         import_est = max(0.0, total_load - pv_kw + p_ch_est - p_dis_est)
 
         pct_res = pct_com = pct_stad = pct_street = pct_ind = 100.0
-        target_cap = self.cap - 0.05
+        target_cap = self.cap - self.safety_margin_kw
+        max_linear_ind_frac = 1.0 - (self.motor_min_pct / 100.0)
+
         if import_est > target_cap:
             rem = import_est - target_cap
-            if rem > 0 and l_street > 0:
-                shed = min(rem, l_street)
-                pct_street = (1.0 - shed / l_street) * 100.0
+            if rem > 0 and street_load_kw > 0:
+                shed = min(rem, street_load_kw)
+                pct_street = (1.0 - shed / street_load_kw) * 100.0
                 rem -= shed
-            if rem > 0 and l_stad > 0:
-                shed = min(rem, l_stad)
-                pct_stad = (1.0 - shed / l_stad) * 100.0
+            if rem > 0 and stadium_load_kw > 0:
+                shed = min(rem, stadium_load_kw)
+                pct_stad = (1.0 - shed / stadium_load_kw) * 100.0
                 rem -= shed
-            if rem > 0 and l_com > 0:
-                shed = min(rem, l_com)
-                pct_com = (1.0 - shed / l_com) * 100.0
+            if rem > 0 and commercial_load_kw > 0:
+                shed = min(rem, commercial_load_kw)
+                pct_com = (1.0 - shed / commercial_load_kw) * 100.0
                 rem -= shed
-            if rem > 0 and l_res > 0:
-                shed = min(rem, l_res)
-                pct_res = (1.0 - shed / l_res) * 100.0
+            if rem > 0 and residential_load_kw > 0:
+                shed = min(rem, residential_load_kw)
+                pct_res = (1.0 - shed / residential_load_kw) * 100.0
                 rem -= shed
-            if rem > 0 and l_ind > 0:
-                if rem <= 0.30 * l_ind:
-                    pct_ind = (1.0 - rem / l_ind) * 100.0
+            if rem > 0 and industrial_load_kw > 0:
+                if rem <= max_linear_ind_frac * industrial_load_kw:
+                    pct_ind = (1.0 - rem / industrial_load_kw) * 100.0
                     rem = 0.0
                 else:
                     pct_ind = 0.0
-                    rem -= l_ind
+                    rem -= industrial_load_kw
 
         return pct_to_action(pct_res, pct_com, pct_stad, pct_street, pct_ind, bat_cmd=bat_cmd)
 

@@ -34,21 +34,37 @@ defaults:
   ppo_store_raw_action: false
   ppo_init_log_std: -1.0
   ppo_init_log_std_shed: null
+  charge_clamp: true
+  dt_hours: 1.0
+  industrial_shutdown_threshold: 0.90
+  ind_off_threshold: 0.90
+  cap_clamp_tolerance_kw: 1.0e-9
+  cap_clamp_tol_kw: 1.0e-9
+  violation_tolerance_kw: 1.0e-4
+  violation_tol_kw: 1.0e-4
+  action_saturation_threshold: 0.99
+  action_sat_threshold: 0.99
+  soc_pinned_tolerance: 0.005
+  soc_pin_tol: 0.005
 experiments:
   bench10k:
+    charge_clamp: false
     reward_scale: 0.096879
     total_steps: 10000
     eval_interval_steps: 5000
   r1:
+    charge_clamp: false
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   r2:
+    charge_clamp: false
     method: ppo_lagrangian
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   r3b:
+    charge_clamp: false
     method: ppo_lagrangian
     residual_on_heuristic: true
     residual_coef: 0.25
@@ -57,6 +73,7 @@ experiments:
     total_steps: 300000
     eval_interval_steps: 50000
   r3:
+    charge_clamp: false
     method: ppo_lagrangian
     reward_scale: 0.096879
     residual_on_heuristic: true
@@ -64,25 +81,30 @@ experiments:
     total_steps: 300000
     eval_interval_steps: 50000
   s2_ppo:
+    charge_clamp: false
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   s2_ppo_lagrangian:
+    charge_clamp: false
     method: ppo_lagrangian
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   s2_ppo_pbrs:
+    charge_clamp: false
     method: ppo_potential_shaping
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   s2_ppo_lagrangian_pbrs:
+    charge_clamp: false
     method: ppo_lagrangian_potential_shaping
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   s2_ppo_lagrangian_residual:
+    charge_clamp: false
     method: ppo_lagrangian
     residual_on_heuristic: true
     residual_coef: 0.25
@@ -90,21 +112,25 @@ experiments:
     total_steps: 300000
     eval_interval_steps: 50000
   sh_ppo42:
+    charge_clamp: false
     action_dim: 1
     shielded: true
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   s3_ppo:
+    charge_clamp: false
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   s3_ppo_lag:
+    charge_clamp: false
     method: ppo_lagrangian
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   s3_ppo_res:
+    charge_clamp: false
     method: ppo_lagrangian
     residual_on_heuristic: true
     residual_coef: 0.25
@@ -112,17 +138,91 @@ experiments:
     total_steps: 300000
     eval_interval_steps: 50000
   s3_sh_ppo:
+    charge_clamp: false
+    action_dim: 1
+    shielded: true
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  s3v2_ppo:
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  s3v2_ppo_lag:
+    method: ppo_lagrangian
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  s3v2_ppo_res:
+    method: ppo_lagrangian
+    residual_on_heuristic: true
+    residual_coef: 0.25
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  s3v2_sh_ppo:
+    action_dim: 1
+    shielded: true
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  # --- Readable experiment names ---
+  unclamped_ppo:
+    charge_clamp: false
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  unclamped_ppo_lagrangian:
+    charge_clamp: false
+    method: ppo_lagrangian
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  unclamped_ppo_residual:
+    charge_clamp: false
+    method: ppo_lagrangian
+    residual_on_heuristic: true
+    residual_coef: 0.25
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  unclamped_ppo_shielded:
+    charge_clamp: false
+    action_dim: 1
+    shielded: true
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  clamped_ppo:
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  clamped_ppo_lagrangian:
+    method: ppo_lagrangian
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  clamped_ppo_residual:
+    method: ppo_lagrangian
+    residual_on_heuristic: true
+    residual_coef: 0.25
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+  clamped_ppo_shielded:
     action_dim: 1
     shielded: true
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
   v2_a:
+    charge_clamp: false
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
     ppo_store_raw_action: true
   v2_b:
+    charge_clamp: false
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
@@ -130,6 +230,7 @@ experiments:
     ppo_use_minibatches: true
     ppo_value_epochs: 5
   v2_c:
+    charge_clamp: false
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
@@ -138,6 +239,7 @@ experiments:
     ppo_value_epochs: 5
     ppo_init_log_std_shed: -3.0
   v2_lag:
+    charge_clamp: false
     method: ppo_lagrangian
     reward_scale: 0.096879
     total_steps: 300000
@@ -147,6 +249,7 @@ experiments:
     ppo_value_epochs: 5
     ppo_init_log_std_shed: -3.0
   v2_res:
+    charge_clamp: false
     method: ppo_lagrangian
     residual_on_heuristic: true
     residual_coef: 0.25
@@ -158,6 +261,7 @@ experiments:
     ppo_value_epochs: 5
     ppo_init_log_std_shed: -3.0
   v2_sh:
+    charge_clamp: false
     action_dim: 1
     shielded: true
     reward_scale: 0.096879
@@ -166,3 +270,83 @@ experiments:
     ppo_store_raw_action: true
     ppo_use_minibatches: true
     ppo_value_epochs: 5
+
+data_preparation:
+  seed: 42
+  price_source: proxy_DE
+  microgrid_peak_kw: 500.0
+  cap_quantile: 0.90
+  local_timezone: Europe/Paris
+  date_range:
+    start: "2017-01-01"
+    end: "2019-12-31"
+  de_lu_price_splice_utc: "2018-09-30 22:00:00"
+  max_interpolation_gap_hours: 6
+  pvgis_subhourly_row_factor: 1.1
+  events:
+    events_per_week: 2
+    start_hour_min: 17
+    start_hour_max_exclusive: 21
+    duration_hours_min: 2
+    duration_hours_max_exclusive: 4
+    warmup_hours: 1
+  zones:
+    residential:
+      share: 0.35
+      weekend_multiplier: 1.0
+      profile_type: bimodal_peaks
+      baseload_factor: 0.50
+      morning_peak_hour: 8.5
+      morning_amplitude: 0.65
+      morning_width_hours: 2.0
+      evening_peak_hour: 19.5
+      evening_amplitude: 0.90
+      evening_width_hours: 2.5
+    commercial:
+      share: 0.25
+      weekend_multiplier: 0.40
+      profile_type: business_window
+      baseload_factor: 0.30
+      active_amplitude: 1.20
+      open_hour: 8.0
+      close_hour: 18.0
+      ramp_width_hours: 1.25
+    stadium:
+      share: 0.10
+      weekend_multiplier: 1.0
+      profile_type: event_driven
+      baseload_factor: 0.15
+      daytime_maintenance_factor: 0.30
+      daytime_start_hour: 9.0
+      daytime_end_hour: 17.0
+      warmup_multiplier: 1.50
+      active_event_multiplier: 3.50
+    street:
+      share: 0.05
+      weekend_multiplier: 1.0
+      profile_type: irradiance_driven
+      night_irradiance_threshold_wm2: 10.0
+      day_irradiance_threshold_wm2: 200.0
+      night_multiplier: 1.50
+      twilight_multiplier: 0.80
+      day_multiplier: 0.10
+    industrial:
+      share: 0.25
+      weekend_multiplier: 0.50
+      profile_type: business_window
+      baseload_factor: 0.40
+      active_amplitude: 0.90
+      open_hour: 6.5
+      close_hour: 17.5
+      ramp_width_hours: 1.50
+  splits:
+    train:
+      start: "2017-01-02 00:00:00"
+      end: "2018-12-30 23:00:00"
+    val:
+      start: "2019-01-07 00:00:00"
+      end: "2019-07-07 23:00:00"
+    test:
+      start: "2019-07-15 00:00:00"
+      end: "2019-12-29 23:00:00"
+

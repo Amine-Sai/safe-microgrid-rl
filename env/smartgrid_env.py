@@ -7,6 +7,77 @@ import numpy as np
 from gymnasium import spaces
 
 
+def battery_power_kw(
+    battery_command: float,
+    soc: float,
+    served_load_kw: float,
+    pv_generation_kw: float,
+    env,
+    clamp: Optional[bool] = None,
+    return_info: bool = False,
+):
+    """Post-battery power in kW, applying in order: rate limit -> SoC limit -> cap clamp.
+
+    Positive means charging (raises grid import), negative means discharging.
+    When clamp is enabled, charging is clamped to available import headroom
+    (grid_import_cap_kw - served_load_kw + pv_generation_kw) using exact post-shed served load.
+    A configurable margin (`cap_clamp_tolerance_kw`, default 1e-9) is used at the cap
+    boundary to prevent floating-point jitter.
+    """
+    if clamp is None:
+        clamp = getattr(env, "charge_clamp", True)
+    cap_tolerance_kw = float(
+        getattr(env, "cap_clamp_tolerance_kw", getattr(env, "cap_clamp_tol_kw", 1e-9))
+    )
+
+    # 1. Rate limit
+    bat_cmd = float(np.clip(battery_command, -1.0, 1.0))
+    p = bat_cmd * env.bat_max_power_kw
+    requested_charge_kw = max(0.0, p)
+
+    # 2. SoC limit
+    if p > 0:
+        max_charge = (env.bat_soc_max - soc) * env.bat_capacity_kwh / (
+            env.bat_eta_charge * env.dt_hours
+        )
+        p = max(0.0, min(p, max_charge))
+    else:
+        max_discharge = (soc - env.bat_soc_min) * env.bat_capacity_kwh * (
+            env.bat_eta_discharge / env.dt_hours
+        )
+        p = min(0.0, max(p, -max_discharge))
+    soc_bounded_charge_kw = max(0.0, p)
+
+    # 3. Cap clamp (only restricts charging when clamp is True)
+    is_charge_clipped_by_cap = False
+    if clamp and p > 0:
+        headroom = max(0.0, (env.grid_import_cap_kw - cap_tolerance_kw) + pv_generation_kw - served_load_kw)
+        if p > headroom:
+            p = max(0.0, headroom)
+            is_charge_clipped_by_cap = True
+
+    applied_charge_kw = max(0.0, p)
+    charge_clipped_by_soc_kw = max(0.0, requested_charge_kw - soc_bounded_charge_kw)
+    charge_clipped_by_cap_kw = max(0.0, soc_bounded_charge_kw - applied_charge_kw)
+
+    if return_info:
+        info = {
+            "charge_requested_kw": float(requested_charge_kw),
+            "charge_soc_bounded_kw": float(soc_bounded_charge_kw),
+            "charge_applied_kw": float(applied_charge_kw),
+            "charge_clipped_by_soc_kw": float(charge_clipped_by_soc_kw),
+            "charge_clipped_by_cap_kw": float(charge_clipped_by_cap_kw),
+            "is_charge_clipped_by_cap": bool(is_charge_clipped_by_cap),
+            # Legacy metric aliases
+            "charge_clipped_soc_kw": float(charge_clipped_by_soc_kw),
+            "charge_clipped_cap_kw": float(charge_clipped_by_cap_kw),
+            "charge_clipped_kw": float(charge_clipped_by_cap_kw),
+            "charge_clipped_by_cap": bool(is_charge_clipped_by_cap),
+        }
+        return p, info
+    return p
+
+
 class SmartGridEnv(gym.Env):
     """Simulated microgrid environment using real time-series data."""
 
@@ -47,10 +118,33 @@ class SmartGridEnv(gym.Env):
 
         # Episode
         self.episode_length = cfg["episode_length_hours"]
-        self.dt_hours = 1.0
+        self.dt_hours = float(cfg.get("dt_hours", 1.0))
 
-        # Industrial motor floor
+        # industrial motor floor & shutdown threshold
         self.motor_min_pct = cfg["motor_min_pct"] / 100.0
+        self.industrial_shutdown_threshold = float(
+            cfg.get("industrial_shutdown_threshold", cfg.get("ind_off_threshold", 0.90))
+        )
+        self.ind_off_threshold = self.industrial_shutdown_threshold
+
+        # Charge clamp & numerical tolerances
+        self.charge_clamp = bool(cfg.get("charge_clamp", True))
+        self.cap_clamp_tolerance_kw = float(
+            cfg.get("cap_clamp_tolerance_kw", cfg.get("cap_clamp_tol_kw", 1e-9))
+        )
+        self.cap_clamp_tol_kw = self.cap_clamp_tolerance_kw
+        self.violation_tolerance_kw = float(
+            cfg.get("violation_tolerance_kw", cfg.get("violation_tol_kw", 1e-4))
+        )
+        self.violation_tol_kw = self.violation_tolerance_kw
+        self.action_saturation_threshold = float(
+            cfg.get("action_saturation_threshold", cfg.get("action_sat_threshold", 0.99))
+        )
+        self.action_sat_threshold = self.action_saturation_threshold
+        self.soc_pinned_tolerance = float(
+            cfg.get("soc_pinned_tolerance", cfg.get("soc_pin_tol", 0.005))
+        )
+        self.soc_pin_tol = self.soc_pinned_tolerance
         # Shed-action mapping. "linear" = s=(a+1)/2 (no dead zone).
         # "deadzone" = s=max(0,a), so a<=0 means no shed (removes the a<0 dead zone).
         self.shed_mapping = cfg.get("shed_mapping", "linear")
@@ -99,7 +193,7 @@ class SmartGridEnv(gym.Env):
         # Time features in Europe/Paris local time
         local_idx = df.index.tz_localize("UTC").tz_convert("Europe/Paris")
         local_hours = local_idx.hour.values + local_idx.minute.values / 60.0
-        local_dow = local_idx.dayofweek.values
+        local_dow = local_idx.day_of_week.values
         self._sin_hour = np.sin(2 * np.pi * local_hours / 24).astype(np.float32)
         self._cos_hour = np.cos(2 * np.pi * local_hours / 24).astype(np.float32)
         self._sin_dow = np.sin(2 * np.pi * local_dow / 7).astype(np.float32)
@@ -181,12 +275,12 @@ class SmartGridEnv(gym.Env):
             # linear (default): s = (a + 1) / 2  in [0, 1]
             shed_raw = (action[1:] + 1.0) / 2.0
 
-        # Industrial: s = (a+1)/2. If s > 0.9 → off. Else shed = 0.3 * s / 0.9.
+        # Industrial: s = (a+1)/2. If s > ind_off_threshold -> off. Else linear up to 1 - motor_min_pct.
         s_ind = shed_raw[4]
-        if s_ind > 0.9:
+        if s_ind > self.ind_off_threshold:
             ind_shed = 1.0  # Off
         else:
-            ind_shed = (1.0 - self.motor_min_pct) * s_ind / 0.9  # 0.3 * s / 0.9
+            ind_shed = (1.0 - self.motor_min_pct) * s_ind / self.ind_off_threshold
         shed_fractions = shed_raw.copy()
         shed_fractions[4] = ind_shed
 
@@ -201,15 +295,9 @@ class SmartGridEnv(gym.Env):
         pv_kw = self._compute_pv_kw(data_idx)
 
         # --- Battery dynamics ---
-        bat_power_kw = battery_cmd * self.bat_max_power_kw
-        if bat_power_kw > 0:
-            max_charge = (self.bat_soc_max - self._soc) * self.bat_capacity_kwh / (
-                self.bat_eta_charge * self.dt_hours)
-            bat_power_kw = max(0.0, min(bat_power_kw, max_charge))
-        else:
-            max_discharge = (self._soc - self.bat_soc_min) * self.bat_capacity_kwh * (
-                self.bat_eta_discharge / self.dt_hours)
-            bat_power_kw = min(0.0, max(bat_power_kw, -max_discharge))
+        bat_power_kw, bat_info = battery_power_kw(
+            battery_cmd, self._soc, total_served, pv_kw, self, return_info=True
+        )
 
         if bat_power_kw > 0:
             delta_soc = (bat_power_kw * self.bat_eta_charge * self.dt_hours) / self.bat_capacity_kwh
@@ -267,6 +355,18 @@ class SmartGridEnv(gym.Env):
             "price_eur_mwh": float(self._price[data_idx]),
             "shed_fractions": shed_fractions.tolist(),
             "data_idx": int(data_idx),
+            "is_violation": bool(grid_exceedance_kw > self.violation_tolerance_kw),
+            "charge_requested_kw": bat_info["charge_requested_kw"],
+            "charge_soc_bounded_kw": bat_info["charge_soc_bounded_kw"],
+            "charge_applied_kw": bat_info["charge_applied_kw"],
+            "charge_clipped_by_soc_kw": bat_info["charge_clipped_by_soc_kw"],
+            "charge_clipped_by_cap_kw": bat_info["charge_clipped_by_cap_kw"],
+            "is_charge_clipped_by_cap": bat_info["is_charge_clipped_by_cap"],
+            # Legacy metric aliases
+            "charge_clipped_soc_kw": bat_info["charge_clipped_by_soc_kw"],
+            "charge_clipped_cap_kw": bat_info["charge_clipped_by_cap_kw"],
+            "charge_clipped_kw": bat_info["charge_clipped_kw"],
+            "charge_clipped_by_cap": bat_info["charge_clipped_by_cap"],
         }
         return obs, float(reward), terminated, truncated, info
 
@@ -298,7 +398,19 @@ def default_config() -> dict:
         "pv_efficiency": 0.20,
         "pv_performance_ratio": 0.85,
         "motor_min_pct": 70,
+        "industrial_shutdown_threshold": 0.90,
+        "ind_off_threshold": 0.90,
         "episode_length_hours": 168,
+        "dt_hours": 1.0,
+        "charge_clamp": True,
+        "cap_clamp_tolerance_kw": 1e-9,
+        "cap_clamp_tol_kw": 1e-9,
+        "violation_tolerance_kw": 1e-4,
+        "violation_tol_kw": 1e-4,
+        "action_saturation_threshold": 0.99,
+        "action_sat_threshold": 0.99,
+        "soc_pinned_tolerance": 0.005,
+        "soc_pin_tol": 0.005,
     }
 
 
