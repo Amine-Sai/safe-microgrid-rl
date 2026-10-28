@@ -104,7 +104,7 @@ def main():
     parser.add_argument("--unlock-test-split", action="store_true",
                         help="Safety gate: explicitly unlock evaluation on the Test split.")
     parser.add_argument("--family", default="clamped",
-                        choices=["clamped", "clamped_forecast", "unclamped", "all"],
+                        choices=["clamped", "clamped_mb", "clamped_forecast", "unclamped", "all"],
                         help="Which checkpoint family to evaluate.")
     args = parser.parse_args()
 
@@ -178,6 +178,8 @@ def main():
         # Determine family
         if fname.startswith("clamped_forecast_"):
             ckpt_fam = "clamped_forecast"
+        elif fname.startswith("clamped_mb_"):
+            ckpt_fam = "clamped_mb"
         elif fname.startswith("clamped_") or fname.startswith("s3v2_"):
             ckpt_fam = "clamped"
         elif fname.startswith("unclamped_") or fname.startswith("s3_"):

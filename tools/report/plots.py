@@ -523,12 +523,13 @@ def fig_cost_breakdown(runs, baselines):
 
 # Cross-family comparison figures
 def fig_unified_pareto(all_families, baselines, out_dir):
-    """Unified Pareto scatter plot comparing Cost vs Exceedance across 3 environments."""
+    """Unified Pareto scatter plot comparing Cost vs Exceedance across environments."""
     fig, ax = plt.subplots(figsize=(10.5, 7.2))
 
     fam_styles = [
         ("unclamped", "Unclamped", "x", 7.0),
         ("clamped", "Clamped", "o", 6.5),
+        ("clamped_mb", "Clamped Minibatch", "^", 7.5),
         ("clamped_forecast", "Clamped + Forecast", "*", 9.5),
     ]
 
@@ -604,12 +605,13 @@ def fig_unified_pareto(all_families, baselines, out_dir):
 
 
 def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
-    """Grouped bar plots comparing Cost Breakdown and Exceedance across 3 environments."""
-    fig, axes = plt.subplots(1, 2, figsize=(15.5, 9.4), width_ratios=[1.25, 0.75])
+    """Grouped bar plots comparing Cost Breakdown and Exceedance across environments."""
+    fig, axes = plt.subplots(1, 2, figsize=(15.5, 11.2), width_ratios=[1.25, 0.75])
 
     fam_keys = [
         ("unclamped", "Unclamped"),
         ("clamped", "Clamped"),
+        ("clamped_mb", "Clamped Minibatch"),
         ("clamped_forecast", "Clamped + Forecast"),
     ]
     parts = ("energy_purchase_eur", "battery_wear_eur", "unserved_penalty_eur")
@@ -625,7 +627,7 @@ def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
 
     for g_idx, (label, _prefix, colour) in enumerate(GROUPS):
         for f_idx, (f_key, f_name) in enumerate(fam_keys):
-            y = -(g_idx * 4.2 + f_idx * 1.0)
+            y = -(g_idx * 5.2 + f_idx * 1.0)
             y_ticks.append(y)
             y_labels.append(f"{label}  [{f_name}]")
 
@@ -693,7 +695,7 @@ def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
 
     cost_handles = [Patch(facecolor=part_colours[i], label=part_names[i]) for i in range(len(parts))]
     fam_handles = [
-        Patch(facecolor="#777777", alpha=0.55 if fk == "unclamped" else (0.8 if fk == "clamped" else 1.0),
+        Patch(facecolor="#777777", alpha=0.45 if fk == "unclamped" else (0.65 if fk == "clamped" else (0.85 if fk == "clamped_mb" else 1.0)),
               label=fn) for fk, fn in fam_keys
     ]
     ref_handles = [
@@ -709,7 +711,7 @@ def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
 
 
 def fig_targeted_learning_curves(all_families, baselines, out_dir):
-    """Learning curves for competitive methods (Residual and Shielded) across 3 environments."""
+    """Learning curves for competitive methods (Residual and Shielded) across environments."""
     fig, axes = plt.subplots(2, 1, figsize=(9.8, 8.4), sharex=True)
 
     comp_methods = [
@@ -719,6 +721,7 @@ def fig_targeted_learning_curves(all_families, baselines, out_dir):
     fam_styles = [
         ("unclamped", "Unclamped", ":", "x", 1.5),
         ("clamped", "Clamped", "--", "o", 1.8),
+        ("clamped_mb", "Clamped Minibatch", "-.", "^", 1.8),
         ("clamped_forecast", "Clamped + Forecast", "-", "*", 2.0),
     ]
 
@@ -871,6 +874,8 @@ def plot_family(family: str, baselines: dict):
     global FIGS
     if family in ("clamped_forecast", "forecast"):
         FIGS = os.path.join(ROOT, "results", "figures", "clamped_forecast")
+    elif family in ("clamped_mb", "mb"):
+        FIGS = os.path.join(ROOT, "results", "figures", "clamped_mb")
     elif family in ("clamped", "s3v2", "v2"):
         FIGS = os.path.join(ROOT, "results", "figures", "clamped")
     else:
@@ -904,6 +909,7 @@ def plot_comparison(baselines: dict):
     all_families = {
         "unclamped": load_runs("unclamped"),
         "clamped": load_runs("clamped"),
+        "clamped_mb": load_runs("clamped_mb"),
         "clamped_forecast": load_runs("clamped_forecast"),
     }
 
@@ -933,7 +939,7 @@ def main():
     if family in ("comparison", "compare"):
         plot_comparison(baselines)
     elif family == "all":
-        for fam in ("unclamped", "clamped", "clamped_forecast"):
+        for fam in ("unclamped", "clamped", "clamped_mb", "clamped_forecast"):
             plot_family(fam, baselines)
         plot_comparison(baselines)
     else:

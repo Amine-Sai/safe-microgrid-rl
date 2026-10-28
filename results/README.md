@@ -10,6 +10,7 @@ evidence behind the README table and figures, so a reader does not have to rerun
 figures/
   unclamped/                 5 PNGs for unclamped family (17-D)
   clamped/                   5 PNGs for clamped family (17-D)
+  clamped_mb/                5 PNGs for clamped minibatch control family (17-D)
   clamped_forecast/          5 PNGs for clamped + 6h forecast family (23-D)
   comparison/                4 cross-family comparison PNGs:
     unified_pareto.png       Unified Pareto frontier (Cost vs. Exceedance across environments)
@@ -34,7 +35,7 @@ seed runs (101–105) at 300k steps, evaluated deterministically on the 26 Val w
 
 ### Experiment families
 
-Three experiment families are evaluated (with an un-confounded ablation control family prepared):
+Four experiment families are fully evaluated (80 runs total):
 - **Unclamped (`unclamped_*` / legacy `s3_*`):** `charge_clamp: false`. The original environment
   formulation where battery charging was not physically interlocked against the
   import cap.
