@@ -220,6 +220,12 @@ Full figure sets across all three experimental families (`unclamped`, `clamped`,
       <sub><b>3. Grouped Cost Breakdown & Exceedance across Environments</b></sub>
     </td>
   </tr>
+  <tr>
+    <td align="center" valign="top" colspan="2">
+      <img src="results/figures/comparison/stress_weeks_comparison.png" alt="Stress Weeks Comparison" width="760"><br>
+      <sub><b>4. Test Split Stress-Week Evaluation (Weather Weeks vs. Cap-Binding 2019-W49)</b></sub>
+    </td>
+  </tr>
 </table>
 
 ---

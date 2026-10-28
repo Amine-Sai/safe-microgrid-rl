@@ -785,6 +785,87 @@ def fig_targeted_learning_curves(all_families, baselines, out_dir):
     plt.close(fig)
 
 
+def fig_stress_weeks(out_dir: str):
+    """Stress week comparison highlighting the true cap-binding week 2019-W49."""
+    import csv
+    import numpy as np
+
+    path = os.path.join(TABLES, "test_stress_weeks.csv")
+    if not os.path.exists(path):
+        return
+
+    with open(path, encoding="utf-8") as f:
+        rows = list(csv.DictReader(f))
+    if not rows:
+        return
+
+    crits = ["lowest_pv", "highest_price", "hottest", "stormiest", "highest_exceedance"]
+    crit_labels = [
+        "Lowest PV\n(2019-W48)",
+        "Highest Price\n(2019-W45)",
+        "Hottest\n(2019-W30)",
+        "Stormiest\n(2019-W51)",
+        "Highest Exceedance\n(2019-W49)",
+    ]
+    methods = ["Grid-Only", "PSM'", "PPO", "PPO-Lagrangian", "PPO-Residual", "Shielded PPO"]
+    colors = ["#555555", "#1A5276", "#0072B2", "#D55E00", "#009E73", "#CC79A7"]
+
+    def get_group(m):
+        if m in ("Grid-Only", "PSM'"):
+            return m
+        if "shielded" in m:
+            return "Shielded PPO"
+        if "residual" in m:
+            return "PPO-Residual"
+        if "lagrangian" in m:
+            return "PPO-Lagrangian"
+        return "PPO"
+
+    data_cost = {m: {c: [] for c in crits} for m in methods}
+    data_viol = {m: {c: [] for c in crits} for m in methods}
+
+    for r in rows:
+        g = get_group(r["model"])
+        c = r["stress_criterion"]
+        if g in data_cost and c in data_cost[g]:
+            data_cost[g][c].append(float(r["cost_eur"]))
+            data_viol[g][c].append(float(r["violation_hours"]))
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.8))
+    x = np.arange(len(crits))
+    n_m = len(methods)
+    bar_w = 0.13
+
+    for i, m in enumerate(methods):
+        c_means = [float(np.mean(data_cost[m][c])) for c in crits]
+        c_errs = [float(np.std(data_cost[m][c])) if len(data_cost[m][c]) > 1 else 0.0 for c in crits]
+        v_means = [float(np.mean(data_viol[m][c])) for c in crits]
+        v_errs = [float(np.std(data_viol[m][c])) if len(data_viol[m][c]) > 1 else 0.0 for c in crits]
+
+        pos = x - (n_m - 1) * bar_w / 2 + i * bar_w
+        axes[0].bar(pos, c_means, bar_w, yerr=c_errs, label=m, color=colors[i], edgecolor="white", capsize=2)
+        axes[1].bar(pos, v_means, bar_w, yerr=v_errs, label=m, color=colors[i], edgecolor="white", capsize=2)
+
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(crit_labels, fontsize=9)
+    axes[0].set_ylabel("Total Cost (EUR)")
+    axes[0].set_title("A. Test Cost across Stress Weeks", fontweight="bold")
+    axes[0].set_ylim(0, 4300)
+    axes[0].grid(axis="y", alpha=0.3)
+
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels(crit_labels, fontsize=9)
+    axes[1].set_ylabel("Violation Hours (h out of 168h)")
+    axes[1].set_title("B. Grid Violation Hours across Stress Weeks", fontweight="bold")
+    axes[1].set_ylim(0, 80)
+    axes[1].grid(axis="y", alpha=0.3)
+
+    axes[0].legend(loc="upper left", ncol=2, fontsize=8.5)
+    plt.tight_layout()
+    fig.savefig(os.path.join(out_dir, "stress_weeks_comparison.png"))
+    plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 def plot_family(family: str, baselines: dict):
     global FIGS
@@ -827,9 +908,14 @@ def plot_comparison(baselines: dict):
     }
 
     print("generating cross-family comparison figures in %s" % comp_dir)
-    for fn in (fig_unified_pareto, fig_grouped_cost_breakdown, fig_targeted_learning_curves):
+    for fn, args in (
+        (fig_unified_pareto, (all_families, baselines, comp_dir)),
+        (fig_grouped_cost_breakdown, (all_families, baselines, comp_dir)),
+        (fig_targeted_learning_curves, (all_families, baselines, comp_dir)),
+        (fig_stress_weeks, (comp_dir,)),
+    ):
         try:
-            fn(all_families, baselines, comp_dir)
+            fn(*args)
             print("  ok  %s" % fn.__name__)
         except Exception as exc:  # noqa: BLE001
             print("  FAIL %s: %s" % (fn.__name__, exc))

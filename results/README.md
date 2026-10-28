@@ -11,10 +11,11 @@ figures/
   unclamped/                 5 PNGs for unclamped family (17-D)
   clamped/                   5 PNGs for clamped family (17-D)
   clamped_forecast/          5 PNGs for clamped + 6h forecast family (23-D)
-  comparison/                3 cross-family comparison PNGs:
+  comparison/                4 cross-family comparison PNGs:
     unified_pareto.png       Unified Pareto frontier (Cost vs. Exceedance across environments)
     grouped_cost_breakdown.png Grouped stacked cost breakdown & exceedance across environments
     targeted_learning_curves.png Targeted learning curves for competitive methods (Residual & Shielded)
+    stress_weeks_comparison.png Test split stress-week evaluation (Weather weeks vs. Cap-Binding 2019-W49)
 runs/<agent>/                one JSON per (experiment, seed)
   *_seed101.json ...         5 seeds per method (101–105)
   *_grid.json                batch roll-up, not a run
