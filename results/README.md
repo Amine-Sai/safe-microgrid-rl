@@ -20,12 +20,12 @@ runs/<agent>/                one JSON per (experiment, seed)
   *_grid.json                batch roll-up, not a run
 tables/
   runs.csv                   one row per seed run (cost, exceedance, wall clock)
-  per_seed_metrics.csv       per-seed diagnostics + gate pass/fail flags
+  per_seed_metrics.csv       per-seed diagnostics, gate pass/fail flags, strict_feasible
   s2_per_seed.csv            legacy alias of per_seed_metrics.csv
-  frozen_baselines.csv       Grid-Only / PSM' reference values
-  project_constants.csv      cap, d_main, weights, gate constants
+  frozen_baselines.csv       Grid-Only, PSM', and exact LP' hindsight oracle values
+  project_constants.csv      cap, d_main, weights, LP' bounds, gate constants
   test_evaluation.csv        locked one-shot evaluation on the 2019 H2 Test split
-  test_stress_weeks.csv      evaluation on the 4 pre-identified Test stress weeks
+  test_stress_weeks.csv      evaluation on the 5 Test stress weeks (including cap-binding 2019-W49)
 ```
 
 Agents are `ppo`, `ppo_lagrangian`, `ppo_residual`, `ppo_shielded`. Each contains
@@ -33,7 +33,7 @@ seed runs (101–105) at 300k steps, evaluated deterministically on the 26 Val w
 
 ### Experiment families
 
-Three experiment families are tracked:
+Three experiment families are evaluated (with an un-confounded ablation control family prepared):
 - **Unclamped (`unclamped_*` / legacy `s3_*`):** `charge_clamp: false`. The original environment
   formulation where battery charging was not physically interlocked against the
   import cap.
@@ -41,6 +41,9 @@ Three experiment families are tracked:
   clamp rate limit → SoC limit → cap clamp in the environment. Battery charging
   cannot induce grid import exceedance beyond available headroom. Additive
   columns `mean_charge_clipped_by_cap_kw` and `cap_clipped_steps_pct` track the clamp's activity.
+- **Clamped Minibatch (`clamped_mb_*`):** `charge_clamp: true` with minibatch updates, 5 value epochs,
+  and raw action storage, on the base 17-D state space (no lookahead). Serves as the ablation control to
+  disentangle PPO optimization improvements from 6h lookahead features.
 - **Clamped + Forecast (`clamped_forecast_*`):** `charge_clamp: true` with `forecast_horizon_hours: 6`.
   Extends the observation space from 17-D to 23-D with rolling 6-hour PV and load lookaheads.
 
@@ -49,10 +52,11 @@ Three experiment families are tracked:
 From the repository root, in an environment with the requirements installed:
 
 ```bash
-python tools/report/export_csv.py              # rebuild results/tables/*.csv from runs/
-python tools/report/plots.py --family all       # rebuild all per-family and comparison figures
+python tools/report/lp_oracle.py --split both   # solve perfect-foresight LP' theoretical bounds
+python tools/report/export_csv.py               # rebuild results/tables/*.csv from runs/
+python tools/report/plots.py --family all        # rebuild all per-family and comparison figures
 python tools/report/plots.py --family comparison # rebuild only cross-family comparison figures
-python tools/status.py                         # compact health/status summary
+python tools/status.py                          # compact health/status summary
 ```
 
 The scripts read only the committed artefacts; they do not retrain and do not

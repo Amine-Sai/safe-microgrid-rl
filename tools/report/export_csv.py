@@ -18,7 +18,7 @@ def load_project_constants():
             for row in reader:
                 constants[row["name"]] = float(row["value"])
     exceedance_gate_kw = constants.get("d_main_kw_per_step", 0.05)
-    cost_gate_eur = constants.get("g2_cost_eur", 58308.55)
+    cost_gate_eur = constants.get("g2_cost_eur", 58306.73)
     return exceedance_gate_kw, cost_gate_eur
 
 
@@ -118,8 +118,10 @@ def per_seed_table():
             "cap_clipped_steps_pct", checkpoint_metrics.get("clipped_pct")
         )
 
+        viol_hrs = checkpoint_metrics.get("violation_hours", 0)
         passes_exceedance_gate = bool(exc is not None and exc <= exceedance_gate_kw)
         passes_cost_gate = bool(cost <= cost_gate_eur)
+        strict_feasible = bool(viol_hrs == 0 and (exc is not None and exc <= 1e-4))
 
         rows.append({
             "run": os.path.basename(run_file_path)[:-5],
@@ -131,6 +133,8 @@ def per_seed_table():
             "unserved_pct": checkpoint_metrics.get("unserved_energy_pct"),
             "exceedance_kw": exc,
             "violation_rate_pct": checkpoint_metrics.get("violation_rate_pct"),
+            "violation_hours": viol_hrs,
+            "strict_feasible": strict_feasible,
             "mean_charge_clipped_by_cap_kw": cap_clip,
             "mean_charge_clipped_by_soc_kw": soc_clip,
             "cap_clipped_steps_pct": cap_pct,
@@ -190,6 +194,13 @@ def refresh_baselines():
         }
 
     baselines_path = os.path.join(TABLES, "frozen_baselines.csv")
+    existing_lp = None
+    if os.path.exists(baselines_path):
+        with open(baselines_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                if row.get("method") == "LP'":
+                    existing_lp = row
+
     with open(baselines_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=["method", "val_cost_eur", "mean_exceedance_kw", "feasible"])
         w.writeheader()
@@ -205,6 +216,8 @@ def refresh_baselines():
             "mean_exceedance_kw": f"{results['PSM\'']['mean_exceedance_kw']:.4f}",
             "feasible": "True",
         })
+        if existing_lp:
+            w.writerow(existing_lp)
 
     constants_path = os.path.join(TABLES, "project_constants.csv")
     if os.path.exists(constants_path):

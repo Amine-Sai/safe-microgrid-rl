@@ -23,6 +23,12 @@ FAMILY_CONFIGS = {
         "clamped_ppo_residual",
         "clamped_ppo_shielded",
     ],
+    "clamped_mb": [
+        "clamped_mb_ppo",
+        "clamped_mb_ppo_lagrangian",
+        "clamped_mb_ppo_residual",
+        "clamped_mb_ppo_shielded",
+    ],
     "clamped_forecast": [
         "clamped_forecast_ppo",
         "clamped_forecast_ppo_lagrangian",

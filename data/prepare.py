@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sys
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -523,9 +524,22 @@ def split_dataset(df: pd.DataFrame, prep_cfg: dict) -> dict:
     return splits
 
 
-def find_stress_weeks(splits: dict) -> dict:
-    """Identify stress weeks in each split based on irradiance, price, temperature, and pressure."""
+def find_stress_weeks(
+    splits: dict,
+    grid_import_cap: float = 368.15,
+    prep_cfg: Optional[dict] = None,
+) -> dict:
+    """Identify stress weeks in each split based on irradiance, price, weather, and grid cap exceedance."""
     print("\n[STRESS] Identifying stress weeks...")
+
+    pv_scale = 1500.0 * 0.18 * 0.85 / 1000.0
+    if prep_cfg is not None:
+        pv_scale = (
+            float(prep_cfg.get("pv_area_m2", 1500.0))
+            * float(prep_cfg.get("pv_efficiency", 0.18))
+            * float(prep_cfg.get("pv_performance_ratio", 0.85))
+            / 1000.0
+        )
 
     stress_results = {}
     for name, split in splits.items():
@@ -536,12 +550,17 @@ def find_stress_weeks(splits: dict) -> dict:
             + split_copy.index.isocalendar().week.astype(str).str.zfill(2).values
         )
 
+        pv_kw = split_copy["irradiance_wm2"] * pv_scale
+        net_load = np.maximum(0.0, split_copy["load_kw"] - pv_kw)
+        split_copy["cap_exceedance_kw"] = np.maximum(0.0, net_load - grid_import_cap)
+
         weekly = split_copy.groupby("week_label").agg(
             {
                 "irradiance_wm2": "sum",
                 "price_eur_mwh": "mean",
                 "temperature_c": "mean",
                 "pressure_msl_hpa": "mean",
+                "cap_exceedance_kw": "sum",
             }
         )
 
@@ -549,6 +568,7 @@ def find_stress_weeks(splits: dict) -> dict:
         highest_price_week = weekly["price_eur_mwh"].idxmax()
         hottest_week = weekly["temperature_c"].idxmax()
         stormiest_week = weekly["pressure_msl_hpa"].idxmin()
+        highest_exc_week = weekly["cap_exceedance_kw"].idxmax()
 
         stress = {
             "lowest_pv": {
@@ -567,12 +587,16 @@ def find_stress_weeks(splits: dict) -> dict:
                 "week": stormiest_week,
                 "value": float(weekly.loc[stormiest_week, "pressure_msl_hpa"]),
             },
+            "highest_exceedance": {
+                "week": highest_exc_week,
+                "value": float(weekly.loc[highest_exc_week, "cap_exceedance_kw"]),
+            },
         }
 
         stress_results[name] = stress
         print(f"\n  {name.upper()} stress weeks:")
         for criterion, info in stress.items():
-            print(f"    {criterion:15s}: {info['week']} (value={info['value']:.1f})")
+            print(f"    {criterion:18s}: {info['week']} (value={info['value']:.1f})")
 
     return stress_results
 
@@ -763,9 +787,9 @@ def main():
 
     print("\n[8/8] Splitting dataset and computing cap...")
     splits = split_dataset(df, prep_cfg)
-    stress = find_stress_weeks(splits)
-    report_split_statistics(splits)
     grid_import_cap = compute_grid_import_cap(splits, cap_quantile)
+    stress = find_stress_weeks(splits, grid_import_cap, prep_cfg)
+    report_split_statistics(splits)
 
     save_splits(splits, stress, grid_import_cap, prep_cfg)
 

@@ -1,3 +1,4 @@
 method,val_cost_eur,mean_exceedance_kw,feasible
 Grid-Only,45337.92,3.2571,False
 PSM',55530.22,0.0000,True
+LP',53290.51,0.0000,True

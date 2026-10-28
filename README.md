@@ -50,7 +50,7 @@ That second paper shows RL beating simple rule-based strategies, but it has **no
 
 ## Approaches compared
 
-Three ways of making RL respect the cap, against two reference controllers:
+Three ways of making RL respect the cap, against two reference controllers and an exact theoretical bound:
 
 | Method | Idea |
 |---|---|
@@ -60,6 +60,7 @@ Three ways of making RL respect the cap, against two reference controllers:
 | **Shielded PPO** | a wrapper clips any action that would break the cap |
 | *Grid-Only* | do nothing, just buy from the grid (reference) |
 | *PSM'* | tuned peak-shaving rule, the strong comparator |
+| *LP'* | perfect-foresight linear programming hindsight oracle (theoretical limit) |
 
 ## The environment
 
@@ -190,14 +191,15 @@ Full figure sets across all three experimental families (`unclamped`, `clamped`,
 
 #### Cross-Family Validation Summary (300k steps, 5 seeds per method)
 
-| Method | Unclamped (17-D) Val Cost (EUR) | Clamped (17-D) Val Cost (EUR) | Clamped + Forecast (23-D) Val Cost (EUR) | Mean Exceedance (kW, U / C / C+F) | Feasible? ($d_{\text{main}} \le 0.05\text{ kW}$) |
-|---|---:|---:|---:|:---:|:---:|
-| **PPO** | 45,513 ± 192 | 45,517 ± 198 | 49,098 ± 1,324 | 3.35 / 3.24 / 2.81 kW | No |
-| **PPO-Lagrangian** | 45,539 ± 154 | 45,558 ± 144 | 70,572 ± 5,906 | 3.34 / 3.26 / 1.13 kW | No |
-| **PPO-Residual** | 54,241 ± 1,375 | 54,571 ± 1,085 | 60,001 ± 2,786 | 0.38 / 0.24 / 0.26 kW | Close (2 Clamped seeds pass G1+G2) |
-| **Shielded PPO** | 58,937 ± 565 | 58,910 ± 11 | 59,526 ± 1,203 | **0.0000 kW** | **Yes (0.00% violations in C & C+F)** |
-| *Grid-Only* | *45,338* | *45,338* | *45,338* | *3.26 kW* | *No* |
-| *PSM' (tuned rule)* | *55,530* | *55,530* | *55,530* | *0.0000 kW* | *Yes (0.00% violations)* |
+| Method | Unclamped (17-D) Val Cost (EUR) | Clamped (17-D) Val Cost (EUR) | Clamped + Forecast (23-D) Val Cost (EUR) | Mean Exceedance (kW, U / C / C+F) | G1 Feasible? ($d_{\text{main}} \le 0.05\text{ kW}$) | Strict Feasible? (0h violations) |
+|---|---:|---:|---:|:---:|:---:|:---:|
+| **PPO** | 45,513 ± 192 | 45,517 ± 198 | 49,098 ± 1,324 | 3.35 / 3.24 / 2.81 kW | No | No (460–468h viol.) |
+| **PPO-Lagrangian** | 45,539 ± 154 | 45,558 ± 144 | 70,572 ± 5,906 | 3.34 / 3.26 / 1.13 kW | No | No (466–468h viol.) |
+| **PPO-Residual** | 54,241 ± 1,375 | 54,571 ± 1,085 | 60,001 ± 2,786 | 0.38 / 0.24 / 0.26 kW | Close (2 Clamped seeds pass) | No (115–204h viol.) |
+| **Shielded PPO** | 58,937 ± 565 | 58,910 ± 11 | 59,526 ± 1,203 | **0.0000 kW** | **Yes** | **Yes (0h violations in C & C+F)** |
+| *Grid-Only* | *45,338* | *45,338* | *45,338* | *3.26 kW* | *No* | *No (468h viol.)* |
+| *PSM' (tuned rule)* | *55,530* | *55,530* | *55,530* | *0.0000 kW* | *Yes* | *Yes (0h violations)* |
+| *LP' (hindsight oracle)* | *53,291* | *53,291* | *53,291* | *0.0000 kW* | *Theoretical Upper Bound* | *Yes (0h violations)* |
 
 #### Cross-Family Comparisons (Without Visual Clutter)
 
@@ -226,32 +228,40 @@ Full figure sets across all three experimental families (`unclamped`, `clamped`,
 
 The Test split was kept closed until final evaluation via `tools/report/evaluate_test_split.py --unlock-test-split`:
 
-| Method | Test Cost (EUR, mean $\pm$ sd) | Min / Max Cost (EUR) | Mean Exceedance (kW) | Violation Rate (%) | Unserved (%) | Cap-Clipped (kW) |
-|---|---:|---:|---:|---:|---:|---:|
-| **Grid-Only** | 36,562.65 | 36,562.65 | 0.8355 | 3.79% | 0.0000% | 0.0000 |
-| **PSM' (tuned rule)** | 37,674.27 | 37,674.27 | **0.0000** | **0.00%** | 0.0803% | 0.0000 |
-| **clamped_ppo** | 36,732.99 ± 182.49 | 36,534.95 / 36,907.04 | 0.8302 | 3.78% | 0.0000% | 0.0591 |
-| **clamped_ppo_lagrangian** | 36,767.17 ± 133.70 | 36,533.51 / 36,870.81 | 0.8355 | 3.79% | 0.0000% | 0.0339 |
-| **clamped_ppo_residual** | **37,633.81 ± 280.67** | **37,368.89 / 38,096.80** | **0.0702** | 3.34% | 0.0763% | 0.0472 |
-| **clamped_ppo_shielded** | 39,996.21 ± 8.96 | 39,991.87 / 40,012.22 | **0.0000** | **0.00%** | 0.3117% | 0.0083 |
+| Method | Test Cost (EUR, mean $\pm$ sd) | Min / Max Cost (EUR) | Mean Exceedance (kW) | Violation Rate (%) | Violation Hours | Unserved (%) | Cap-Clipped (kW) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| *LP' (hindsight oracle)* | 36,991.67 | 36,991.67 | **0.0000** | **0.00%** | **0h** | 0.0158% | 0.0000 |
+| **PSM' (tuned rule)** | 37,674.27 | 37,674.27 | **0.0000** | **0.00%** | **0h** | 0.0803% | 0.0000 |
+| **Grid-Only** | 36,562.65 | 36,562.65 | 0.8355 | 3.79% | 153h | 0.0000% | 0.0000 |
+| **clamped_ppo** | 36,732.99 ± 182.49 | 36,534.95 / 36,907.04 | 0.8302 | 3.78% | 152.4h ± 0.5 | 0.0000% | 0.0591 |
+| **clamped_ppo_lagrangian** | 36,767.17 ± 133.70 | 36,533.51 / 36,870.81 | 0.8355 | 3.79% | 153.0h ± 0.0 | 0.0000% | 0.0339 |
+| **clamped_ppo_residual** | **37,633.81 ± 280.67** | **37,368.89 / 38,096.80** | **0.0702** | 3.34% | 134.8h ± 43.1 | 0.0763% | 0.0472 |
+| **clamped_ppo_shielded** | 39,996.21 ± 8.96 | 39,991.87 / 40,012.22 | **0.0000** | **0.00%** | **0h** | 0.3117% | 0.0083 |
 
 ---
 
 ### Key Takeaways & Research Insights
 
-1. **Hard Zero-Violation Safety Guarantee (Shielded PPO):**
+1. **Theoretical Headroom Limit (The Exact LP' Oracle):**
+   - Using exact linear programming with perfect foresight matching `SmartGridEnv` physics (`tools/report/lp_oracle.py`), the theoretical best possible cost is **53,290.51 EUR** on Validation and **36,991.67 EUR** on Test (with exactly 0 kW exceedance).
+   - This proves that `PSM'` (`55,530.22 EUR` Val / `37,674.27 EUR` Test) is already within **4.03% (2,240 EUR)** of the theoretical upper bound on Val and within **1.81% (683 EUR)** on Test. The headroom available for any causal controller to "beat" the heuristic while remaining feasible is razor-thin.
+2. **Hard Zero-Violation Safety Guarantee (Shielded PPO):**
    - Both `clamped_ppo_shielded` and `clamped_forecast_ppo_shielded` achieve **0.00% violation rate (0 violation hours out of 4,368 Val hours and 4,032 Test hours across all seeds)**, eliminating the residual 2.25% (98.4h) violation rate of the unclamped shield.
-   - On the closed Test split, Shielded PPO generalized with minimal cross-seed variance (39,996.21 ± 8.96 EUR) and 0.0000 kW exceedance.
-2. **Diagnostic Separation of Battery Clipping:**
-   - Decomposing battery charge clipping into upper-SoC saturation vs grid-cap headroom revealed that **95%–98% of charge clipping in `clamped_*` is upper-SoC saturation** (`1.60–58.73 kW/step`), while true grid-cap headroom clipping is only **0.11–1.16 kW/step (active on only 1.9%–7.3% of steps)**.
-3. **Residual PPO Generalization:**
-   - On the closed Test split, mean cost across all 5 seeds (`37,633.81 EUR`) **beats PSM' (`37,674.27 EUR`) by 40.46 EUR** while reducing Grid-Only exceedance by **91.6%** (`0.0702 kW` vs `0.8355 kW`).
-   - Two seeds passed both G1 ($\le 0.05$ kW) and G2 ($\le 39,557.98$ EUR) gates on Test: **Seed 104 (37,675.62 EUR @ 0.0026 kW exceedance)** and **Seed 105 (38,096.80 EUR @ 0.0137 kW exceedance)** — the exact same seeds that passed G1+G2 on Validation.
-   - Seeds 101, 102, and 103 beat PSM' on cost by 156–305 EUR with low exceedance (0.07–0.17 kW).
-4. **6-Hour Rolling Forecast Ablation:**
-   - Providing 6-hour lookahead for PV and load reduced unserved energy penalties across all 5 seeds (`13,325 EUR` mean vs `14,227 EUR` in 17-D clamped shielded), with `Seed 105` passing both G1 and G2 gates at 300k (`57,971.57 EUR`, 0.0000 kW exceedance, 0.00% violations, unserved energy penalty 0.91%).
-5. **Stress-Week Robustness:**
-   - Across all 4 Test stress weeks (`lowest_pv: 2019-W48`, `highest_price: 2019-W45`, `hottest: 2019-W30`, `stormiest: 2019-W51`), every controller maintained 0.0000 kW exceedance (0 violation hours), and Shielded PPO slightly outperformed PSM' on 3 of the 4 stress weeks.
+   - On the closed Test split, Shielded PPO generalized with minimal cross-seed variance (`39,996.21 ± 8.96 EUR`) and 0.0000 kW exceedance. The ~2,322 EUR cost gap relative to PSM' is entirely driven by defensive load shedding during uncertain demand spikes.
+3. **Nuanced Residual PPO Test Performance:**
+   - On the closed Test split, Residual PPO's mean cost of `37,633.81 ± 280.67 EUR` matches `PSM'` (`37,674.27 EUR`) within **0.14 standard deviations ($p = 0.77$)**, making the 40 EUR difference statistically indistinguishable from evaluation noise.
+   - Crucially, Residual PPO does **not** achieve strict feasibility: it incurs **134.8 hours of violations (3.34% violation rate)** with `0.0702 kW` mean exceedance. While 2 seeds (104 and 105) pass the loose G1 threshold ($\le 0.05$ kW), neither achieves zero violations.
+4. **Decisive Cap-Binding Stress Week (`2019-W49`):**
+   - The 4 original meteorological stress weeks (`lowest_pv: 2019-W48`, `highest_price: 2019-W45`, `hottest: 2019-W30`, `stormiest: 2019-W51`) have net load below 368 kW, meaning even Grid-Only has 0 exceedance.
+   - Evaluating on the true cap-binding Test week (`2019-W49`, net load peak > 368 kW; 10.25 kW mean exceedance for Grid-Only over 66 hours) conclusively separates the methods:
+     - `Grid-Only`: 2,149.71 EUR | 10.25 kW exc | 66h violations
+     - `PSM'`: 2,990.43 EUR | **0.00 kW exc** | **0h violations**
+     - `clamped_ppo_lagrangian`: 2,158.79 EUR | 10.25 kW exc | 66.0h violations (fails completely)
+     - `clamped_ppo_residual`: 2,864.69 EUR | 0.83 kW exc | 60.8h violations (under-sheds load)
+     - `clamped_ppo_shielded`: 3,797.08 EUR | **0.00 kW exc** | **0h violations** (100% safe via defensive shedding)
+5. **Forecast vs. Optimizer Disentanglement:**
+   - `clamped_forecast_*` combined 6-hour rolling PV/load lookahead with PPO optimization improvements (minibatches, 5 value epochs, raw action storage). Across 5 seeds, it lowered unserved energy penalty (from 14.2k to 13.3k EUR) but increased battery wear, resulting in a net cost of `59,526 EUR` (+616 EUR vs 17-D clamped shielded).
+   - The prepared `clamped_mb_*` control family (17-D, minibatch/epoch improvements without lookahead) provides the direct ablation to isolate optimization gains from forecasting features.
 
 ## Citations
 

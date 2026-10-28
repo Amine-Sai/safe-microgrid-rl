@@ -33,7 +33,7 @@ def load_project_constants():
             for row in reader:
                 constants[row["name"]] = float(row["value"])
     exceedance_gate_kw = constants.get("d_main_kw_per_step", 0.05)
-    cost_gate_eur = constants.get("g2_cost_eur", 58308.55)
+    cost_gate_eur = constants.get("g2_cost_eur", 58306.73)
     return exceedance_gate_kw, cost_gate_eur
 
 
@@ -111,6 +111,8 @@ def load_runs(family: str = "unclamped"):
     target_forecast = family in ("clamped_forecast", "forecast")
     if target_forecast:
         prefix_filter = ("clamped_forecast_",)
+    elif family in ("clamped_mb", "mb"):
+        prefix_filter = ("clamped_mb_",)
     elif family in ("clamped", "s3v2", "v2"):
         prefix_filter = ("s3v2_", "clamped_ppo")
     else:
@@ -215,9 +217,9 @@ def fig_learning_curves(runs, baselines):
                         upper, color=colour, alpha=0.18, linewidth=0)
     ax.axhline(G2_COST_EUR, ls="--", color=GATE, lw=1.4, zorder=2,
                label="G2 gate  %.0f EUR" % G2_COST_EUR)
-    for name, style in (("Grid-Only", "--"), ("PSM'", ":")):
+    for name, style, col in (("Grid-Only", "--", BASE), ("PSM'", ":", BASE), ("LP'", "-.", "#196F3D")):
         if name in baselines:
-            ax.axhline(float(baselines[name]["cost_eur"]), ls=style, color=BASE,
+            ax.axhline(float(baselines[name]["cost_eur"]), ls=style, color=col,
                        lw=1.3, zorder=2)
 
     ymax = 61500 if max_cost_upper <= 60500 else int(math.ceil((max_cost_upper + 2500) / 5000.0) * 5000)
@@ -260,9 +262,9 @@ def fig_learning_curves(runs, baselines):
         Line2D([], [], ls="--", color=GATE, lw=1.5,
                label="G1 gate  %.2f kW/step" % G1_EXC_KW),
     ]
-    for name, style in (("Grid-Only", "--"), ("PSM'", ":")):
+    for name, style, col in (("Grid-Only", "--", BASE), ("PSM'", ":", BASE), ("LP'", "-.", "#196F3D")):
         if name in baselines:
-            handles.append(Line2D([], [], ls=style, color=BASE, lw=1.4,
+            handles.append(Line2D([], [], ls=style, color=col, lw=1.4,
                                   label="%s (frozen) %.0f EUR"
                                         % (name,
                                            float(baselines[name]["cost_eur"]))))
@@ -292,6 +294,7 @@ def fig_cost_vs_exceedance(runs, baselines):
 
     for name, marker, colour in (("Grid-Only", "s", "#444444"),
                                  ("PSM'", "D", "#1A5276"),
+                                 ("LP'", "*", "#196F3D"),
                                  ("PS'", "^", "#7D3C98")):
         if name not in baselines:
             continue
@@ -299,10 +302,10 @@ def fig_cost_vs_exceedance(runs, baselines):
         by = float(b["cost_eur"])
         max_y = max(max_y, by)
         ax.scatter([max(float(b["exceedance_kw"]), FLOOR)],
-                   [by], marker=marker, s=175, color=colour,
+                   [by], marker=marker, s=175 if marker != "*" else 220, color=colour,
                    edgecolor="white", linewidth=1.2, zorder=5)
         handles.append(Line2D([], [], marker=marker, ls="", color=colour,
-                              markersize=9,
+                              markersize=9 if marker != "*" else 11,
                               label="%s (frozen)  %.0f EUR, %.2f kW"
                                     % (name, by, float(b["exceedance_kw"]))))
 
@@ -403,6 +406,9 @@ def fig_per_seed(runs, baselines):
     if "PSM'" in baselines:
         ax.axvline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE,
                    lw=1.3, zorder=2)
+    if "LP'" in baselines:
+        ax.axvline(float(baselines["LP'"]["cost_eur"]), ls="-.", color="#196F3D",
+                   lw=1.3, zorder=2)
 
     xmax = 61000 if max_cost <= 60000 else int(math.ceil((max_cost + 2500) / 5000.0) * 5000)
     tick_step = 5000 if xmax <= 70000 else 10000
@@ -453,6 +459,10 @@ def fig_per_seed(runs, baselines):
         handles.append(Line2D([], [], ls=":", color=BASE, lw=1.3,
                               label="PSM'  %.0f"
                                     % float(baselines["PSM'"]["cost_eur"])))
+    if "LP'" in baselines:
+        handles.append(Line2D([], [], ls="-.", color="#196F3D", lw=1.3,
+                              label="LP'  %.0f"
+                                    % float(baselines["LP'"]["cost_eur"])))
     fig.legend(handles=handles, loc="outside lower center", ncol=3)
     fig.savefig(os.path.join(FIGS, "per_seed_results.png"))
     plt.close(fig)
@@ -489,11 +499,11 @@ def fig_cost_breakdown(runs, baselines):
                     va="center", fontsize=8.5, color="#555555")
 
     handles = [Patch(facecolor=c, label=n) for c, n in zip(colours, names)]
-    for name, style in (("Grid-Only", "--"), ("PSM'", ":")):
+    for name, style, col in (("Grid-Only", "--", BASE), ("PSM'", ":", BASE), ("LP'", "-.", "#196F3D")):
         if name in baselines:
-            ax.axvline(float(baselines[name]["cost_eur"]), ls=style, color=BASE,
+            ax.axvline(float(baselines[name]["cost_eur"]), ls=style, color=col,
                        lw=1.4, zorder=3)
-            handles.append(Line2D([], [], ls=style, color=BASE, lw=1.4,
+            handles.append(Line2D([], [], ls=style, color=col, lw=1.4,
                                   label="%s (frozen) %.0f"
                                         % (name,
                                            float(baselines[name]["cost_eur"]))))
@@ -559,6 +569,8 @@ def fig_unified_pareto(all_families, baselines, out_dir):
         ax.axhline(float(baselines["Grid-Only"]["cost_eur"]), ls="--", color=BASE, lw=1.2, zorder=2)
     if "PSM'" in baselines:
         ax.axhline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE, lw=1.2, zorder=2)
+    if "LP'" in baselines:
+        ax.axhline(float(baselines["LP'"]["cost_eur"]), ls="-.", color="#196F3D", lw=1.2, zorder=2)
 
     ax.set_xscale("log")
     ax.set_xlim(FLOOR * 0.65, 12)
@@ -579,9 +591,13 @@ def fig_unified_pareto(all_families, baselines, out_dir):
         Line2D([], [], ls="--", color=GATE, lw=1.3, label="G1 / G2 Gates"),
         Line2D([], [], ls="--", color=BASE, lw=1.2, label="Grid-Only"),
         Line2D([], [], ls=":", color=BASE, lw=1.2, label="PSM'"),
+    ]
+    if "LP'" in baselines:
+        handles_ref.append(Line2D([], [], ls="-.", color="#196F3D", lw=1.2, label="LP' Oracle"))
+    handles_ref.extend([
         Line2D([], [], color="#555555", marker="o", ls="", markersize=4.5, alpha=0.5, label="Single seed"),
         Line2D([], [], color="#555555", marker="o", ls="", markersize=8, markeredgecolor="black", label="Mean of 5 seeds"),
-    ]
+    ])
     fig.legend(handles=handles_m + handles_f + handles_ref, loc="outside lower center", ncol=4)
     fig.savefig(os.path.join(out_dir, "unified_pareto.png"))
     plt.close(fig)
@@ -661,6 +677,8 @@ def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
         ax_cost.axvline(float(baselines["Grid-Only"]["cost_eur"]), ls="--", color=BASE, lw=1.2, zorder=2)
     if "PSM'" in baselines:
         ax_cost.axvline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE, lw=1.2, zorder=2)
+    if "LP'" in baselines:
+        ax_cost.axvline(float(baselines["LP'"]["cost_eur"]), ls="-.", color="#196F3D", lw=1.2, zorder=2)
     ax_cost.axvline(G2_COST_EUR, ls="--", color=GATE, lw=1.3, zorder=2)
 
     ax_exc.set_yticks(y_ticks)
@@ -683,6 +701,8 @@ def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
         Line2D([], [], ls="--", color=BASE, lw=1.2, label="Grid-Only"),
         Line2D([], [], ls=":", color=BASE, lw=1.2, label="PSM'"),
     ]
+    if "LP'" in baselines:
+        ref_handles.append(Line2D([], [], ls="-.", color="#196F3D", lw=1.2, label="LP' Oracle"))
     fig.legend(handles=cost_handles + fam_handles + ref_handles, loc="outside lower center", ncol=5)
     fig.savefig(os.path.join(out_dir, "grouped_cost_breakdown.png"))
     plt.close(fig)
@@ -730,6 +750,8 @@ def fig_targeted_learning_curves(all_families, baselines, out_dir):
         ax_cost.axhline(float(baselines["Grid-Only"]["cost_eur"]), ls="--", color=BASE, lw=1.2, zorder=2)
     if "PSM'" in baselines:
         ax_cost.axhline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE, lw=1.2, zorder=2)
+    if "LP'" in baselines:
+        ax_cost.axhline(float(baselines["LP'"]["cost_eur"]), ls="-.", color="#196F3D", lw=1.2, zorder=2)
     ymax = int(math.ceil((max_cost_upper + 2500) / 2500.0) * 2500)
     ax_cost.set_ylim(44000, ymax)
     ax_cost.yaxis.set_major_locator(FixedLocator(list(range(45000, ymax + 1, 5000))))
@@ -756,6 +778,8 @@ def fig_targeted_learning_curves(all_families, baselines, out_dir):
         Line2D([], [], ls="--", color=BASE, lw=1.2, label="Grid-Only"),
         Line2D([], [], ls=":", color=BASE, lw=1.2, label="PSM'"),
     ]
+    if "LP'" in baselines:
+        ref_handles.append(Line2D([], [], ls="-.", color="#196F3D", lw=1.2, label="LP' Oracle"))
     fig.legend(handles=method_handles + env_handles + ref_handles, loc="outside lower center", ncol=4)
     fig.savefig(os.path.join(out_dir, "targeted_learning_curves.png"))
     plt.close(fig)
