@@ -191,3 +191,97 @@ def test_checkpoint_round_trip(tmp_path):
 
     step = th.zeros(1, 17)
     assert th.equal(agent.policy(step), restored.policy(step))
+
+
+def test_ppo_subclass_hierarchy():
+    """Verify distinct subclass instantiation and initial policy mean behaviour."""
+    from agents.ppo import (
+        PPOAgent,
+        PPOLagrangianAgent,
+        PPOResidualAgent,
+        PPOShieldedAgent,
+        PPOPotentialShapingAgent,
+        PPOLagrangianPotentialShapingAgent,
+    )
+
+    base = PPOAgent(state_dim=17, action_dim=6)
+    assert isinstance(base, PPOAgent)
+    assert not base.lagrangian
+    assert not base.pbrs
+
+    lag = PPOLagrangianAgent(state_dim=17, action_dim=6)
+    assert isinstance(lag, PPOAgent)
+    assert isinstance(lag, PPOLagrangianAgent)
+    assert lag.lagrangian
+    assert lag.cost_net is not None
+
+    res = PPOResidualAgent(state_dim=17, action_dim=6)
+    assert isinstance(res, PPOLagrangianAgent)
+    assert res.residual_policy is not None
+    # Residual policy mean starts at 0 (zero correction)
+    with th.no_grad():
+        mu_res = res.policy.forward(th.zeros(1, 17)).numpy().ravel()
+    assert np.allclose(mu_res, 0.0, atol=1e-6)
+
+    shi = PPOShieldedAgent(state_dim=17)
+    assert isinstance(shi, PPOAgent)
+    assert shi.action_dim == 1
+
+    ps = PPOPotentialShapingAgent(state_dim=17, action_dim=6)
+    assert isinstance(ps, PPOAgent)
+    assert ps.pbrs
+
+    lag_ps = PPOLagrangianPotentialShapingAgent(state_dim=17, action_dim=6)
+    assert isinstance(lag_ps, PPOLagrangianAgent)
+    assert isinstance(lag_ps, PPOPotentialShapingAgent)
+    assert lag_ps.lagrangian and lag_ps.pbrs
+
+
+def test_raw_action_storage_prevents_off_policy_start():
+    """Caveat 1 & 2: Storing raw policy actions preserves ratio_off_at_start == 0."""
+    from agents.ppo import PPOAgent, PPOResidualAgent
+
+    for agent in (
+        PPOAgent(state_dim=17, action_dim=6, store_raw_action=True),
+        PPOResidualAgent(state_dim=17, action_dim=6, store_raw_action=True),
+    ):
+        states = np.random.randn(10, 17).astype(np.float32)
+        for s in states:
+            a, lp, v, cv = agent.select_action(s)
+            agent.store_transition(s, a, 1.0, 0.0, v, cv, lp, False, False)
+        batch = agent.finish_path(0.0, 0.0)
+        diag = agent.update(batch)
+        assert diag["ratio_off_at_start"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_explained_variance_diagnostic_consistency():
+    """Caveat 5: Explained variance uses denormalized value net predictions."""
+    from agents.ppo import PPOAgent
+
+    agent = PPOAgent(state_dim=4, action_dim=2, use_minibatches=False)
+    states = np.random.randn(20, 4).astype(np.float32)
+    for s in states:
+        a, lp, v, cv = agent.select_action(s)
+        agent.store_transition(s, a, 1.0, 0.0, v, cv, lp, False, False)
+    batch = agent.finish_path(0.0, 0.0)
+    diag = agent.update(batch)
+    assert np.isfinite(diag["explained_variance"])
+
+
+def test_from_checkpoint_restores_variant_and_residual(tmp_path):
+    """Caveat 7: PPOAgent.from_checkpoint restores subclass, residual policy, and weights."""
+    from agents.ppo import PPOAgent, PPOResidualAgent, PPOLagrangianAgent
+
+    res_agent = PPOResidualAgent(state_dim=17, action_dim=6)
+    ckpt_path = tmp_path / "residual_ckpt.pt"
+    res_agent.save_models(str(ckpt_path))
+
+    restored = PPOAgent.from_checkpoint(str(ckpt_path))
+    assert isinstance(restored, PPOResidualAgent)
+    assert restored.residual_policy is not None
+    assert restored.lagrangian is True
+
+    test_obs = np.ones(17, dtype=np.float32) * 0.5
+    a_orig = res_agent.select_action(test_obs, evaluate=True)[0]
+    a_rest = restored.select_action(test_obs, evaluate=True)[0]
+    assert np.allclose(a_orig, a_rest, atol=1e-6)

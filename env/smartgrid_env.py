@@ -19,9 +19,7 @@ def battery_power_kw(
     """Post-battery power in kW: rate limit -> SoC limit -> cap clamp."""
     if clamp is None:
         clamp = getattr(env, "charge_clamp", True)
-    cap_tolerance_kw = float(
-        getattr(env, "cap_clamp_tolerance_kw", getattr(env, "cap_clamp_tol_kw", 1e-9))
-    )
+    cap_tolerance_kw = float(getattr(env, "cap_clamp_tolerance_kw", 1e-9))
 
     # 1. Rate limit
     bat_cmd = float(np.clip(battery_command, -1.0, 1.0))
@@ -61,11 +59,6 @@ def battery_power_kw(
             "charge_clipped_by_soc_kw": float(charge_clipped_by_soc_kw),
             "charge_clipped_by_cap_kw": float(charge_clipped_by_cap_kw),
             "is_charge_clipped_by_cap": bool(is_charge_clipped_by_cap),
-            # Legacy metric aliases
-            "charge_clipped_soc_kw": float(charge_clipped_by_soc_kw),
-            "charge_clipped_cap_kw": float(charge_clipped_by_cap_kw),
-            "charge_clipped_kw": float(charge_clipped_by_cap_kw),
-            "charge_clipped_by_cap": bool(is_charge_clipped_by_cap),
         }
         return p, info
     return p
@@ -115,29 +108,14 @@ class SmartGridEnv(gym.Env):
 
         # industrial motor floor & shutdown threshold
         self.motor_min_pct = cfg["motor_min_pct"] / 100.0
-        self.industrial_shutdown_threshold = float(
-            cfg.get("industrial_shutdown_threshold", cfg.get("ind_off_threshold", 0.90))
-        )
-        self.ind_off_threshold = self.industrial_shutdown_threshold
+        self.industrial_shutdown_threshold = float(cfg.get("industrial_shutdown_threshold", 0.90))
 
         # Charge clamp & numerical tolerances
         self.charge_clamp = bool(cfg.get("charge_clamp", True))
-        self.cap_clamp_tolerance_kw = float(
-            cfg.get("cap_clamp_tolerance_kw", cfg.get("cap_clamp_tol_kw", 1e-9))
-        )
-        self.cap_clamp_tol_kw = self.cap_clamp_tolerance_kw
-        self.violation_tolerance_kw = float(
-            cfg.get("violation_tolerance_kw", cfg.get("violation_tol_kw", 1e-4))
-        )
-        self.violation_tol_kw = self.violation_tolerance_kw
-        self.action_saturation_threshold = float(
-            cfg.get("action_saturation_threshold", cfg.get("action_sat_threshold", 0.99))
-        )
-        self.action_sat_threshold = self.action_saturation_threshold
-        self.soc_pinned_tolerance = float(
-            cfg.get("soc_pinned_tolerance", cfg.get("soc_pin_tol", 0.005))
-        )
-        self.soc_pin_tol = self.soc_pinned_tolerance
+        self.cap_clamp_tolerance_kw = float(cfg.get("cap_clamp_tolerance_kw", 1e-9))
+        self.violation_tolerance_kw = float(cfg.get("violation_tolerance_kw", 1e-4))
+        self.action_saturation_threshold = float(cfg.get("action_saturation_threshold", 0.99))
+        self.soc_pinned_tolerance = float(cfg.get("soc_pinned_tolerance", 0.005))
         # Shed-action mapping ("linear" or "relu"/"deadzone")
         self.shed_mapping = cfg.get("shed_mapping", "linear")
 
@@ -300,10 +278,10 @@ class SmartGridEnv(gym.Env):
 
         # Industrial load logic
         s_ind = shed_raw[4]
-        if s_ind > self.ind_off_threshold:
+        if s_ind > self.industrial_shutdown_threshold:
             ind_shed = 1.0
         else:
-            ind_shed = (1.0 - self.motor_min_pct) * s_ind / self.ind_off_threshold
+            ind_shed = (1.0 - self.motor_min_pct) * s_ind / self.industrial_shutdown_threshold
         shed_fractions = shed_raw.copy()
         shed_fractions[4] = ind_shed
 
@@ -381,11 +359,6 @@ class SmartGridEnv(gym.Env):
             "charge_clipped_by_soc_kw": bat_info["charge_clipped_by_soc_kw"],
             "charge_clipped_by_cap_kw": bat_info["charge_clipped_by_cap_kw"],
             "is_charge_clipped_by_cap": bat_info["is_charge_clipped_by_cap"],
-            # Legacy metric aliases
-            "charge_clipped_soc_kw": bat_info["charge_clipped_by_soc_kw"],
-            "charge_clipped_cap_kw": bat_info["charge_clipped_by_cap_kw"],
-            "charge_clipped_kw": bat_info["charge_clipped_kw"],
-            "charge_clipped_by_cap": bat_info["charge_clipped_by_cap"],
         }
         return obs, float(reward), terminated, truncated, info
 
@@ -412,18 +385,13 @@ def default_config() -> dict:
         "pv_performance_ratio": 0.85,
         "motor_min_pct": 70,
         "industrial_shutdown_threshold": 0.90,
-        "ind_off_threshold": 0.90,
         "episode_length_hours": 168,
         "dt_hours": 1.0,
         "charge_clamp": True,
         "cap_clamp_tolerance_kw": 1e-9,
-        "cap_clamp_tol_kw": 1e-9,
         "violation_tolerance_kw": 1e-4,
-        "violation_tol_kw": 1e-4,
         "action_saturation_threshold": 0.99,
-        "action_sat_threshold": 0.99,
         "soc_pinned_tolerance": 0.005,
-        "soc_pin_tol": 0.005,
         "forecast_horizon_hours": 0,
     }
 

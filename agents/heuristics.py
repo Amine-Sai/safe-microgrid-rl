@@ -22,32 +22,63 @@ class GridOnlyPolicy:
         return np.array([0.0, -1.0, -1.0, -1.0, -1.0, -1.0], dtype=np.float32)
 
 
-def pct_to_action(pct_res, pct_com, pct_stad, pct_street, pct_ind, bat_cmd=0.0):
-    """Map firmware zone percentages (0-100) to continuous action in [-1, 1]."""
+def pct_to_action(
+    pct_res: float,
+    pct_com: float,
+    pct_stad: float,
+    pct_street: float,
+    pct_ind: float,
+    bat_cmd: float = 0.0,
+    motor_min_pct: float = 70.0,
+    industrial_shutdown_threshold: float = 0.90,
+    shed_mapping: str = "linear",
+) -> np.ndarray:
+    """Map firmware zone service percentages (0-100) to continuous action in [-1, 1]."""
+    def shed_fraction_to_action(shed_frac: float) -> float:
+        if shed_mapping in ("relu", "deadzone"):
+            return float(np.clip(shed_frac, 0.0, 1.0)) if shed_frac > 0.0 else -1.0
+        return float(np.clip(2.0 * shed_frac - 1.0, -1.0, 1.0))
+
     actions = []
     for p in (pct_res, pct_com, pct_stad, pct_street):
         p_c = max(0.0, min(100.0, float(p)))
-        actions.append(float(np.clip(1.0 - 2.0 * (p_c / 100.0), -1.0, 1.0)))
+        shed_frac = 1.0 - (p_c / 100.0)
+        actions.append(shed_fraction_to_action(shed_frac))
 
-    if pct_ind <= 0:
+    max_linear_shed = max(1e-9, 1.0 - (float(motor_min_pct) / 100.0))
+    if pct_ind <= 0.0:
         a_ind = 1.0
     else:
-        p_ind = max(70.0, min(100.0, float(pct_ind)))
-        shed_ind = 1.0 - p_ind / 100.0
-        a_ind = 2.0 * (shed_ind * 3.0) - 1.0
-        a_ind = float(np.clip(a_ind, -1.0, 0.80))
-    actions.append(a_ind)
+        p_ind = max(float(motor_min_pct), min(100.0, float(pct_ind)))
+        shed_ind = 1.0 - (p_ind / 100.0)
+        s_ind = (shed_ind / max_linear_shed) * float(industrial_shutdown_threshold)
+        max_linear_action = shed_fraction_to_action(float(industrial_shutdown_threshold))
+        a_ind = min(shed_fraction_to_action(s_ind), float(max_linear_action))
+    actions.append(float(a_ind))
 
     return np.array([float(np.clip(bat_cmd, -1.0, 1.0))] + actions, dtype=np.float32)
 
 
-def _train_price_quantile(q: float) -> float:
+def compute_train_price_quantile(q: float) -> float:
     """Price quantile matching `q` on Train split."""
     import pandas as pd
 
     path = os.path.join(REPO_ROOT, "data", "processed", "train.parquet")
     df = pd.read_parquet(path)
     return float(df["price_eur_mwh"].quantile(q))
+
+
+_train_price_quantile = compute_train_price_quantile
+
+
+def resolve_default_cap_kw() -> float:
+    """Resolve grid import cap from environment default config."""
+    from env.smartgrid_env import default_config, resolve_grid_import_cap
+
+    return resolve_grid_import_cap(default_config())
+
+
+_env_cap_kw = resolve_default_cap_kw
 
 
 class PeakShaveMinPolicy:
@@ -71,6 +102,8 @@ class PeakShaveMinPolicy:
             "eta_discharge": env_defaults["battery_eta_discharge"],
             "dt_hours": env_defaults["dt_hours"],
             "motor_min_pct": env_defaults["motor_min_pct"],
+            "industrial_shutdown_threshold": env_defaults.get("industrial_shutdown_threshold", 0.90),
+            "shed_mapping": env_defaults.get("shed_mapping", "linear"),
             "safety_margin_kw": 0.05,
         }
         if params:
@@ -78,9 +111,9 @@ class PeakShaveMinPolicy:
 
         p = self.params
         if p["price_threshold"] is None:
-            p["price_threshold"] = _train_price_quantile(float(p["q"]))
+            p["price_threshold"] = compute_train_price_quantile(float(p["q"]))
         if p["cap_kw"] is None:
-            p["cap_kw"] = _env_cap_kw()
+            p["cap_kw"] = resolve_default_cap_kw()
 
         self.theta_hi = float(p["theta_hi"])
         self.price_thresh = float(p["price_threshold"])
@@ -94,6 +127,8 @@ class PeakShaveMinPolicy:
         self.eta_d = float(p["eta_discharge"])
         self.dt = float(p["dt_hours"])
         self.motor_min_pct = float(p["motor_min_pct"])
+        self.industrial_shutdown_threshold = float(p["industrial_shutdown_threshold"])
+        self.shed_mapping = str(p["shed_mapping"])
         self.safety_margin_kw = float(p["safety_margin_kw"])
 
     def reset(self):
@@ -177,14 +212,17 @@ class PeakShaveMinPolicy:
                     pct_ind = 0.0
                     rem -= industrial_load_kw
 
-        return pct_to_action(pct_res, pct_com, pct_stad, pct_street, pct_ind, bat_cmd=bat_cmd)
-
-
-def _env_cap_kw() -> float:
-    """Resolve grid import cap from environment default config."""
-    from env.smartgrid_env import default_config, resolve_grid_import_cap
-
-    return resolve_grid_import_cap(default_config())
+        return pct_to_action(
+            pct_res,
+            pct_com,
+            pct_stad,
+            pct_street,
+            pct_ind,
+            bat_cmd=bat_cmd,
+            motor_min_pct=self.motor_min_pct,
+            industrial_shutdown_threshold=self.industrial_shutdown_threshold,
+            shed_mapping=self.shed_mapping,
+        )
 
 
 def psm_prime_policy() -> PeakShaveMinPolicy:

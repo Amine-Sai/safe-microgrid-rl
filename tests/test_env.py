@@ -437,5 +437,33 @@ def test_ppo_defaults_to_cpu():
     assert agent.device.type == "cpu"
 
 
+def test_pct_to_action_parametric_industrial_and_mapping():
+    """Caveat 3 & 4: pct_to_action adapts to custom industrial thresholds and shed mappings."""
+    from agents.heuristics import pct_to_action
+
+    # 1. Custom industrial shutdown threshold (0.80 instead of 0.90) and motor min (75%)
+    # Max linear shed = 1 - 0.75 = 0.25 (25% shed)
+    # If pct_ind = 75 (25% shed), s_ind = (0.25 / 0.25) * 0.80 = 0.80 -> action = 2*0.80 - 1 = 0.60
+    act_linear = pct_to_action(
+        100, 100, 100, 100, pct_ind=75.0,
+        motor_min_pct=75.0, industrial_shutdown_threshold=0.80, shed_mapping="linear"
+    )
+    assert np.isclose(act_linear[5], 0.60, atol=1e-5)
+
+    # If pct_ind = 0 (shutdown), action = 1.0
+    act_off = pct_to_action(
+        100, 100, 100, 100, pct_ind=0.0,
+        motor_min_pct=75.0, industrial_shutdown_threshold=0.80, shed_mapping="linear"
+    )
+    assert np.isclose(act_off[5], 1.0, atol=1e-5)
+
+    # 2. Relu shed mapping (no shed is -1.0)
+    act_relu = pct_to_action(
+        100, 100, 100, 100, pct_ind=100.0,
+        shed_mapping="relu"
+    )
+    assert np.allclose(act_relu[1:], -1.0)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-q", "-x"])

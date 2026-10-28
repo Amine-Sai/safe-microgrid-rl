@@ -37,15 +37,10 @@ defaults:
   charge_clamp: true
   dt_hours: 1.0
   industrial_shutdown_threshold: 0.90
-  ind_off_threshold: 0.90
   cap_clamp_tolerance_kw: 1.0e-9
-  cap_clamp_tol_kw: 1.0e-9
   violation_tolerance_kw: 1.0e-4
-  violation_tol_kw: 1.0e-4
   action_saturation_threshold: 0.99
-  action_sat_threshold: 0.99
   soc_pinned_tolerance: 0.005
-  soc_pin_tol: 0.005
   forecast_horizon_hours: 0
   device: cpu
 experiments:

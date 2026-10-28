@@ -71,10 +71,6 @@ def evaluate_deterministic_val(env_val: SmartGridEnv, agent, extra_log=None) -> 
                 cap_clipped_kw_list.append(info["charge_clipped_by_cap_kw"])
                 soc_clipped_kw_list.append(info.get("charge_clipped_by_soc_kw", 0.0))
                 is_cap_clipped_list.append(bool(info.get("is_charge_clipped_by_cap", False)))
-            elif "charge_clipped_kw" in info:
-                cap_clipped_kw_list.append(info["charge_clipped_kw"])
-                soc_clipped_kw_list.append(0.0)
-                is_cap_clipped_list.append(bool(info.get("charge_clipped_by_cap", False)))
 
     total_cost = total_purchase + total_unserved + total_wear
     violation_rate = (violation_hours / total_val_hours) * 100.0
@@ -129,10 +125,9 @@ ENV_KEYS = (
     "pv_area_m2", "pv_efficiency", "pv_performance_ratio",
     "motor_min_pct", "episode_length_hours", "shed_mapping",
     "charge_clamp", "dt_hours", "industrial_shutdown_threshold",
-    "ind_off_threshold", "cap_clamp_tolerance_kw", "cap_clamp_tol_kw",
-    "violation_tolerance_kw", "violation_tol_kw",
-    "action_saturation_threshold", "action_sat_threshold",
-    "soc_pinned_tolerance", "soc_pin_tol", "forecast_horizon_hours",
+    "cap_clamp_tolerance_kw", "violation_tolerance_kw",
+    "action_saturation_threshold", "soc_pinned_tolerance",
+    "forecast_horizon_hours",
 )
 
 
@@ -210,13 +205,33 @@ def load_agent_for_method(method_name: str, cfg: dict):
     """Build an agent without training, using the same kwargs as the trainer."""
     _require_ppo(method_name)
 
-    from agents.ppo import PPOAgent, PPOPotentialShapingAgent
+    from agents.ppo import (
+        PPOAgent,
+        PPOLagrangianAgent,
+        PPOResidualAgent,
+        PPOShieldedAgent,
+        PPOPotentialShapingAgent,
+        PPOLagrangianPotentialShapingAgent,
+    )
 
     kwargs = _ppo_kwargs(cfg, method_name)
-    if cfg.get("residual_on_heuristic", False):
+    is_residual = bool(cfg.get("residual_on_heuristic", False))
+    is_shielded = bool(cfg.get("shielded", False)) or int(cfg.get("action_dim", 6)) == 1
+    is_lag = bool(kwargs.get("lagrangian", False))
+    is_pbrs = bool(kwargs.get("pbrs", False))
+
+    if is_residual:
         kwargs["residual_policy"] = _ppo_residual_policy()
-    cls = PPOPotentialShapingAgent if kwargs["pbrs"] else PPOAgent
-    return cls(**kwargs)
+        return PPOResidualAgent(**kwargs)
+    elif is_shielded:
+        return PPOShieldedAgent(**kwargs)
+    elif is_lag and is_pbrs:
+        return PPOLagrangianPotentialShapingAgent(**kwargs)
+    elif is_pbrs:
+        return PPOPotentialShapingAgent(**kwargs)
+    elif is_lag:
+        return PPOLagrangianAgent(**kwargs)
+    return PPOAgent(**kwargs)
 
 
 def _ppo_kwargs(cfg: dict, method_name: str) -> dict:
@@ -302,13 +317,10 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
     cost_limit = cfg["cost_limit"]
     is_lagrangian = "lagrangian" in method_name
 
-    kwargs = _ppo_kwargs(cfg, method_name)
-    if cfg.get("residual_on_heuristic", False):
-        kwargs["residual_policy"] = _ppo_residual_policy()
-    cls = PPOPotentialShapingAgent if kwargs["pbrs"] else PPOAgent
-    agent = cls(**kwargs)
-    agent._rng = np.random.RandomState(cfg["seed"])
-    agent._shed_mapping = shed_mapping
+    _ = _ppo_kwargs(cfg, method_name)
+    agent = load_agent_for_method(method_name, cfg)
+    agent.rng = np.random.RandomState(cfg["seed"])
+    agent.shed_mapping = shed_mapping
 
     ckpt_stem = "%s_seed%s" % (run_id, cfg["seed"])
     os.makedirs(ckpt_dir, exist_ok=True)
@@ -342,7 +354,7 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
                                        + info["battery_wear_cost"])
             actions_taken.append(np.asarray(action, dtype=np.float32))
             soc_history.append(float(next_obs[0]))
-            shaped = agent.shape(reward, obs, next_obs, terminated, truncated)
+            shaped = agent.scale_reward(reward, obs, next_obs, terminated, truncated)
             agent.store_transition(obs, action, shaped, cost, value, cost_value,
                                    logp, terminated, truncated)
             obs = next_obs
@@ -357,14 +369,14 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
 
         # Update on rollout
         with th.no_grad():
-            last_state = agent._t(agent.obs_normalizer.normalize(obs[None, :]))
+            last_state = agent.to_tensor(agent.obs_normalizer.normalize(obs[None, :]))
             last_value = float(agent.value_net(last_state))
             last_cost_value = float(agent.cost_net(last_state)) if agent.cost_net is not None else 0.0
         batch = agent.finish_path(0.0 if last_term else last_value,
                                   0.0 if (last_term and is_lagrangian) else last_cost_value)
         if batch is not None:
             agent.update(batch)
-        agent._reset_buffer()
+        agent.reset_buffer()
 
         # Periodic evaluation
         while next_eval <= step or step >= total_steps:
@@ -429,7 +441,7 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
     mean_battery_action = float(np.mean(action_array[:, 0]))
     # 1-D shielded actions have no shed dims.
     mean_shed_action = float(np.mean(action_array[:, 1:])) if action_array.shape[1] > 1 else 0.0
-    soc_pinned_lo = base_env_train.soc_reserve_floor + base_env_train.soc_pinned_tolerance
+    soc_pinned_lo = base_env_train.bat_soc_min + base_env_train.soc_pinned_tolerance
     soc_pinned_hi = base_env_train.bat_soc_max - base_env_train.soc_pinned_tolerance
     soc_pinned_pct = float(np.mean((soc_array <= soc_pinned_lo) | (soc_array >= soc_pinned_hi))) * 100.0
     degenerate_flags = []
