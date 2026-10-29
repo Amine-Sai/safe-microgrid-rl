@@ -973,11 +973,11 @@ def fig_stress_weeks(out_dir: str):
 
     crits = ["lowest_pv", "highest_price", "hottest", "stormiest", "highest_exceedance"]
     crit_labels = [
-        "Lowest PV\n(2019-W48)",
-        "Highest Price\n(2019-W45)",
-        "Hottest\n(2019-W30)",
-        "Stormiest\n(2019-W51)",
-        "Highest Exceedance\n(2019-W49)",
+        "Lowest PV\n(W48)",
+        "Highest Price\n(W45)",
+        "Hottest\n(W30)",
+        "Stormiest\n(W51)",
+        "Highest Exceedance\n(W49)",
     ]
     methods = ["Grid-Only", "PSM'", "PPO", "PPO-Lagrangian", "PPO-Residual", "Shielded PPO"]
     colors = ["#555555", "#1A5276", "#0072B2", "#D55E00", "#009E73", "#CC79A7"]
@@ -1060,8 +1060,8 @@ def fig_stress_weeks(out_dir: str):
     ax2.axhline(0.0, ls=":", color="#1A5276", lw=2.0, label="PSM' Target (0h / 0.0 kW)")
 
     ax2.set_ylim(0, 75)
-    ax2.set_ylabel("Violation Hours on 2019-W49 (out of 168h)")
-    ax2.set_title("B. Cap-Binding Stress Week (2019-W49): Violation Hours by Family", fontsize=11, fontweight="bold")
+    ax2.set_ylabel("Violation Hours on W49 (out of 168h)")
+    ax2.set_title("B. Cap-Binding Stress Week (W49): Violation Hours by Family", fontsize=11, fontweight="bold")
     ax2.set_xticks(x2)
     ax2.set_xticklabels(rl_methods, fontsize=9.5)
     ax2.grid(axis="y", alpha=0.3)

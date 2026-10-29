@@ -120,7 +120,7 @@ def main():
     ax1.fill_between(hours, CAP_KW, hist_res["grid_import"], where=res_exc_mask, color="#E74C3C", alpha=0.45, label="Cap Exceedance")
 
     ax1.set_ylabel("Grid Import (kW)")
-    ax1.set_title("A. Grid Import Trajectory vs. Contract Import Cap (2019-W49, Peak Exceedance Week)", fontweight="bold")
+    ax1.set_title("A. Grid Import Trajectory vs. Contract Import Cap (W49, Peak Exceedance Week)", fontweight="bold")
     ax1.set_ylim(0, 460)
     ax1.legend(loc="upper right", ncol=3, fontsize=9, frameon=True, framealpha=0.92, facecolor="white", edgecolor="#DDD")
     ax1.grid(True)
@@ -148,7 +148,7 @@ def main():
     ax3.plot(hours, hist_res["unserved"], label="PPO-Residual", color=COLORS["PPO-Residual"], linewidth=1.6, alpha=0.9)
 
     ax3.set_ylabel("Load Shed (kW)")
-    ax3.set_xlabel("Hour of Week (0 = Mon 00:00, 167 = Sun 23:00, Dec 2-8 2019)")
+    ax3.set_xlabel("Hour of Week (0 = Mon 00:00, 167 = Sun 23:00, Dec 2-8)")
     ax3.set_title("C. Load Shedding Dispatch (The Safety vs. Economic Penalty Trade-off)", fontweight="bold")
     ax3.set_ylim(-2, 110)
     ax3.set_xlim(0, 167)

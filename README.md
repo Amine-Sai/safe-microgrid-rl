@@ -243,11 +243,11 @@ Full figure sets across all four experimental families (`unclamped`, `clamped`, 
   <tr>
     <td align="center" valign="top" width="50%">
       <img src="results/figures/comparison/stress_weeks_comparison.png" alt="Stress Weeks Comparison" width="460"><br>
-      <sub><b>5. Test Split Stress-Week Evaluation & 2019-W49 Family Comparison</b></sub>
+      <sub><b>5. Test Split Stress-Week Evaluation & W49 Family Comparison</b></sub>
     </td>
     <td align="center" valign="top" width="50%">
       <img src="results/figures/comparison/w49_dispatch_trajectory.png" alt="168-Hour Dispatch Trajectory" width="460"><br>
-      <sub><b>6. 168-Hour Dispatch Trajectory on Cap-Binding Week 2019-W49</b></sub>
+      <sub><b>6. 168-Hour Dispatch Trajectory on Cap-Binding Week W49</b></sub>
     </td>
   </tr>
 </table>
@@ -285,9 +285,9 @@ The Test split was kept closed until final evaluation via `tools/report/evaluate
 3. **Nuanced Residual PPO Test Performance:**
    - On the closed Test split, Residual PPO's mean cost of `37,633.81 ± 280.67 EUR` matches `PSM'` (`37,674.27 EUR`) within **0.14 standard deviations ($p = 0.77$)**, making the 40 EUR difference statistically indistinguishable from evaluation noise.
    - Crucially, Residual PPO does **not** achieve strict feasibility: it incurs **134.8 hours of violations (3.34% violation rate)** with `0.0702 kW` mean exceedance. While 2 seeds (104 and 105) pass the loose G1 threshold ($\le 0.05$ kW), neither achieves zero violations.
-4. **Decisive Cap-Binding Stress Week (`2019-W49`):**
-   - The 4 original meteorological stress weeks (`lowest_pv: 2019-W48`, `highest_price: 2019-W45`, `hottest: 2019-W30`, `stormiest: 2019-W51`) have net load below 368 kW, meaning even Grid-Only has 0 exceedance.
-   - Evaluating on the true cap-binding Test week (`2019-W49`, net load peak > 368 kW; 10.25 kW mean exceedance for Grid-Only over 66 hours) conclusively separates the methods:
+4. **Decisive Cap-Binding Stress Week (`W49`):**
+   - The 4 original meteorological stress weeks (`lowest_pv: W48`, `highest_price: W45`, `hottest: W30`, `stormiest: W51`) have net load below 368 kW, meaning even Grid-Only has 0 exceedance.
+   - Evaluating on the true cap-binding Test week (`W49`, net load peak > 368 kW; 10.25 kW mean exceedance for Grid-Only over 66 hours) conclusively separates the methods:
      - `Grid-Only`: 2,149.71 EUR | 10.25 kW exc | 66h violations
      - `PSM'`: 2,990.43 EUR | **0.00 kW exc** | **0h violations**
      - `clamped_ppo_lagrangian`: 2,158.79 EUR | 10.25 kW exc | 66.0h violations (fails completely)
