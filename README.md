@@ -324,14 +324,80 @@ The Test split was kept closed until final evaluation via `tools/report/evaluate
 }
 
 @inproceedings{salaorni2025reinforcement,
-  title     = {A Reinforcement Learning Approach for Optimal Control in Microgrids},
-  author    = {Salaorni, Davide and Bianchi, Federico and Trov{\`o}, Francesco
-               and Restelli, Marcello},
-  booktitle = {2025 International Joint Conference on Neural Networks (IJCNN)},
-  year      = {2025},
-  eprint    = {2506.22995},
+  title         = {A Reinforcement Learning Approach for Optimal Control in Microgrids},
+  author        = {Salaorni, Davide and Bianchi, Federico and Trov{\`o}, Francesco
+                   and Restelli, Marcello},
+  booktitle     = {2025 International Joint Conference on Neural Networks (IJCNN)},
+  year          = {2025},
+  eprint        = {2506.22995},
   archivePrefix = {arXiv},
-  doi       = {10.1109/IJCNN64981.2025.11227643}
+  doi           = {10.1109/IJCNN64981.2025.11227643}
+}
+
+@article{schulman2017proximal,
+  title         = {Proximal Policy Optimization Algorithms},
+  author        = {Schulman, John and Wolski, Filip and Dhariwal, Prafulla
+                   and Radford, Alec and Klimov, Oleg},
+  journal       = {arXiv preprint arXiv:1707.06347},
+  year          = {2017},
+  eprint        = {1707.06347},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{schulman2016high,
+  title         = {High-Dimensional Continuous Control Using Generalized Advantage Estimation},
+  author        = {Schulman, John and Moritz, Philipp and Levine, Sergey
+                   and Jordan, Michael I. and Abbeel, Pieter},
+  booktitle     = {International Conference on Learning Representations (ICLR)},
+  year          = {2016},
+  eprint        = {1506.02438},
+  archivePrefix = {arXiv}
+}
+
+@article{silver2018residual,
+  title         = {Residual Policy Learning},
+  author        = {Silver, Tom and Allen, Kelsey R. and Tenenbaum, Joshua B.
+                   and Kaelbling, Leslie Pack},
+  journal       = {arXiv preprint arXiv:1812.06298},
+  year          = {2018},
+  eprint        = {1812.06298},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{dalal2018safe,
+  title         = {Safe Exploration in Continuous Action Spaces},
+  author        = {Dalal, Gal and Dvijotham, Krishnamurthy and Vecerik, Matej
+                   and Hester, Todd and Paduraru, Cosmin and Tassa, Yuval},
+  booktitle     = {Proceedings of the Thirty-Second AAAI Conference on Artificial Intelligence (AAAI)},
+  year          = {2018},
+  eprint        = {1801.08757},
+  archivePrefix = {arXiv}
+}
+
+@article{spoor2025towards,
+  title         = {Towards a Practical Understanding of Lagrangian Methods in Safe Reinforcement Learning},
+  author        = {Spoor, Lindsay and Serra-G{\'o}mez, {\'A}lvaro and Plaat, Aske and Moerland, Thomas},
+  journal       = {arXiv preprint arXiv:2510.17564},
+  year          = {2025},
+  eprint        = {2510.17564},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{tessler2019reward,
+  title         = {Reward Constrained Policy Optimization},
+  author        = {Tessler, Chen and Mankowitz, Daniel J. and Mannor, Shie},
+  booktitle     = {International Conference on Learning Representations (ICLR)},
+  year          = {2019},
+  eprint        = {1805.11074},
+  archivePrefix = {arXiv}
+}
+
+@inproceedings{ng1999policy,
+  title         = {Policy Invariance Under Reward Transformations: Theory and Application to Reward Shaping},
+  author        = {Ng, Andrew Y. and Harada, Daishi and Russell, Stuart J.},
+  booktitle     = {Proceedings of the Sixteenth International Conference on Machine Learning (ICML)},
+  pages         = {278--287},
+  year          = {1999}
 }
 ```
 
