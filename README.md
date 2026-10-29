@@ -74,7 +74,7 @@ All RL agents are structured as a clean object-oriented class hierarchy in `agen
 
 `env/smartgrid_env.py` is a [Gymnasium](https://gymnasium.farama.org/) environment with hourly steps and weekly episodes.
 
-- **Observation (17 values, or 23 with 6h lookahead):** battery charge, solar power, the five zone loads, price, hour and weekday (sin/cos), weather, event flags, plus optional 6-hour rolling PV and load forecasts (`forecast_horizon_hours: 6`).
+- **Observation (17 values, or 23 with 6h lookahead):** battery charge, solar power, the five zone loads, price, hour and weekday (sin/cos), weather, event flags, plus optional 6-hour rolling PV and load forecasts (`forecast_horizon_hours: 6`). Note that this lookahead uses **exact future values (an oracle forecast)** rather than noisy predictions, representing an idealized theoretical upper bound on forecast information.
 - **Action (6 values):** one battery command in [-1, 1] and five shed fractions in [0, 1].
 - **Battery:** 500 kWh, 250 kW, charge kept between 10 % and 90 %.
 - **Solar:** about 250 kW peak.
@@ -209,13 +209,18 @@ Full figure sets across all four experimental families (`unclamped`, `clamped`, 
 | *PSM' (tuned rule)* | *55,530* | *55,530* | *55,530* | *55,530* | *0.0000 kW* | *Yes* | *Yes (0h violations)* |
 | *LP' (hindsight oracle)* | *53,291* | *53,291* | *53,291* | *53,291* | *0.0000 kW* | *Theoretical Upper Bound* | *Yes (0h violations)* |
 
+> [!NOTE]
+> **Feasibility Definitions:** `G1 Feasible` measures the soft constraint on **average exceedance magnitude** ($\le 0.05\text{ kW/step}$), under which small frequent overruns can pass (e.g., Residual PPO passes G1 on 2 clamped seeds despite overrunning in ~10% of hours). `Strict Feasible` requires **0 violation hours (0.00% violation rate)** across the entire split, achieved only by Shielded PPO and the reference baselines (PSM', LP').
+
 #### Why We Added PPO Minibatching (`clamped_mb_*`) & Battery Usage Analysis
 
 1. **Algorithmic Reason (Escaping the "Park the Battery" Equilibrium):**
    - Full-batch PPO (`clamped_*`, 10 policy updates & 1 critic update per 2,048-step rollout) collapsed into a passive "park the battery" local equilibrium (`~0–5.5 MWh` throughput, `~96%` near-zero battery actions), learning that keeping the battery idle avoids degradation wear entirely.
    - Enabling minibatching (`clamped_mb_*`: `batch_size=64`, 320 policy updates & 160 critic updates across 5 value epochs, plus raw action storage) escapes this local optimum, increasing battery throughput to `~79–83 MWh` (`1,580–1,666 EUR` wear) and cutting unserved load penalties from `14,227 EUR` down to `13,325 EUR`.
 2. **Scientific Reason (Un-confounded Ablation Control):**
-   - `clamped_mb_*` (17-D state space, no forecast) serves as the un-confounded control for `clamped_forecast_*` (23-D state space with 6h lookahead), proving that 100% of the behavioral shift came from the PPO optimizer settings (`59,526.37 EUR` vs. `59,525.81 EUR` for Shielded PPO, $\Delta < 0.001\%$).
+   - The original forecast variant (`clamped_forecast_*`) simultaneously introduced 6-hour rolling forecasts *and* modified PPO internals (`ppo_use_minibatches: true`, `ppo_value_epochs: 5`, and `ppo_store_raw_action: true`).
+   - `clamped_mb_*` (17-D state space without forecast) was introduced specifically to eliminate this confound.
+   - Furthermore, the 6-hour forecast in `clamped_forecast_*` uses **exact future values (an oracle forecast)** rather than noisy predictions. Because an exact noise-free oracle is the theoretical upper bound on forecast value, the fact that `clamped_forecast_*` yields **0.00% net cost improvement** over `clamped_mb_*` (`59,525.81 EUR` vs. `59,526.37 EUR` for Shielded PPO, $\Delta < 0.001\%$) proves *a fortiori* that realistic noisy forecasts cannot improve performance under this architecture either.
 
 #### Cross-Family Comparisons (Without Visual Clutter)
 
@@ -283,11 +288,12 @@ The Test split was kept closed until final evaluation via `tools/report/evaluate
    - Both `clamped_ppo_shielded` and `clamped_forecast_ppo_shielded` achieve **0.00% violation rate (0 violation hours out of 4,368 Val hours and 4,032 Test hours across all seeds)**, eliminating the residual 2.25% (98.4h) violation rate of the unclamped shield.
    - On the closed Test split, Shielded PPO generalized with minimal cross-seed variance (`39,996.21 ± 8.96 EUR`) and 0.0000 kW exceedance. The ~2,322 EUR cost gap relative to PSM' is entirely driven by defensive load shedding during uncertain demand spikes.
 3. **Nuanced Residual PPO Test Performance:**
-   - On the closed Test split, Residual PPO's mean cost of `37,633.81 ± 280.67 EUR` matches `PSM'` (`37,674.27 EUR`) within **0.14 standard deviations ($p = 0.77$)**, making the 40 EUR difference statistically indistinguishable from evaluation noise.
-   - Crucially, Residual PPO does **not** achieve strict feasibility: it incurs **134.8 hours of violations (3.34% violation rate)** with `0.0702 kW` mean exceedance. While 2 seeds (104 and 105) pass the loose G1 threshold ($\le 0.05$ kW), neither achieves zero violations.
+   - On the closed Test split, Residual PPO does **not** "beat PSM' by 40 EUR": its mean cost of `37,633.81 ± 280.67 EUR` matches `PSM'` (`37,674.27 EUR`) within **0.14 standard deviations ($p = 0.77$)**, making the 40 EUR difference statistically indistinguishable from 5-seed evaluation noise.
+   - Crucially, Residual PPO does **not** achieve strict feasibility: it incurs **134.8 hours of violations (3.34% violation rate)** with `0.0702 kW` mean exceedance (under-shedding load during peaks). Under minibatch training, `clamped_mb_ppo_residual` cost rises to `41,653.90 ± 1,025.80 EUR` with 66.4 violation hours.
+   - While 2 seeds in `clamped_ppo_residual` (104 and 105) pass the soft G1 threshold ($\le 0.05\text{ kW/step}$ average magnitude), neither achieves Strict Feasibility (0 violation hours).
 4. **Decisive Cap-Binding Stress Week (`W49`):**
-   - The 4 original meteorological stress weeks (`lowest_pv: W48`, `highest_price: W45`, `hottest: W30`, `stormiest: W51`) have net load below 368 kW, meaning even Grid-Only has 0 exceedance.
-   - Evaluating on the true cap-binding Test week (`W49`, net load peak > 368 kW; 10.25 kW mean exceedance for Grid-Only over 66 hours) conclusively separates the methods:
+   - The 4 original meteorological stress weeks (`lowest_pv: W48`, `highest_price: W45`, `hottest: W30`, `stormiest: W51`) have net site load strictly below the 368.15 kW cap, meaning even the completely unmanaged Grid-Only baseline incurs 0 violations (0.00 kW exceedance). Because the constraint never binds on these 4 weather stress weeks, claims that any controller "outperformed PSM' on stress weeks" are spurious.
+   - Evaluating on the true cap-binding Test week (`W49`, net load peak > 368.15 kW; 10.25 kW mean exceedance for Grid-Only over 66 hours) conclusively separates the methods:
      - `Grid-Only`: 2,149.71 EUR | 10.25 kW exc | 66h violations
      - `PSM'`: 2,990.43 EUR | **0.00 kW exc** | **0h violations**
      - `clamped_ppo_lagrangian`: 2,158.79 EUR | 10.25 kW exc | 66.0h violations (fails completely)
@@ -295,12 +301,13 @@ The Test split was kept closed until final evaluation via `tools/report/evaluate
      - `clamped_ppo_shielded`: 3,797.08 EUR | **0.00 kW exc** | **0h violations** (100% safe via defensive shedding)
      - `clamped_mb_ppo_shielded`: 3,599.47 ± 124.21 EUR | **0.00 kW exc** | **0h violations** (100% safe with active battery cycling)
 5. **Decisive Resolution of the Forecast Confound (`clamped_mb_*` Control Suite):**
-   - By running the pure 17-D ablation family `clamped_mb_*` (with minibatch updates, 5 value epochs, and raw action storage, but without forecast features), we cleanly disentangled the optimizer improvements from the 6-hour lookahead.
+   - Earlier iterations of `clamped_forecast_*` simultaneously enabled `ppo_use_minibatches: true`, `ppo_value_epochs: 5`, and `ppo_store_raw_action: true` alongside 6-hour lookahead features. The pure 17-D ablation family `clamped_mb_*` (with minibatch updates, 5 value epochs, and raw action storage, but without forecast features) was introduced specifically to eliminate this confound.
+   - Crucially, the 6-hour forecast in `clamped_forecast_*` uses **exact future values (an oracle forecast)** rather than noisy predictions.
    - **The findings are definitive:**
      - For **Shielded PPO**, `clamped_mb` cost is **59,526.37 EUR**, identical to `clamped_forecast` at **59,525.81 EUR** ($\Delta = 0.56\text{ EUR} < 0.001\%$).
      - For **PPO-Lagrangian**, `clamped_mb` cost is **70,040 EUR** vs. `clamped_forecast` at **70,572 EUR**.
      - For **PPO-Residual**, `clamped_mb` cost is **59,705 EUR** vs. `clamped_forecast` at **60,001 EUR**.
-   - This proves conclusively that the 6-hour rolling forecast contributed **0.00% net cost improvement**. The entire behavioral difference between `clamped_*` and `clamped_forecast_*` was driven by the optimizer modifications, which broke the "park the battery" equilibrium and stimulated battery cycling, rather than any lookahead planning capability.
+   - This proves conclusively that the 6-hour rolling forecast contributed **0.00% net cost improvement**. Because an exact noise-free oracle is the theoretical upper bound on forecast value, the fact that `clamped_forecast_*` yields 0.00% net cost improvement over `clamped_mb_*` proves *a fortiori* that noisy forecasts cannot improve performance under this architecture either. The entire behavioral difference between `clamped_*` and `clamped_forecast_*` was driven by the optimizer modifications, which broke the "park the battery" equilibrium and stimulated battery cycling, rather than any lookahead planning capability.
 
 ## Citations
 
