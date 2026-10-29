@@ -1,8 +1,8 @@
 # `results/` — what is tracked and why
 
-This directory is committed on purpose. It is small (~2.4 MB) and contains the
+This directory is committed on purpose. It is small (~12 MB) and contains the
 evidence behind the README table and figures, so a reader does not have to rerun
-20 training jobs to check the claim.
+80 training jobs to check the claim.
 
 ## Layout
 
@@ -12,14 +12,18 @@ figures/
   clamped/                   5 PNGs for clamped family (17-D)
   clamped_mb/                5 PNGs for clamped minibatch control family (17-D)
   clamped_forecast/          5 PNGs for clamped + 6h forecast family (23-D)
-  comparison/                4 cross-family comparison PNGs:
+  comparison/                6 cross-family comparison PNGs:
     unified_pareto.png       Unified Pareto frontier (Cost vs. Exceedance across environments)
-    grouped_cost_breakdown.png Grouped stacked cost breakdown & exceedance across environments
+    grouped_cost_breakdown.png Grouped stacked cost breakdown (Cost vs. Grid-Only, Exceedance vs. PSM', Battery Throughput)
+    battery_usage_comparison.png Battery throughput MWh & active unpinned SoC time across all methods
     targeted_learning_curves.png Targeted learning curves for competitive methods (Residual & Shielded)
     stress_weeks_comparison.png Test split stress-week evaluation (Weather weeks vs. Cap-Binding 2019-W49)
-runs/<agent>/                one JSON per (experiment, seed)
-  *_seed101.json ...         5 seeds per method (101–105)
-  *_grid.json                batch roll-up, not a run
+    w49_dispatch_trajectory.png 168-Hour dispatch trajectory on cap-binding week 2019-W49
+runs/
+  test_lock.json             lock token for one-shot evaluation on the Test split
+  <agent>/                   one JSON per (experiment, seed)
+    *_seed101.json ...       5 seeds per method (101–105)
+    *_grid.json              batch roll-up, not a run
 tables/
   runs.csv                   one row per seed run (cost, exceedance, wall clock)
   per_seed_metrics.csv       per-seed diagnostics, gate pass/fail flags, strict_feasible
@@ -58,6 +62,7 @@ python tools/report/lp_oracle.py --split both   # solve perfect-foresight LP' th
 python tools/report/export_csv.py               # rebuild results/tables/*.csv from runs/
 python tools/report/plots.py --family all        # rebuild all per-family and comparison figures
 python tools/report/plots.py --family comparison # rebuild only cross-family comparison figures
+python tools/report/plot_stress_trajectory.py   # rebuild 168-hour dispatch trajectory for 2019-W49
 python tools/status.py                          # compact health/status summary
 ```
 

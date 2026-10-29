@@ -12,7 +12,7 @@ import torch as th
 from experiments.train_core import PPO_METHODS, train_single_method
 
 
-def _worker(job):
+def run_worker(job):
     """Run one (method, seed) job in a fresh process with a single torch thread."""
     # Pin thread pools to 1
     os.environ["OMP_NUM_THREADS"] = "1"
@@ -85,8 +85,8 @@ def main():
         method, seed = methods[0], seeds[0]
         print(f"CONCURRENT VERIFY: two identical {method} seed={seed} jobs launched at once...")
         with ProcessPoolExecutor(max_workers=2) as ex:
-            f1 = ex.submit(_worker, (method, seed, args.steps, run_id, args.eval_interval, args.config, True))
-            f2 = ex.submit(_worker, (method, seed, args.steps, run_id, args.eval_interval, args.config, True))
+            f1 = ex.submit(run_worker, (method, seed, args.steps, run_id, args.eval_interval, args.config, True))
+            f2 = ex.submit(run_worker, (method, seed, args.steps, run_id, args.eval_interval, args.config, True))
             r1, r2 = f1.result(), f2.result()
         keys = ["final_val_cost", "final_val_exc", "final_lambda"]
         match = all(abs(r1[k] - r2[k]) < 1e-6 for k in keys if r1[k] is not None and r2[k] is not None)
@@ -100,8 +100,8 @@ def main():
         # Run the same (method, seed) in two fresh processes; metrics must match.
         method, seed = methods[0], seeds[0]
         print(f"VERIFY: running {method} seed={seed} twice in separate processes...")
-        r1 = _worker((method, seed, args.steps, run_id, args.eval_interval, args.config, True))
-        r2 = _worker((method, seed, args.steps, run_id, args.eval_interval, args.config, True))
+        r1 = run_worker((method, seed, args.steps, run_id, args.eval_interval, args.config, True))
+        r2 = run_worker((method, seed, args.steps, run_id, args.eval_interval, args.config, True))
         keys = ["final_val_cost", "final_val_exc", "final_lambda"]
         match = all(abs(r1[k] - r2[k]) < 1e-6 for k in keys if r1[k] is not None and r2[k] is not None)
         print(f"  run1 cost={r1['final_val_cost']:.6f}  run2 cost={r2['final_val_cost']:.6f}")
@@ -119,7 +119,7 @@ def main():
     results = []
     from concurrent.futures import ProcessPoolExecutor, as_completed
     with ProcessPoolExecutor(max_workers=args.workers) as ex:
-        futs = {ex.submit(_worker, j): j for j in jobs}
+        futs = {ex.submit(run_worker, j): j for j in jobs}
         for i, fut in enumerate(as_completed(futs), 1):
             j = futs[fut]
             try:

@@ -71,7 +71,7 @@ plt.rcParams.update({
     "legend.frameon": False,
     "legend.fontsize": 9.5,
     "lines.linewidth": 1.8,
-    "figure.constrained_layout.use": True,
+    "figure.constrained_layout.use": False,
     "axes.prop_cycle": cycler(color=[g[2] for g in GROUPS]),
 })
 
@@ -198,7 +198,7 @@ def group_handle(label, extra=""):
 # Figure generators
 def fig_learning_curves(runs, baselines):
     """Fig 1 - Val cost and Val exceedance over training, mean +/- sd of 5 seeds."""
-    fig, axes = plt.subplots(2, 1, figsize=(9.5, 8.4), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(10.0, 8.5), sharex=True, gridspec_kw={"height_ratios": [1, 1]})
 
     ax = axes[0]
     max_cost_upper = G2_COST_EUR
@@ -268,14 +268,15 @@ def fig_learning_curves(runs, baselines):
                                   label="%s (frozen) %.0f EUR"
                                         % (name,
                                            float(baselines[name]["cost_eur"]))))
-    fig.legend(handles=handles, loc="outside lower center", ncol=3)
-    fig.savefig(os.path.join(FIGS, "learning_curves.png"))
+    fig.subplots_adjust(left=0.10, right=0.96, top=0.93, bottom=0.20, hspace=0.20)
+    fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=3, frameon=True)
+    fig.savefig(os.path.join(FIGS, "learning_curves.png"), bbox_inches="tight")
     plt.close(fig)
 
 
 def fig_cost_vs_exceedance(runs, baselines):
     """Fig 2 - the cost / exceedance frontier, one marker per (method, seed)."""
-    fig, ax = plt.subplots(figsize=(9.4, 6.6))
+    fig, ax = plt.subplots(figsize=(9.8, 6.8))
 
     max_y = G2_COST_EUR
     handles = []
@@ -324,11 +325,10 @@ def fig_cost_vs_exceedance(runs, baselines):
                                 G1_EXC_KW - FLOOR * 0.65,
                                 G2_COST_EUR - COST_YLIM[0],
                                 color="#009E73", alpha=0.09, zorder=0))
-    ax.axhline(G2_COST_EUR, ls="--", color=GATE, lw=1.5, zorder=2,
-               label="G2 gate  %.0f EUR (1.05 x PSM')" % G2_COST_EUR)
-    ax.axvline(G1_EXC_KW, ls="--", color=GATE, lw=1.5, zorder=2,
-               label="G1 gate  %.2f kW/step" % G1_EXC_KW)
+    ax.axhline(G2_COST_EUR, ls="--", color=GATE, lw=1.5, zorder=2)
+    ax.axvline(G1_EXC_KW, ls="--", color=GATE, lw=1.5, zorder=2)
     handles += [
+        Patch(facecolor="#009E73", alpha=0.15, label="Feasible Region (G1 & G2)"),
         Line2D([], [], ls="--", color=GATE, lw=1.5,
                label="G2 gate  %.0f EUR" % G2_COST_EUR),
         Line2D([], [], ls="--", color=GATE, lw=1.5,
@@ -339,14 +339,15 @@ def fig_cost_vs_exceedance(runs, baselines):
                   % FLOOR)
     ax.set_ylabel("Val cost (EUR)")
     ax.set_title("Validation Cost vs. Mean Grid Exceedance")
-    fig.legend(handles=handles, loc="outside lower center", ncol=3)
-    fig.savefig(os.path.join(FIGS, "cost_vs_exceedance.png"))
+    fig.subplots_adjust(left=0.10, right=0.96, top=0.92, bottom=0.22)
+    fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=3, frameon=True)
+    fig.savefig(os.path.join(FIGS, "cost_vs_exceedance.png"), bbox_inches="tight")
     plt.close(fig)
 
 
 def fig_lambda(runs):
     """Fig 3 - lambda multiplier over training for the two constrained variants."""
-    fig, ax = plt.subplots(figsize=(9.4, 6.0))
+    fig, ax = plt.subplots(figsize=(9.8, 6.2))
 
     handles = []
     for label in ("PPO-Lagrangian", "PPO-Residual"):
@@ -375,14 +376,15 @@ def fig_lambda(runs):
     ax.set_xlabel("Training steps (thousands)")
     ax.set_ylabel("Lagrange multiplier lambda (log scale)")
     ax.set_title("Lagrange Multiplier Trajectory over Training")
-    fig.legend(handles=handles, loc="outside lower center", ncol=1)
-    fig.savefig(os.path.join(FIGS, "lambda_trajectory.png"))
+    fig.subplots_adjust(left=0.10, right=0.96, top=0.92, bottom=0.16)
+    fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=1, frameon=True)
+    fig.savefig(os.path.join(FIGS, "lambda_trajectory.png"), bbox_inches="tight")
     plt.close(fig)
 
 
 def fig_per_seed(runs, baselines):
     """Fig 4 - per-seed cost and exceedance, with the two gates."""
-    fig, axes = plt.subplots(1, 2, figsize=(13.0, 5.8))
+    fig, axes = plt.subplots(1, 2, figsize=(14.0, 6.2), gridspec_kw={"width_ratios": [1, 1], "wspace": 0.12})
 
     labels = [g[0] for g in GROUPS]
     ypos = list(range(len(labels)))[::-1]
@@ -463,68 +465,119 @@ def fig_per_seed(runs, baselines):
         handles.append(Line2D([], [], ls="-.", color="#196F3D", lw=1.3,
                               label="LP'  %.0f"
                                     % float(baselines["LP'"]["cost_eur"])))
-    fig.legend(handles=handles, loc="outside lower center", ncol=3)
-    fig.savefig(os.path.join(FIGS, "per_seed_results.png"))
+    fig.subplots_adjust(left=0.12, right=0.96, top=0.90, bottom=0.18)
+    fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=4, frameon=True)
+    fig.savefig(os.path.join(FIGS, "per_seed_results.png"), bbox_inches="tight")
     plt.close(fig)
 
 
 def fig_cost_breakdown(runs, baselines):
     """Fig 5 - where the money goes: energy purchase vs unserved penalty vs wear."""
-    fig, ax = plt.subplots(figsize=(9.6, 5.6))
+    fig, axes = plt.subplots(1, 3, figsize=(16.5, 6.0), sharey=True, gridspec_kw={"width_ratios": [1, 1, 1], "wspace": 0.08})
+    ax1, ax2, ax3 = axes[0], axes[1], axes[2]
 
-    parts = ("energy_purchase_eur", "unserved_penalty_eur", "battery_wear_eur")
-    names = ("energy purchase", "unserved penalty", "battery wear")
-    colours = ("#0072B2", "#E67E22", "#7F8C8D")
+    parts = ("energy_purchase_eur", "battery_wear_eur", "unserved_penalty_eur")
+    part_names = ("Grid energy bought", "Battery wear", "Unserved penalty")
+    part_colours = ("#0072B2", "#7F8C8D", "#E67E22")
 
     ypos = list(range(len(GROUPS)))[::-1]
-    max_total = G2_COST_EUR
-    for y, (label, _prefix, _c) in zip(ypos, GROUPS):
-        left = 0.0
+    labels = [g[0] for g in GROUPS]
+    bar_h = 0.55
+
+    all_tots = []
+    all_excs = []
+    all_tps = []
+    group_data = []
+
+    for y, (label, _prefix, colour) in zip(ypos, GROUPS):
         totals = []
         for i, part in enumerate(parts):
             vals = [float(final_metrics(r).get(part, 0.0)) for r in runs[label]]
-            if not vals:
-                continue
-            v = sum(vals) / len(vals)
+            v = sum(vals) / len(vals) if vals else 0.0
             totals.append(v)
-            ax.barh(y, v, left=left, height=0.52, color=colours[i],
-                    edgecolor="white", linewidth=0.8)
-            if v >= 4000:
-                ax.text(left + v / 2, y, "%.0f" % v, ha="center", va="center",
-                        color="white", fontsize=9, fontweight="bold")
+        tot = sum(totals)
+        all_tots.append(tot)
+
+        excs = [float(final_metrics(r).get("mean_exceedance_kw", 0.0)) for r in runs[label]]
+        mean_exc = statistics.fmean(excs) if excs else 0.0
+        all_excs.append(mean_exc)
+
+        tps = [float(final_metrics(r).get("battery_wear_eur", 0.0)) / 20.0 for r in runs[label]]
+        mean_tp = statistics.fmean(tps) if tps else 0.0
+        std_tp = statistics.stdev(tps) if len(tps) > 1 else 0.0
+        all_tps.append(mean_tp + std_tp)
+
+        group_data.append((y, label, colour, totals, tot, mean_exc, mean_tp, std_tp))
+
+    max_tot = max([G2_COST_EUR] + all_tots + [float(b["cost_eur"]) for b in baselines.values() if "cost_eur" in b])
+    max_exc = max([G1_EXC_KW, 3.26] + all_excs)
+    max_tp = max([25.0] + all_tps)
+
+    for y, label, colour, totals, tot, mean_exc, mean_tp, std_tp in group_data:
+        # Panel A: Stacked cost bars
+        left = 0.0
+        for i, v in enumerate(totals):
+            ax1.barh(y, v, left=left, height=bar_h, color=part_colours[i],
+                     edgecolor="white", linewidth=0.8)
             left += v
-        if totals and sum(totals) > 0:
-            max_total = max(max_total, left)
-            ax.text(left + 600, y, "wear %.2f%%" % (100 * totals[2] / sum(totals)),
-                    va="center", fontsize=8.5, color="#555555")
 
-    handles = [Patch(facecolor=c, label=n) for c, n in zip(colours, names)]
-    for name, style, col in (("Grid-Only", "--", BASE), ("PSM'", ":", BASE), ("LP'", "-.", "#196F3D")):
-        if name in baselines:
-            ax.axvline(float(baselines[name]["cost_eur"]), ls=style, color=col,
-                       lw=1.4, zorder=3)
-            handles.append(Line2D([], [], ls=style, color=col, lw=1.4,
-                                  label="%s (frozen) %.0f"
-                                        % (name,
-                                           float(baselines[name]["cost_eur"]))))
+        # Panel B: Exceedance bar
+        ax2.barh(y, mean_exc, height=bar_h, color=colour, edgecolor="white", linewidth=0.8)
 
-    xmax = max(68000, int(math.ceil((max_total + 9000) / 10000.0) * 10000))
-    ax.set_yticks(ypos)
-    ax.set_yticklabels([g[0] for g in GROUPS])
-    ax.set_xlabel("Val cost (EUR, mean over 5 seeds)")
-    ax.set_title("Validation Cost Breakdown by Component")
-    ax.set_xlim(0, xmax)
-    ax.xaxis.set_major_locator(FixedLocator(list(range(0, xmax + 1, 20000))))
-    ax.xaxis.set_major_formatter(FuncFormatter(fmt_k))
-    fig.legend(handles=handles, loc="outside lower center", ncol=3)
-    fig.savefig(os.path.join(FIGS, "cost_breakdown.png"))
+        # Panel C: Battery Throughput bar
+        ax3.barh(y, mean_tp, xerr=std_tp, height=bar_h, color=colour, edgecolor="white", linewidth=0.8, capsize=2)
+
+    # Panel A limits and decor
+    ax1.set_xlim(0, max_tot * 1.06)
+    ax1.set_yticks(ypos)
+    ax1.set_yticklabels(labels, fontsize=9.5)
+    ax1.xaxis.set_major_formatter(FuncFormatter(fmt_k))
+    ax1.set_xlabel("Validation Cost (EUR, mean over 5 seeds)")
+    ax1.set_title("A. Cost Breakdown vs. Grid-Only", fontsize=11, fontweight="bold")
+    ax1.axvline(G2_COST_EUR, ls="--", color=GATE, lw=1.3, zorder=2)
+    if "Grid-Only" in baselines:
+        ax1.axvline(float(baselines["Grid-Only"]["cost_eur"]), ls="--", color=BASE, lw=1.2, zorder=2)
+    if "PSM'" in baselines:
+        ax1.axvline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE, lw=1.2, zorder=2)
+    if "LP'" in baselines:
+        ax1.axvline(float(baselines["LP'"]["cost_eur"]), ls="-.", color="#196F3D", lw=1.2, zorder=2)
+
+    # Panel B limits and decor
+    ax2.set_xlim(0, max_exc * 1.08)
+    ax2.axvline(0.0, ls=":", lw=1.8, color="#1A5276", zorder=2)
+    ax2.axvline(G1_EXC_KW, ls="--", color=GATE, lw=1.3, zorder=2)
+    if "Grid-Only" in baselines:
+        ax2.axvline(float(baselines["Grid-Only"]["exceedance_kw"]), ls="--", color=BASE, lw=1.2, zorder=2)
+    ax2.set_xlabel("Mean Exceedance (kW/step)")
+    ax2.set_title("B. Exceedance vs. PSM' & Grid-Only", fontsize=11, fontweight="bold")
+
+    # Panel C limits and decor
+    ax3.set_xlim(0, max_tp * 1.08)
+    ax3.axvline(5.84, ls=":", color=BASE, lw=1.4, zorder=2)
+    ax3.axvline(24.99, ls="-.", color="#196F3D", lw=1.4, zorder=2)
+    ax3.set_xlabel("Battery Throughput (MWh, 26 Val Weeks)")
+    ax3.set_title("C. Battery Usage Across Methods", fontsize=11, fontweight="bold")
+
+    # Handles
+    cost_handles = [Patch(facecolor=part_colours[i], label=part_names[i]) for i in range(len(parts))]
+    ref_handles = [
+        Line2D([], [], ls="--", color=GATE, lw=1.3, label="G1 / G2 Gates"),
+        Line2D([], [], ls="--", color=BASE, lw=1.2, label="Grid-Only"),
+        Line2D([], [], ls=":", color=BASE, lw=1.2, label="PSM' Target"),
+    ]
+    if "LP'" in baselines:
+        ref_handles.append(Line2D([], [], ls="-.", color="#196F3D", lw=1.2, label="LP' Oracle"))
+
+    fig.subplots_adjust(left=0.15, right=0.97, top=0.88, bottom=0.18)
+    fig.legend(handles=cost_handles + ref_handles, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=4, frameon=True)
+    fig.savefig(os.path.join(FIGS, "cost_breakdown.png"), bbox_inches="tight")
     plt.close(fig)
 
 
 # Cross-family comparison figures
 def fig_unified_pareto(all_families, baselines, out_dir):
     """Unified Pareto scatter plot comparing Cost vs Exceedance across environments."""
-    fig, ax = plt.subplots(figsize=(10.5, 7.2))
+    fig, ax = plt.subplots(figsize=(11.0, 7.5))
 
     fam_styles = [
         ("unclamped", "Unclamped", "x", 7.0),
@@ -536,8 +589,6 @@ def fig_unified_pareto(all_families, baselines, out_dir):
     # Shaded feasible quadrant (x <= G1, y <= G2)
     ax.fill_between([FLOOR * 0.65, G1_EXC_KW], [42000, 42000], [G2_COST_EUR, G2_COST_EUR],
                     color="#2ECC71", alpha=0.10, zorder=1)
-    ax.text(FLOOR * 1.5, 56500, "Feasible Region\n(G1 & G2)", color="#1E8449",
-            fontsize=9.5, fontweight="bold", va="top", zorder=2)
 
     max_cost = G2_COST_EUR
     for label, _prefix, colour in GROUPS:
@@ -582,13 +633,14 @@ def fig_unified_pareto(all_families, baselines, out_dir):
     ax.yaxis.set_major_formatter(FuncFormatter(fmt_k))
     ax.set_xlabel("Mean grid exceedance (kW/step, log scale; 0 floored at 10⁻⁴)")
     ax.set_ylabel("Validation Cost (EUR)")
-    ax.set_title("Unified Pareto Frontier: Cost vs. Exceedance across 3 Environments")
+    ax.set_title("Unified Pareto Frontier: Cost vs. Exceedance across 4 Environments", fontsize=11.5, fontweight="bold")
 
     handles_m = [Line2D([], [], color=colour, marker="s", ls="", markersize=7, label=label)
                  for label, _p, colour in GROUPS]
     handles_f = [Line2D([], [], color="#333333", marker=marker, ls="", markersize=msize,
                         label=fam_name) for _, fam_name, marker, msize in fam_styles]
     handles_ref = [
+        Patch(facecolor="#2ECC71", alpha=0.20, label="Feasible Region (G1 & G2)"),
         Line2D([], [], ls="--", color=GATE, lw=1.3, label="G1 / G2 Gates"),
         Line2D([], [], ls="--", color=BASE, lw=1.2, label="Grid-Only"),
         Line2D([], [], ls=":", color=BASE, lw=1.2, label="PSM'"),
@@ -599,14 +651,16 @@ def fig_unified_pareto(all_families, baselines, out_dir):
         Line2D([], [], color="#555555", marker="o", ls="", markersize=4.5, alpha=0.5, label="Single seed"),
         Line2D([], [], color="#555555", marker="o", ls="", markersize=8, markeredgecolor="black", label="Mean of 5 seeds"),
     ])
-    fig.legend(handles=handles_m + handles_f + handles_ref, loc="outside lower center", ncol=4)
-    fig.savefig(os.path.join(out_dir, "unified_pareto.png"))
+    fig.subplots_adjust(left=0.09, right=0.96, top=0.92, bottom=0.22)
+    fig.legend(handles=handles_m + handles_f + handles_ref, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=5, frameon=True)
+    fig.savefig(os.path.join(out_dir, "unified_pareto.png"), bbox_inches="tight")
     plt.close(fig)
 
 
 def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
-    """Grouped bar plots comparing Cost Breakdown and Exceedance across environments."""
-    fig, axes = plt.subplots(1, 2, figsize=(15.5, 11.2), width_ratios=[1.25, 0.75])
+    """Grouped bar plots comparing Cost Breakdown, Exceedance, and Battery Usage across environments."""
+    fig, axes = plt.subplots(1, 3, figsize=(18.0, 8.5), sharey=True, gridspec_kw={"width_ratios": [1, 1, 1], "wspace": 0.08})
+    ax_cost, ax_exc, ax_batt = axes[0], axes[1], axes[2]
 
     fam_keys = [
         ("unclamped", "Unclamped"),
@@ -622,8 +676,10 @@ def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
     y_labels = []
     bar_h = 0.72
 
-    ax_cost, ax_exc = axes[0], axes[1]
-    max_total = G2_COST_EUR
+    all_tots = []
+    all_excs = []
+    all_tps = []
+    row_data = []
 
     for g_idx, (label, _prefix, colour) in enumerate(GROUPS):
         for f_idx, (f_key, f_name) in enumerate(fam_keys):
@@ -633,65 +689,86 @@ def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
 
             runs = all_families.get(f_key, {}).get(label, [])
             if not runs:
+                row_data.append((y, label, f_key, colour, [0, 0, 0], 0.0, 0.0, 0.0, 0.0))
                 continue
 
-            left = 0.0
             totals = []
             for i, part in enumerate(parts):
                 vals = [float(final_metrics(r).get(part, 0.0)) for r in runs]
                 v = statistics.fmean(vals) if vals else 0.0
                 totals.append(v)
-                ax_cost.barh(y, v, left=left, height=bar_h, color=part_colours[i],
-                             edgecolor="white", linewidth=0.8)
-                if v >= 6000:
-                    ax_cost.text(left + v / 2, y, "%.0fk" % (v / 1000), ha="center", va="center",
-                                 color="white", fontsize=8.5, fontweight="bold")
-                left += v
-            max_total = max(max_total, left)
-
-            if label == "Shielded PPO" and totals[2] > 0:
-                ax_cost.text(left + 600, y, "unserved %.0f EUR" % totals[2], va="center",
-                             fontsize=8.5, color="#D35400", fontweight="bold")
+            tot = sum(totals)
+            all_tots.append(tot)
 
             excs = [float(final_metrics(r).get("mean_exceedance_kw", 0.0)) for r in runs]
             mean_exc = statistics.fmean(excs) if excs else 0.0
-            exc_val = max(mean_exc, FLOOR)
-            alpha_fam = 0.55 if f_key == "unclamped" else (0.8 if f_key == "clamped" else 1.0)
-            ax_exc.barh(y, exc_val, height=bar_h, color=colour, alpha=alpha_fam,
-                        edgecolor="white", linewidth=0.8)
-            if exc_val > 0.01:
-                ax_exc.text(exc_val * 1.15, y, "%.2f kW" % exc_val, va="center",
-                            fontsize=8, color="#333333")
-            else:
-                ax_exc.text(FLOOR * 1.25, y, "0.00 kW", va="center",
-                            fontsize=8, color="#27AE60", fontweight="bold")
+            all_excs.append(mean_exc)
 
-    xmax = max(68000, int(math.ceil((max_total + 12000) / 10000.0) * 10000))
+            tps = [float(final_metrics(r).get("battery_wear_eur", 0.0)) / 20.0 for r in runs]
+            mean_tp = statistics.fmean(tps) if tps else 0.0
+            std_tp = statistics.stdev(tps) if len(tps) > 1 else 0.0
+            all_tps.append(mean_tp + std_tp)
+
+            row_data.append((y, label, f_key, colour, totals, tot, mean_exc, mean_tp, std_tp))
+
+    max_tot = max([G2_COST_EUR] + all_tots + [float(b["cost_eur"]) for b in baselines.values() if "cost_eur" in b])
+    max_exc = max([G1_EXC_KW, 3.26] + all_excs)
+    max_tp = max([25.0] + all_tps)
+
+    for y, label, f_key, colour, totals, tot, mean_exc, mean_tp, std_tp in row_data:
+        if tot == 0.0 and mean_exc == 0.0:
+            continue
+        alpha_fam = 0.45 if f_key == "unclamped" else (0.65 if f_key == "clamped" else (0.85 if f_key == "clamped_mb" else 1.0))
+
+        # Panel A: Stacked cost bars
+        left = 0.0
+        for i, part in enumerate(parts):
+            v = totals[i]
+            ax_cost.barh(y, v, left=left, height=bar_h, color=part_colours[i],
+                         edgecolor="white", linewidth=0.8)
+            left += v
+
+        # Panel B: Exceedance bar
+        ax_exc.barh(y, mean_exc, height=bar_h, color=colour, alpha=alpha_fam,
+                    edgecolor="white", linewidth=0.8)
+
+        # Panel C: Battery Throughput bar
+        ax_batt.barh(y, mean_tp, xerr=std_tp, height=bar_h, color=colour, alpha=alpha_fam,
+                     edgecolor="white", linewidth=0.8, capsize=2)
+
+    # Panel A limits and decor
     ax_cost.set_yticks(y_ticks)
-    ax_cost.set_yticklabels(y_labels, fontsize=9.5)
+    ax_cost.set_yticklabels(y_labels, fontsize=8.5)
     ax_cost.set_ylim(min(y_ticks) - 1.0, max(y_ticks) + 1.0)
-    ax_cost.set_xlabel("Validation Cost (EUR, mean of 5 seeds)")
-    ax_cost.set_title("A. Stacked Cost Breakdown by Model & Environment", fontsize=11, fontweight="bold")
-    ax_cost.set_xlim(0, xmax)
-    ax_cost.xaxis.set_major_locator(FixedLocator(list(range(0, xmax + 1, 20000))))
+    ax_cost.set_xlim(0, max_tot * 1.06)
     ax_cost.xaxis.set_major_formatter(FuncFormatter(fmt_k))
+    ax_cost.set_xlabel("Validation Cost (EUR, mean of 5 seeds)")
+    ax_cost.set_title("A. Cost Breakdown vs. Grid-Only", fontsize=11, fontweight="bold")
     if "Grid-Only" in baselines:
         ax_cost.axvline(float(baselines["Grid-Only"]["cost_eur"]), ls="--", color=BASE, lw=1.2, zorder=2)
-    if "PSM'" in baselines:
-        ax_cost.axvline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE, lw=1.2, zorder=2)
     if "LP'" in baselines:
         ax_cost.axvline(float(baselines["LP'"]["cost_eur"]), ls="-.", color="#196F3D", lw=1.2, zorder=2)
+    if "PSM'" in baselines:
+        ax_cost.axvline(float(baselines["PSM'"]["cost_eur"]), ls=":", color=BASE, lw=1.2, zorder=2)
     ax_cost.axvline(G2_COST_EUR, ls="--", color=GATE, lw=1.3, zorder=2)
 
-    ax_exc.set_yticks(y_ticks)
-    ax_exc.set_yticklabels([])
+    # Panel B limits and decor
     ax_exc.set_ylim(min(y_ticks) - 1.0, max(y_ticks) + 1.0)
-    ax_exc.set_xscale("log")
-    ax_exc.set_xlim(FLOOR * 0.65, 15)
-    log_axis(ax_exc, "x", EXC_TICKS)
+    ax_exc.set_xlim(0, max_exc * 1.08)
+    ax_exc.axvline(0.0, ls=":", lw=1.8, color="#1A5276", zorder=2)
     ax_exc.axvline(G1_EXC_KW, ls="--", color=GATE, lw=1.3, zorder=2)
-    ax_exc.set_xlabel("Mean Exceedance (kW/step, log scale; 0 floored)")
-    ax_exc.set_title("B. Mean Grid Exceedance by Model & Environment", fontsize=11, fontweight="bold")
+    if "Grid-Only" in baselines:
+        ax_exc.axvline(float(baselines["Grid-Only"]["exceedance_kw"]), ls="--", color=BASE, lw=1.2, zorder=2)
+    ax_exc.set_xlabel("Mean Exceedance (kW/step)")
+    ax_exc.set_title("B. Exceedance vs. PSM' & Grid-Only", fontsize=11, fontweight="bold")
+
+    # Panel C limits and decor
+    ax_batt.set_ylim(min(y_ticks) - 1.0, max(y_ticks) + 1.0)
+    ax_batt.set_xlim(0, max_tp * 1.08)
+    ax_batt.axvline(5.84, ls=":", color=BASE, lw=1.4, zorder=2)
+    ax_batt.axvline(24.99, ls="-.", color="#196F3D", lw=1.4, zorder=2)
+    ax_batt.set_xlabel("Battery Throughput (MWh, 26 Val Weeks)")
+    ax_batt.set_title("C. Battery Usage Across Methods", fontsize=11, fontweight="bold")
 
     cost_handles = [Patch(facecolor=part_colours[i], label=part_names[i]) for i in range(len(parts))]
     fam_handles = [
@@ -701,18 +778,109 @@ def fig_grouped_cost_breakdown(all_families, baselines, out_dir):
     ref_handles = [
         Line2D([], [], ls="--", color=GATE, lw=1.3, label="G1 / G2 Gates"),
         Line2D([], [], ls="--", color=BASE, lw=1.2, label="Grid-Only"),
-        Line2D([], [], ls=":", color=BASE, lw=1.2, label="PSM'"),
+        Line2D([], [], ls=":", color=BASE, lw=1.2, label="PSM' Target"),
+        Line2D([], [], ls="-.", color="#196F3D", lw=1.2, label="LP' Oracle"),
     ]
-    if "LP'" in baselines:
-        ref_handles.append(Line2D([], [], ls="-.", color="#196F3D", lw=1.2, label="LP' Oracle"))
-    fig.legend(handles=cost_handles + fam_handles + ref_handles, loc="outside lower center", ncol=5)
-    fig.savefig(os.path.join(out_dir, "grouped_cost_breakdown.png"))
+
+    fig.subplots_adjust(left=0.15, right=0.97, top=0.90, bottom=0.16)
+    fig.legend(handles=cost_handles + fam_handles + ref_handles, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=6, frameon=True)
+    fig.savefig(os.path.join(out_dir, "grouped_cost_breakdown.png"), bbox_inches="tight")
+    plt.close(fig)
+
+
+def fig_battery_usage(all_families, baselines, out_dir):
+    """Symmetric comparison of Battery Energy Throughput and Active Operating Time across environments."""
+    fig, axes = plt.subplots(1, 2, figsize=(15.0, 7.5), sharey=True, gridspec_kw={"width_ratios": [1, 1], "wspace": 0.08})
+    ax_tp, ax_soc = axes[0], axes[1]
+
+    fam_keys = [
+        ("unclamped", "Unclamped"),
+        ("clamped", "Clamped"),
+        ("clamped_mb", "Clamped Minibatch"),
+        ("clamped_forecast", "Clamped + Forecast"),
+    ]
+    bar_h = 0.72
+    y_ticks = []
+    y_labels = []
+
+    all_tps = []
+    row_data = []
+
+    for g_idx, (label, _prefix, colour) in enumerate(GROUPS):
+        for f_idx, (f_key, f_name) in enumerate(fam_keys):
+            y = -(g_idx * 5.2 + f_idx * 1.0)
+            y_ticks.append(y)
+            y_labels.append(f"{label}  [{f_name}]")
+
+            runs = all_families.get(f_key, {}).get(label, [])
+            if not runs:
+                row_data.append((y, label, f_key, colour, 0.0, 0.0, 0.0, 0.0))
+                continue
+
+            tps = [float(final_metrics(r).get("battery_wear_eur", 0.0)) / 20.0 for r in runs]
+            mean_tp = statistics.fmean(tps) if tps else 0.0
+            std_tp = statistics.stdev(tps) if len(tps) > 1 else 0.0
+            all_tps.append(mean_tp + std_tp)
+
+            socs = [100.0 - float(final_metrics(r).get("soc_pinned_pct", 100.0)) for r in runs]
+            mean_soc = statistics.fmean(socs) if socs else 0.0
+            std_soc = statistics.stdev(socs) if len(socs) > 1 else 0.0
+
+            row_data.append((y, label, f_key, colour, mean_tp, std_tp, mean_soc, std_soc))
+
+    max_tp = max([25.0] + all_tps)
+
+    for y, label, f_key, colour, mean_tp, std_tp, mean_soc, std_soc in row_data:
+        if mean_tp == 0.0 and mean_soc == 0.0:
+            continue
+        alpha_fam = 0.45 if f_key == "unclamped" else (0.65 if f_key == "clamped" else (0.85 if f_key == "clamped_mb" else 1.0))
+
+        # Panel A: Throughput
+        ax_tp.barh(y, mean_tp, xerr=std_tp, height=bar_h, color=colour, alpha=alpha_fam,
+                   edgecolor="white", linewidth=0.8, capsize=2)
+
+        # Panel B: Active SoC %
+        ax_soc.barh(y, mean_soc, xerr=std_soc, height=bar_h, color=colour, alpha=alpha_fam,
+                    edgecolor="white", linewidth=0.8, capsize=2)
+
+    # Panel A limits & decor
+    ax_tp.set_yticks(y_ticks)
+    ax_tp.set_yticklabels(y_labels, fontsize=8.5)
+    ax_tp.set_ylim(min(y_ticks) - 1.0, max(y_ticks) + 1.0)
+    ax_tp.set_xlim(0, max_tp * 1.08)
+    ax_tp.axvline(0.0, ls="--", color=BASE, lw=1.2, zorder=2)
+    ax_tp.axvline(5.84, ls=":", color=BASE, lw=1.4, zorder=2)
+    ax_tp.axvline(24.99, ls="-.", color="#196F3D", lw=1.4, zorder=2)
+    ax_tp.set_xlabel("Battery Throughput (MWh, 26 Val Weeks)")
+    ax_tp.set_title("A. Battery Energy Throughput (MWh) Across Environments", fontsize=11, fontweight="bold")
+
+    # Panel B limits & decor
+    ax_soc.set_ylim(min(y_ticks) - 1.0, max(y_ticks) + 1.0)
+    ax_soc.set_xlim(0, 100)
+    ax_soc.set_xlabel("Active Unpinned SoC Time (% of 4,368 Val Hours)")
+    ax_soc.set_title("B. Active Battery Dynamic Operating Time (% Hours Unpinned)", fontsize=11, fontweight="bold")
+
+    # Bottom legend
+    method_handles = [Patch(facecolor=c, label=m) for m, _p, c in GROUPS]
+    fam_handles = [
+        Patch(facecolor="#777777", alpha=0.45 if fk == "unclamped" else (0.65 if fk == "clamped" else (0.85 if fk == "clamped_mb" else 1.0)),
+              label=fn) for fk, fn in fam_keys
+    ]
+    ref_handles = [
+        Line2D([], [], ls="--", color=BASE, lw=1.2, label="Grid-Only (0.0 MWh)"),
+        Line2D([], [], ls=":", color=BASE, lw=1.4, label="PSM' (5.84 MWh)"),
+        Line2D([], [], ls="-.", color="#196F3D", lw=1.4, label="LP' Oracle (24.99 MWh)"),
+    ]
+
+    fig.subplots_adjust(left=0.18, right=0.96, top=0.90, bottom=0.18)
+    fig.legend(handles=method_handles + fam_handles + ref_handles, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=4, frameon=True)
+    fig.savefig(os.path.join(out_dir, "battery_usage_comparison.png"), bbox_inches="tight")
     plt.close(fig)
 
 
 def fig_targeted_learning_curves(all_families, baselines, out_dir):
     """Learning curves for competitive methods (Residual and Shielded) across environments."""
-    fig, axes = plt.subplots(2, 1, figsize=(9.8, 8.4), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(10.5, 8.5), sharex=True, gridspec_kw={"height_ratios": [1, 1]})
 
     comp_methods = [
         ("PPO-Residual", "#009E73"),
@@ -783,8 +951,9 @@ def fig_targeted_learning_curves(all_families, baselines, out_dir):
     ]
     if "LP'" in baselines:
         ref_handles.append(Line2D([], [], ls="-.", color="#196F3D", lw=1.2, label="LP' Oracle"))
-    fig.legend(handles=method_handles + env_handles + ref_handles, loc="outside lower center", ncol=4)
-    fig.savefig(os.path.join(out_dir, "targeted_learning_curves.png"))
+    fig.subplots_adjust(left=0.10, right=0.96, top=0.93, bottom=0.20, hspace=0.20)
+    fig.legend(handles=method_handles + env_handles + ref_handles, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=4, frameon=True)
+    fig.savefig(os.path.join(out_dir, "targeted_learning_curves.png"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -824,48 +993,96 @@ def fig_stress_weeks(out_dir: str):
             return "PPO-Lagrangian"
         return "PPO"
 
+    # Panel A: filter to clamped_mb + baselines
     data_cost = {m: {c: [] for c in crits} for m in methods}
-    data_viol = {m: {c: [] for c in crits} for m in methods}
-
     for r in rows:
+        fam = r["family"]
         g = get_group(r["model"])
         c = r["stress_criterion"]
-        if g in data_cost and c in data_cost[g]:
-            data_cost[g][c].append(float(r["cost_eur"]))
-            data_viol[g][c].append(float(r["violation_hours"]))
+        if fam == "baseline" and g in ("Grid-Only", "PSM'"):
+            if c in data_cost[g]:
+                data_cost[g][c].append(float(r["cost_eur"]))
+        elif fam == "clamped_mb" and g in methods:
+            if c in data_cost[g]:
+                data_cost[g][c].append(float(r["cost_eur"]))
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5.8))
-    x = np.arange(len(crits))
+    fig, axes = plt.subplots(1, 2, figsize=(15.0, 6.2), gridspec_kw={"width_ratios": [1, 1], "wspace": 0.16})
+    ax1, ax2 = axes[0], axes[1]
+
+    # Panel A: Grouped vertical bars across 5 stress weeks
+    x1 = np.arange(len(crits))
     n_m = len(methods)
-    bar_w = 0.13
+    bar_w1 = 0.13
 
     for i, m in enumerate(methods):
         c_means = [float(np.mean(data_cost[m][c])) for c in crits]
-        c_errs = [float(np.std(data_cost[m][c])) if len(data_cost[m][c]) > 1 else 0.0 for c in crits]
-        v_means = [float(np.mean(data_viol[m][c])) for c in crits]
-        v_errs = [float(np.std(data_viol[m][c])) if len(data_viol[m][c]) > 1 else 0.0 for c in crits]
+        c_errs = [float(np.std(data_cost[m][c], ddof=1)) if len(data_cost[m][c]) > 1 else 0.0 for c in crits]
+        pos = x1 - (n_m - 1) * bar_w1 / 2 + i * bar_w1
+        ax1.bar(pos, c_means, bar_w1, yerr=c_errs, color=colors[i], edgecolor="white", linewidth=0.8, capsize=2)
 
-        pos = x - (n_m - 1) * bar_w / 2 + i * bar_w
-        axes[0].bar(pos, c_means, bar_w, yerr=c_errs, label=m, color=colors[i], edgecolor="white", capsize=2)
-        axes[1].bar(pos, v_means, bar_w, yerr=v_errs, label=m, color=colors[i], edgecolor="white", capsize=2)
+    ax1.set_xticks(x1)
+    ax1.set_xticklabels(crit_labels, fontsize=9.5)
+    ax1.set_ylabel("Total Cost (EUR)")
+    ax1.set_title("A. Test Cost vs. Grid-Only Across All 5 Stress Weeks", fontsize=11, fontweight="bold")
+    ax1.set_ylim(0, 5400)
+    ax1.grid(axis="y", alpha=0.3)
 
-    axes[0].set_xticks(x)
-    axes[0].set_xticklabels(crit_labels, fontsize=9)
-    axes[0].set_ylabel("Total Cost (EUR)")
-    axes[0].set_title("A. Test Cost across Stress Weeks", fontweight="bold")
-    axes[0].set_ylim(0, 4300)
-    axes[0].grid(axis="y", alpha=0.3)
+    # Panel B: filter to highest_exceedance (2019-W49)
+    rl_methods = ["PPO", "PPO-Lagrangian", "PPO-Residual", "Shielded PPO"]
+    x2 = np.arange(len(rl_methods))
+    bar_w2 = 0.32
 
-    axes[1].set_xticks(x)
-    axes[1].set_xticklabels(crit_labels, fontsize=9)
-    axes[1].set_ylabel("Violation Hours (h out of 168h)")
-    axes[1].set_title("B. Grid Violation Hours across Stress Weeks", fontweight="bold")
-    axes[1].set_ylim(0, 80)
-    axes[1].grid(axis="y", alpha=0.3)
+    w49_clamped = {m: [] for m in rl_methods}
+    w49_clamped_mb = {m: [] for m in rl_methods}
 
-    axes[0].legend(loc="upper left", ncol=2, fontsize=8.5)
-    plt.tight_layout()
-    fig.savefig(os.path.join(out_dir, "stress_weeks_comparison.png"))
+    for r in rows:
+        if r["stress_criterion"] != "highest_exceedance":
+            continue
+        fam = r["family"]
+        g = get_group(r["model"])
+        if fam == "clamped" and g in rl_methods:
+            w49_clamped[g].append(float(r["violation_hours"]))
+        elif fam == "clamped_mb" and g in rl_methods:
+            w49_clamped_mb[g].append(float(r["violation_hours"]))
+
+    for j, m in enumerate(rl_methods):
+        pos_fb = x2[j] - bar_w2 / 2
+        pos_mb = x2[j] + bar_w2 / 2
+        fb_mean = float(np.mean(w49_clamped[m])) if w49_clamped[m] else 0.0
+        fb_std = float(np.std(w49_clamped[m], ddof=1)) if len(w49_clamped[m]) > 1 else 0.0
+        mb_mean = float(np.mean(w49_clamped_mb[m])) if w49_clamped_mb[m] else 0.0
+        mb_std = float(np.std(w49_clamped_mb[m], ddof=1)) if len(w49_clamped_mb[m]) > 1 else 0.0
+
+        ax2.bar(pos_fb, fb_mean, bar_w2, yerr=fb_std, color=COLOURS[m], alpha=0.60, hatch="//", edgecolor="#333333", linewidth=0.8, capsize=3)
+        ax2.bar(pos_mb, mb_mean, bar_w2, yerr=mb_std, color=COLOURS[m], alpha=1.0, edgecolor="white", linewidth=0.8, capsize=3)
+
+    ax2.axhline(66.0, ls="--", color="#555555", lw=1.5, label="Grid-Only (66h / 10.3 kW)")
+    ax2.axhline(0.0, ls=":", color="#1A5276", lw=2.0, label="PSM' Target (0h / 0.0 kW)")
+
+    ax2.set_ylim(0, 75)
+    ax2.set_ylabel("Violation Hours on 2019-W49 (out of 168h)")
+    ax2.set_title("B. Cap-Binding Stress Week (2019-W49): Violation Hours by Family", fontsize=11, fontweight="bold")
+    ax2.set_xticks(x2)
+    ax2.set_xticklabels(rl_methods, fontsize=9.5)
+    ax2.grid(axis="y", alpha=0.3)
+
+    # Shared bottom legend (ncol=5, 10 items)
+    legend_handles = [
+        Patch(facecolor="#555555", label="Grid-Only"),
+        Patch(facecolor="#1A5276", label="PSM'"),
+        Patch(facecolor="#0072B2", label="PPO"),
+        Patch(facecolor="#D55E00", label="PPO-Lagrangian"),
+        Patch(facecolor="#009E73", label="PPO-Residual"),
+        Patch(facecolor="#CC79A7", label="Shielded PPO"),
+        Patch(facecolor="#777777", alpha=0.60, hatch="//", edgecolor="#333333", label="Clamped (Full-Batch)"),
+        Patch(facecolor="#777777", alpha=1.0, edgecolor="white", label="Clamped Minibatch"),
+        Line2D([], [], ls="--", color="#555555", lw=1.5, label="Grid-Only (66h / 10.3 kW)"),
+        Line2D([], [], ls=":", color="#1A5276", lw=2.0, label="PSM' Target (0h / 0.0 kW)"),
+    ]
+
+    fig.subplots_adjust(left=0.07, right=0.97, top=0.90, bottom=0.20, wspace=0.16)
+    fig.legend(handles=legend_handles, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=5, frameon=True)
+    fig.savefig(os.path.join(out_dir, "stress_weeks_comparison.png"), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -917,6 +1134,7 @@ def plot_comparison(baselines: dict):
     for fn, args in (
         (fig_unified_pareto, (all_families, baselines, comp_dir)),
         (fig_grouped_cost_breakdown, (all_families, baselines, comp_dir)),
+        (fig_battery_usage, (all_families, baselines, comp_dir)),
         (fig_targeted_learning_curves, (all_families, baselines, comp_dir)),
         (fig_stress_weeks, (comp_dir,)),
     ):

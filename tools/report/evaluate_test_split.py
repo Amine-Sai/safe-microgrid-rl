@@ -3,7 +3,7 @@
 
 Requires `--unlock-test-split` to prevent premature execution.
 Evaluates baselines (Grid-Only, PSM') and trained checkpoints on the full
-24 Test weeks (4,032 hours) and on the 4 pre-identified stress weeks.
+24 Test weeks (4,032 hours) and on the 5 stress weeks (including the cap-binding week 2019-W49).
 """
 
 import argparse
@@ -23,7 +23,7 @@ from env.smartgrid_env import SmartGridEnv
 from experiments.train_core import load_agent_for_method, load_config_with_base
 
 
-def _get_git_commit() -> str:
+def get_git_commit() -> str:
     try:
         out = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT)
         return out.decode("utf-8").strip()
@@ -252,7 +252,7 @@ def main():
 
     lock_record = {
         "timestamp_utc": str(pd.Timestamp.now("UTC")),
-        "git_commit": _get_git_commit(),
+        "git_commit": get_git_commit(),
         "split": split_name,
         "n_hours": env._n_timesteps,
         "n_weeks": n_weeks,

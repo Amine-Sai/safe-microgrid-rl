@@ -50,13 +50,13 @@ def evaluate_policy_clipping(policy_fn, env_cfg=None):
         for _ in range(ep_len):
             action = policy_fn(obs)
             obs, r, _, _, info = env.step(action)
-            clip_cap = info.get("charge_clipped_by_cap_kw", info.get("charge_clipped_kw", 0.0))
+            clip_cap = info.get("charge_clipped_by_cap_kw", 0.0)
             clip_soc = info.get("charge_clipped_by_soc_kw", 0.0)
             exc = info["grid_exceedance_kw"]
 
             cap_clipped_kw.append(clip_cap)
             soc_clipped_kw.append(clip_soc)
-            clipped_by_cap.append(bool(info.get("is_charge_clipped_by_cap", info.get("charge_clipped_by_cap", False))))
+            clipped_by_cap.append(bool(info.get("is_charge_clipped_by_cap", False)))
             requested_kw.append(info.get("charge_requested_kw", 0.0))
             applied_kw.append(info.get("charge_applied_kw", 0.0))
             exceedances.append(exc)

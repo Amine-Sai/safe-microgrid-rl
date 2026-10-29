@@ -123,6 +123,8 @@ def per_seed_table():
         passes_cost_gate = bool(cost <= cost_gate_eur)
         strict_feasible = bool(viol_hrs == 0 and (exc is not None and exc <= 1e-4))
 
+        m = run_data.get("final_metrics") or checkpoint_metrics
+
         rows.append({
             "run": os.path.basename(run_file_path)[:-5],
             "agent": agent,
@@ -143,6 +145,11 @@ def per_seed_table():
             "lambda_max": (round(max(lams), 4) if lams else None),
             "saturated_frac": checkpoint_metrics.get("frac_saturated"),
             "soc_pinned_pct": checkpoint_metrics.get("soc_pinned_pct"),
+            "energy_purchase_eur": round(float(m.get("energy_purchase_eur", 0.0)), 2),
+            "battery_wear_eur": round(float(m.get("battery_wear_eur", 0.0)), 2),
+            "unserved_penalty_eur": round(float(m.get("unserved_penalty_eur", 0.0)), 2),
+            "battery_throughput_mwh": round(float(m.get("battery_wear_eur", 0.0)) / 20.0, 3),
+            "active_soc_pct": round(100.0 - float(m.get("soc_pinned_pct", 100.0)), 2),
             "passes_exceedance_gate": passes_exceedance_gate,
             "passes_cost_gate": passes_cost_gate,
             # Legacy column aliases

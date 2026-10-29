@@ -9,7 +9,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, REPO_ROOT)
 
 
-def _load_reference_constants() -> tuple[float, float]:
+def load_reference_constants() -> tuple[float, float]:
     """Load Grid-Only validation cost and d_main exceedance gate from results/tables/."""
     grid_only_val_eur = 45337.92170812376
     exceedance_gate_kw = 0.05
@@ -31,7 +31,7 @@ def _load_reference_constants() -> tuple[float, float]:
     return grid_only_val_eur, exceedance_gate_kw
 
 
-def _job(job):
+def run_job(job):
     import torch as th
     th.set_num_threads(1)
     from experiments.train_core import load_config_with_base, run_paths, train_single_method
@@ -90,7 +90,7 @@ def main():
     parser.add_argument("--run-id", default="batch", help="run id prefix for the batch")
     args = parser.parse_args()
 
-    grid_only_val_eur, exceedance_gate_kw = _load_reference_constants()
+    grid_only_val_eur, exceedance_gate_kw = load_reference_constants()
 
     config_names = args.configs.split(",")
     seeds = [int(s) for s in args.seeds.split(",")]
@@ -109,7 +109,7 @@ def main():
     start_time = time.time()
     results = []
     with ProcessPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(_job, job): job for job in jobs}
+        futures = {executor.submit(run_job, job): job for job in jobs}
         for idx, future in enumerate(as_completed(futures), 1):
             job = futures[future]
             try:

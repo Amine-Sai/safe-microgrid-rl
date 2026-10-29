@@ -104,25 +104,25 @@ def main():
         "axes.spines.right": False,
     })
 
-    fig, axes = plt.subplots(3, 1, figsize=(13, 9), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(13, 9.5), sharex=True, gridspec_kw={"height_ratios": [1, 1, 1]})
 
     # Panel 1: Grid Import Power & Cap Exceedance
     ax1 = axes[0]
-    ax1.plot(hours, hist_grid["grid_import"], label="Grid-Only (Uncontrolled Demand)", color=COLORS["Grid-Only"], linestyle=":", alpha=0.75, linewidth=1.4)
-    ax1.plot(hours, hist_psm["grid_import"], label="PSM' (Rule-Based Heuristic)", color=COLORS["PSM'"], linewidth=1.6)
-    ax1.plot(hours, hist_res["grid_import"], label="PPO-Residual (Learned Soft Policy)", color=COLORS["PPO-Residual"], linewidth=1.6)
-    ax1.plot(hours, hist_shi["grid_import"], label="Shielded PPO (Analytic Safety Projection)", color=COLORS["Shielded PPO"], linewidth=1.8)
+    ax1.plot(hours, hist_grid["grid_import"], label="Grid-Only", color=COLORS["Grid-Only"], linestyle=":", alpha=0.75, linewidth=1.4)
+    ax1.plot(hours, hist_psm["grid_import"], label="PSM'", color=COLORS["PSM'"], linewidth=1.6)
+    ax1.plot(hours, hist_res["grid_import"], label="PPO-Residual", color=COLORS["PPO-Residual"], linewidth=1.6)
+    ax1.plot(hours, hist_shi["grid_import"], label="Shielded PPO", color=COLORS["Shielded PPO"], linewidth=1.8)
 
-    ax1.axhline(CAP_KW, color=COLORS["Cap"], linestyle="--", linewidth=1.5, label=f"Contract Cap ({CAP_KW:.1f} kW)")
+    ax1.axhline(CAP_KW, color=COLORS["Cap"], linestyle="--", linewidth=1.5, label="Contract Cap")
 
     # Highlight residual exceedances
     res_exc_mask = hist_res["grid_import"] > CAP_KW
-    ax1.fill_between(hours, CAP_KW, hist_res["grid_import"], where=res_exc_mask, color="#E74C3C", alpha=0.45, label="Residual Cap Exceedance (Violation)")
+    ax1.fill_between(hours, CAP_KW, hist_res["grid_import"], where=res_exc_mask, color="#E74C3C", alpha=0.45, label="Cap Exceedance")
 
     ax1.set_ylabel("Grid Import (kW)")
     ax1.set_title("A. Grid Import Trajectory vs. Contract Import Cap (2019-W49, Peak Exceedance Week)", fontweight="bold")
     ax1.set_ylim(0, 460)
-    ax1.legend(loc="upper right", ncol=3, fontsize=8.5, frameon=True, facecolor="white", edgecolor="#DDD")
+    ax1.legend(loc="upper right", ncol=3, fontsize=9, frameon=True, framealpha=0.92, facecolor="white", edgecolor="#DDD")
     ax1.grid(True)
 
     # Panel 2: Battery State of Charge (SoC)
@@ -133,36 +133,26 @@ def main():
 
     ax2.axhline(90.0, color="#888888", linestyle=":", linewidth=1.0)
     ax2.axhline(10.0, color="#888888", linestyle=":", linewidth=1.0)
-    ax2.fill_between(hours, 10.0, 90.0, color="#2ECC71", alpha=0.06, label="Safe Operating Band [10%, 90%]")
+    ax2.fill_between(hours, 10.0, 90.0, color="#2ECC71", alpha=0.06, label="Safe Band [10%, 90%]")
 
     ax2.set_ylabel("Battery SoC (%)")
     ax2.set_title("B. Battery State of Charge (SoC) Dynamics Across Daily Cycles", fontweight="bold")
     ax2.set_ylim(0, 100)
-    ax2.legend(loc="upper right", ncol=4, fontsize=8.5, frameon=True, facecolor="white", edgecolor="#DDD")
+    ax2.legend(loc="upper right", ncol=4, fontsize=9, frameon=True, framealpha=0.92, facecolor="white", edgecolor="#DDD")
     ax2.grid(True)
 
     # Panel 3: Load Shedding Profiles
     ax3 = axes[2]
-    ax3.plot(hours, hist_shi["unserved"], label="Shielded PPO Shedding (Forces Safety)", color=COLORS["Shielded PPO"], linewidth=1.8)
-    ax3.plot(hours, hist_psm["unserved"], label="PSM' Emergency Shedding", color=COLORS["PSM'"], linewidth=1.5, linestyle="--")
-    ax3.plot(hours, hist_res["unserved"], label="PPO-Residual Shedding (Under-sheds)", color=COLORS["PPO-Residual"], linewidth=1.6, alpha=0.9)
-
-    # Annotate the safety tradeoff
-    ax3.annotate(
-        "Residual PPO under-sheds to save shedding costs (€1/kWh),\nallowing 35 hours of grid cap violations (+20.3 kW peak).\nShielded PPO sheds safely to enforce zero exceedance.",
-        xy=(115, 45),
-        xytext=(15, 70),
-        arrowprops=dict(arrowstyle="->", color="#333333", lw=1.0),
-        fontsize=8.5,
-        bbox=dict(boxstyle="round,pad=0.4", fc="#FFF9E6", ec="#D4AC0D", alpha=0.95),
-    )
+    ax3.plot(hours, hist_shi["unserved"], label="Shielded PPO", color=COLORS["Shielded PPO"], linewidth=1.8)
+    ax3.plot(hours, hist_psm["unserved"], label="PSM'", color=COLORS["PSM'"], linewidth=1.5, linestyle="--")
+    ax3.plot(hours, hist_res["unserved"], label="PPO-Residual", color=COLORS["PPO-Residual"], linewidth=1.6, alpha=0.9)
 
     ax3.set_ylabel("Load Shed (kW)")
     ax3.set_xlabel("Hour of Week (0 = Mon 00:00, 167 = Sun 23:00, Dec 2-8 2019)")
     ax3.set_title("C. Load Shedding Dispatch (The Safety vs. Economic Penalty Trade-off)", fontweight="bold")
     ax3.set_ylim(-2, 110)
     ax3.set_xlim(0, 167)
-    ax3.legend(loc="upper right", ncol=3, fontsize=8.5, frameon=True, facecolor="white", edgecolor="#DDD")
+    ax3.legend(loc="upper right", ncol=3, fontsize=9, frameon=True, framealpha=0.92, facecolor="white", edgecolor="#DDD")
     ax3.grid(True)
 
     # X-axis ticks every 24 hours (days of the week)
@@ -171,7 +161,7 @@ def main():
     ax3.set_xticks([i * 24 for i in range(8)])
     ax3.set_xticklabels([f"0h\n(Mon)", "24h\n(Tue)", "48h\n(Wed)", "72h\n(Thu)", "96h\n(Fri)", "120h\n(Sat)", "144h\n(Sun)", "168h\n(End)"])
 
-    plt.tight_layout()
+    fig.subplots_adjust(left=0.08, right=0.97, top=0.91, bottom=0.08, hspace=0.18)
 
     out_file = os.path.join(REPO_ROOT, "results", "figures", "comparison", "w49_dispatch_trajectory.png")
     os.makedirs(os.path.dirname(out_file), exist_ok=True)

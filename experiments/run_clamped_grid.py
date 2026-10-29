@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Run multi-seed experiment grids (clamped, clamped_forecast) with CPU scaling.
+"""Run multi-seed experiment grids (clamped, clamped_mb, clamped_forecast, or all) with CPU scaling.
 
 Usage:
     python experiments/run_clamped_grid.py --families clamped
-    python experiments/run_clamped_grid.py --families clamped,clamped_forecast --workers 4
+    python experiments/run_clamped_grid.py --families clamped,clamped_mb,clamped_forecast --workers 4
 """
 
 import argparse
@@ -38,7 +38,7 @@ FAMILY_CONFIGS = {
 }
 
 
-def _run_single_job(args):
+def run_single_job(args):
     config_id, seed, total_steps, eval_interval, overwrite = args
 
     # Single thread per process for clean CPU scaling
@@ -91,7 +91,7 @@ def main():
     parser.add_argument(
         "--families",
         default="clamped",
-        help="Comma-separated families: clamped, clamped_forecast, or all.",
+        help="Comma-separated families: clamped, clamped_mb, clamped_forecast, or all.",
     )
     parser.add_argument(
         "--configs",
@@ -160,7 +160,7 @@ def main():
     t_start = time.time()
     results = []
     with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(_run_single_job, job): job for job in jobs}
+        futures = {executor.submit(run_single_job, job): job for job in jobs}
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
             results.append(res)
