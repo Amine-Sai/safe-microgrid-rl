@@ -8,17 +8,26 @@ evidence behind the README table and figures, so a reader does not have to rerun
 
 ```
 figures/
-  unclamped/                 5 PNGs for unclamped family (17-D)
-  clamped/                   5 PNGs for clamped family (17-D)
-  clamped_mb/                5 PNGs for clamped minibatch control family (17-D)
-  clamped_forecast/          5 PNGs for clamped + 6h forecast family (23-D)
-  comparison/                6 cross-family comparison PNGs:
-    unified_pareto.png       Unified Pareto frontier (Cost vs. Exceedance across environments)
-    grouped_cost_breakdown.png Grouped stacked cost breakdown (Cost vs. Grid-Only, Exceedance vs. PSM', Battery Throughput)
-    battery_usage_comparison.png Battery throughput MWh & active unpinned SoC time across all methods
-    targeted_learning_curves.png Targeted learning curves for competitive methods (Residual & Shielded)
-    stress_weeks_comparison.png Test split stress-week evaluation (Weather weeks vs. Cap-Binding W49)
+  overview_and_pareto/       Unified Pareto frontier & macro performance dashboards:
+    unified_pareto.png       Unified Pareto frontier (Cost vs. Exceedance across environments & shields)
+    <family>_family_summary.png 2x2 Macro performance dashboards per experimental family
+    <family>_per_seed_results.png Per-seed cost and exceedance distributions vs. G1/G2 gates
+  battery_dynamics/          Battery utilization and time-series dispatch:
+    battery_usage_comparison.png Battery throughput (MWh) & active unpinned SoC operating time (%)
     w49_dispatch_trajectory.png 168-Hour dispatch trajectory on cap-binding week W49
+  safety_and_exceedance/     Constraint enforcement and safety architecture spectrum:
+    safety_architectures_comparison.png 4-Panel safety & shielding spectrum (Baselines, Post-hoc, In-the-loop)
+    stress_weeks_comparison.png Test stress-week evaluation (Weather weeks vs. Cap-Binding W49)
+    <family>_cost_vs_exceedance.png Cost vs. exceedance frontier per family
+  economic_breakdown/        Economic cost composition and tariff impacts:
+    grouped_cost_breakdown.png Grouped stacked cost breakdown (Energy, Wear, Unserved vs G1 & Throughput)
+    <family>_cost_breakdown.png Stacked cost composition per family
+  training_dynamics/         Convergence and constraint optimization dynamics:
+    safety_learning_curves.png Safety learning curves (Cost, unserved penalty, wear progression)
+    learning_and_constraint_dynamics.png Multi-panel dynamics (Cost, log exceedance, dual multiplier λ)
+    targeted_learning_curves.png Targeted learning curves for competitive methods (Residual & Shielded)
+    <family>_learning_curves.png Validation cost and exceedance progression over 300k steps
+    <family>_lambda_trajectory.png Dual multiplier λ trajectories for constrained variants
 runs/
   test_lock.json             lock token for one-shot evaluation on the Test split
   <agent>/                   one JSON per (experiment, seed)
@@ -37,9 +46,19 @@ tables/
 Agents are `ppo`, `ppo_lagrangian`, `ppo_residual`, `ppo_shielded`. Each contains
 seed runs (101–105) at 300k steps, evaluated deterministically on the 26 Val weeks.
 
+### Legacy Aliases and Exploratory Agents
+
+- **Legacy Config Aliases:** In `configs/config.yaml` and `results/runs/`, legacy naming conventions
+  (`s3_*` = `unclamped_*`, `s3v2_*` = `clamped_*`, as well as early exploratory stage-1/2 configs `r1`, `r2`, `r3`, `s2_*`, `v2_*`)
+  are preserved for backward-compatible reproducibility with committed run JSON records and historical tables.
+- **`PPOPotentialShapingAgent`:** (`agents/shaping.py`, configs `s2_ppo_pbrs` and `s2_ppo_lagrangian_pbrs`) implements
+  potential-based reward shaping ($\Phi(s) = \kappa \cdot \text{SoC}$) from early stage-2 exploration. Because SoC shaping alone
+  did not prevent grid-cap violations, it was superseded by the 4-method × 4-family main grid and is retained for unit-test coverage
+  and ablation completeness.
+
 ### Experiment families
 
-Four experiment families are fully evaluated (80 runs total):
+Three experiment families are fully evaluated (60 runs total):
 - **Unclamped (`unclamped_*` / legacy `s3_*`):** `charge_clamp: false`. The original environment
   formulation where battery charging was not physically interlocked against the
   import cap.
@@ -50,9 +69,6 @@ Four experiment families are fully evaluated (80 runs total):
 - **Clamped Minibatch (`clamped_mb_*`):** `charge_clamp: true` with minibatch updates, 5 value epochs,
   and raw action storage, on the base 17-D state space (no lookahead). Serves as the un-confounded ablation control to
   disentangle PPO optimization improvements from 6h lookahead features.
-- **Clamped + Forecast (`clamped_forecast_*`):** `charge_clamp: true` with `forecast_horizon_hours: 6`,
-  simultaneously enabling minibatch updates, 5 value epochs, and raw action storage. Extends the observation
-  space from 17-D to 23-D with an exact noise-free oracle forecast (the theoretical upper bound on lookahead information).
 
 ## Regenerating the tables and figures
 
@@ -61,7 +77,7 @@ From the repository root, in an environment with the requirements installed:
 ```bash
 python tools/report/lp_oracle.py --split both   # solve perfect-foresight LP' theoretical bounds
 python tools/report/export_csv.py               # rebuild results/tables/*.csv from runs/
-python tools/report/plots.py --family all        # rebuild all per-family and comparison figures
+python tools/report/plots.py                     # rebuild all figures into thematic directories
 python tools/report/plots.py --family comparison # rebuild only cross-family comparison figures
 python tools/report/plot_stress_trajectory.py   # rebuild 168-hour dispatch trajectory for W49
 python tools/status.py                          # compact health/status summary
