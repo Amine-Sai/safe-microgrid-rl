@@ -20,7 +20,25 @@ sys.path.insert(0, REPO_ROOT)
 
 from agents.heuristics import GridOnlyPolicy, PeakShaveMinPolicy
 from env.smartgrid_env import SmartGridEnv
+from env.cap_shield import CapShield
 from experiments.train_core import load_agent_for_method, load_config_with_base
+
+
+class ShieldIdlePolicy:
+    """Zero-training baseline: idle battery command ([0.0]) inside CapShield."""
+
+    def get_action(self, obs):
+        return np.array([0.0], dtype=np.float32)
+
+
+class ShieldPSMPolicy:
+    """Zero-training baseline: PSM' 1-D battery command inside CapShield."""
+
+    def __init__(self, psm=None):
+        self.psm = psm or PeakShaveMinPolicy()
+
+    def get_action(self, obs):
+        return np.array([self.psm.get_action(obs)[0]], dtype=np.float32)
 
 
 def get_git_commit() -> str:
@@ -104,7 +122,7 @@ def main():
     parser.add_argument("--unlock-test-split", action="store_true",
                         help="Safety gate: explicitly unlock evaluation on the Test split.")
     parser.add_argument("--family", default="clamped",
-                        choices=["clamped", "clamped_mb", "clamped_forecast", "unclamped", "all"],
+                        choices=["clamped", "clamped_mb", "clamped_forecast", "clamped_ppo_diff_shield", "clamped_ppo_shield_aux", "unclamped", "all"],
                         help="Which checkpoint family to evaluate.")
     args = parser.parse_args()
 
@@ -150,20 +168,28 @@ def main():
     print(f"LOCKED TEST SPLIT EVALUATION (Split: {split_name}, {n_weeks} weeks, {env._n_timesteps} hours)")
     print("=" * 80)
 
-    # 1. Evaluate reference heuristics
+    # 1. Evaluate reference heuristics and shield baselines
     eval_records = []
     stress_records = []
 
-    heuristics = [("Grid-Only", GridOnlyPolicy()), ("PSM'", PeakShaveMinPolicy())]
-    for name, pol in heuristics:
+    shield_env = CapShield(SmartGridEnv({"split": split_name, "charge_clamp": True}))
+    psm_pol = PeakShaveMinPolicy()
+
+    baselines = [
+        ("Grid-Only", env, GridOnlyPolicy()),
+        ("PSM'", env, psm_pol),
+        ("Shield + Idle", shield_env, ShieldIdlePolicy()),
+        ("Shield + PSM'", shield_env, ShieldPSMPolicy(psm_pol)),
+    ]
+    for name, eval_e, pol in baselines:
         print(f"Evaluating {name}...", end=" ", flush=True)
-        res = evaluate_policy_on_split(env, pol)
+        res = evaluate_policy_on_split(eval_e, pol)
         print(f"Cost={res['cost_eur']:,.2f} EUR | Exc={res['mean_exceedance_kw']:.4f} kW | Viol={res['violation_rate_pct']:.2f}%")
         eval_records.append({
             "model": name, "family": "baseline", "seed": "N/A", **res
         })
         for crit, s_idx in stress_indices.items():
-            s_res = evaluate_single_week(env, s_idx, pol)
+            s_res = evaluate_single_week(eval_e, s_idx, pol)
             stress_records.append({
                 "model": name, "family": "baseline", "seed": "N/A",
                 "stress_criterion": crit, "week": test_stress[crit]["week"], **s_res
@@ -180,6 +206,10 @@ def main():
             ckpt_fam = "clamped_forecast"
         elif fname.startswith("clamped_mb_"):
             ckpt_fam = "clamped_mb"
+        elif fname.startswith("clamped_ppo_diff_shield_"):
+            ckpt_fam = "clamped_ppo_diff_shield"
+        elif fname.startswith("clamped_ppo_shield_aux_"):
+            ckpt_fam = "clamped_ppo_shield_aux"
         elif fname.startswith("clamped_") or fname.startswith("s3v2_"):
             ckpt_fam = "clamped"
         elif fname.startswith("unclamped_") or fname.startswith("s3_"):

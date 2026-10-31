@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Hindsight linear programming oracle (LP') for the microgrid benchmark.
 
-Computes the optimal physical dispatch with perfect foresight under the import
-cap using scipy.optimize.linprog (HiGHS solver).
+LP' is a sum of per-week perfect-foresight oracles: each week is solved
+independently with SoC reset to 0.50 at week start (not a single global
+full-split benchmark). Computes the optimal physical dispatch with perfect
+foresight under the import cap using scipy.optimize.linprog (HiGHS solver).
 """
 
 import argparse
@@ -101,7 +103,12 @@ def solve_week_lp(env: SmartGridEnv, start_idx: int) -> dict:
 
 
 def compute_split_lp(split: str = "val") -> dict:
-    """Solve LP oracle across all episodes of a split."""
+    """Solve LP' across all weeks of a split.
+
+    LP' is a sum of per-week perfect-foresight oracles: each week is solved
+    independently with SoC reset to 0.50 at week start (not a single global
+    full-split benchmark).
+    """
     env = SmartGridEnv({"split": split, "charge_clamp": True})
     ep_len = env.episode_length
     n_weeks = env._n_timesteps // ep_len
