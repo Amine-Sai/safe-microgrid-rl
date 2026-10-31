@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Run multi-seed experiment grids (clamped, clamped_mb, clamped_forecast, or all) with CPU scaling.
+"""Run multi-seed experiment grids (clamped or clamped_mb) with CPU scaling.
 
 Usage:
     python experiments/run_clamped_grid.py --families clamped
-    python experiments/run_clamped_grid.py --families clamped,clamped_mb,clamped_forecast --workers 4
+    python experiments/run_clamped_grid.py --families clamped,clamped_mb --workers 4
 """
 
 import argparse
@@ -29,12 +29,7 @@ FAMILY_CONFIGS = {
         "clamped_mb_ppo_residual",
         "clamped_mb_ppo_shielded",
     ],
-    "clamped_forecast": [
-        "clamped_forecast_ppo",
-        "clamped_forecast_ppo_lagrangian",
-        "clamped_forecast_ppo_residual",
-        "clamped_forecast_ppo_shielded",
-    ],
+
 }
 
 
@@ -91,7 +86,7 @@ def main():
     parser.add_argument(
         "--families",
         default="clamped",
-        help="Comma-separated families: clamped, clamped_mb, clamped_forecast, or all.",
+        help="Comma-separated families: clamped, clamped_mb, or all.",
     )
     parser.add_argument(
         "--configs",

@@ -122,7 +122,7 @@ def main():
     parser.add_argument("--unlock-test-split", action="store_true",
                         help="Safety gate: explicitly unlock evaluation on the Test split.")
     parser.add_argument("--family", default="clamped",
-                        choices=["clamped", "clamped_mb", "clamped_forecast", "clamped_ppo_diff_shield", "clamped_ppo_shield_aux", "unclamped", "all"],
+                        choices=["clamped", "clamped_mb", "clamped_ppo_diff_shield", "clamped_ppo_shield_aux", "unclamped", "all"],
                         help="Which checkpoint family to evaluate.")
     args = parser.parse_args()
 
@@ -202,9 +202,7 @@ def main():
     for ckpt_path in all_ckpts:
         fname = os.path.basename(ckpt_path)
         # Determine family
-        if fname.startswith("clamped_forecast_"):
-            ckpt_fam = "clamped_forecast"
-        elif fname.startswith("clamped_mb_"):
+        if fname.startswith("clamped_mb_"):
             ckpt_fam = "clamped_mb"
         elif fname.startswith("clamped_ppo_diff_shield_"):
             ckpt_fam = "clamped_ppo_diff_shield"
@@ -237,12 +235,9 @@ def main():
             continue
 
         env_cfg = {"split": split_name, "charge_clamp": cfg.get("charge_clamp", True)}
-        if cfg.get("forecast_horizon_hours", 0) > 0:
-            env_cfg["forecast_horizon_hours"] = cfg["forecast_horizon_hours"]
         env_eval = SmartGridEnv(env_cfg)
 
         if cfg.get("shielded"):
-            from env.cap_shield import CapShield
             env_eval = CapShield(env_eval)
 
         print(f"Evaluating {stem}...", end=" ", flush=True)
