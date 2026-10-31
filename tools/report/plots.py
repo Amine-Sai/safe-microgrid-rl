@@ -1895,11 +1895,9 @@ def fig_ppo_ablation_battery_dynamics(all_families, baselines, out_dir=None):
     ax_soc.set_ylim(min(y_ticks) - 0.7, max(y_ticks) + 0.7)
     ax_soc.set_xlim(0, 125)
     ax_soc.set_xlabel("Active Unpinned State-of-Charge Time (% in [10%, 90%])", fontsize=10.5, fontweight="bold")
-    ax_soc.set_title("B. Active Dynamic Operating Time (% of 4,368h)", fontsize=11.5, fontweight="bold", pad=10)
+    ax_soc.set_title("B. Active Dynamic Operating Time (% of 4,368h)", fontsize=11.5, fontweight="bold", pad=58)
 
-    fig.suptitle("Study Case 1: PPO Environment & Optimizer Ablation — Battery Dynamics & Asset Utilization",
-                 fontsize=12, fontweight="bold", y=1.02)
-    fig.subplots_adjust(left=0.25, right=0.97, top=0.82, bottom=0.16)
+    fig.subplots_adjust(left=0.25, right=0.97, top=0.80, bottom=0.15)
     out_path = os.path.join(dest_dir, "ppo_ablation_battery_dynamics.png")
     fig.savefig(out_path, bbox_inches="tight")
     plt.close(fig)
