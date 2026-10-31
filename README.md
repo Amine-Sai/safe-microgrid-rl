@@ -16,13 +16,11 @@ The empirical analysis establishes four core quantitative conclusions:
 3. **Post-hoc environmental shielding induces an acute "battery parking" moral hazard under full-batch policy gradients**: downstream safety overrides absorb constraint handling, causing the policy network to park the battery at its maximum state-of-charge ceiling (4.1% active cycling time, 5.47 MWh throughput), incurring €14,227.17 in unserved load penalties and matching a zero-battery control baseline to the cent.
 4. **In-the-loop differentiable safety projections resolve the gradient disconnect**, achieving the lowest safe operating cost among all RL methods (€58,350.52 ± €585 on validation, satisfying the strict $G_2 \le 1.05 \times \text{PSM'}$ economic gate on Seeds 101 and 105), activating battery throughput (77.52 MWh, 37.7% active cycling), and reducing unserved load penalties to €12,314.63 while guaranteeing zero constraint violations.
 
-Developer working notes, architectural decisions, and verification logs are maintained in [`NOTES.md`](NOTES.md).
-
 ---
 
 ## Problem Formulation
 
-The microgrid dispatch problem is formulated as an infinite-horizon discounted Constrained Markov Decision Process (CMDP), defined by the tuple $\langle \mathcal{S}, \mathcal{A}, P, R, C, d, \gamma \rangle$, where $\mathcal{S} \subset \mathbb{R}^{17}$ denotes the continuous state space, $\mathcal{A} \subset \mathbb{R}^6$ represents the continuous action space, $P: \mathcal{S} \times \mathcal{A} \to \Delta(\mathcal{S})$ denotes the transition probability kernel, $R: \mathcal{S} \times \mathcal{A} \to \mathbb{R}$ is the economic reward function, $C: \mathcal{S} \times \mathcal{A} \to \mathbb{R}_{\ge 0}$ is the constraint cost function, $d \in \mathbb{R}_{\ge 0}$ is the constraint violation threshold, and $\gamma \in [0, 1)$ is the temporal discount factor. The decision interval is discrete hourly steps ($\Delta t = 1.0\text{ h}$) evaluated over weekly episodes ($T = 168\text{ h}$).
+The microgrid dispatch problem is formulated as an infinite-horizon discounted Constrained Markov Decision Process (CMDP), defined by the tuple $\langle \mathcal{S}, \mathcal{A}, P, R, C, d, \gamma \rangle$, where $\mathcal{S} \subset \mathbb{R}^{17}$ denotes the continuous state space, $\mathcal{A} \subset \mathbb{R}^6$ represents the continuous action space, $P: \mathcal{S} \times \mathcal{A} \to \Delta(\mathcal{S})$ denotes the transition probability kernel, $R: \mathcal{S} \times \mathcal{A} \to \mathbb{R}$ is the economic reward function, $`C: \mathcal{S} \times \mathcal{A} \to \mathbb{R}_{\ge 0}`$ is the constraint cost function, $`d \in \mathbb{R}_{\ge 0}`$ is the constraint violation threshold, and $\gamma \in [0, 1)$ is the temporal discount factor. The decision interval is discrete hourly steps ($\Delta t = 1.0\text{ h}$) evaluated over weekly episodes ($T = 168\text{ h}$).
 
 ### Physical Microgrid Components
 
@@ -33,12 +31,20 @@ The modeled infrastructure comprises four coupled physical subsystems:
 
 2. **Battery Energy Storage System (BESS):**
    The storage system possesses a nominal energy capacity $E_{\text{nom}} = 500\text{ kWh}$ and continuous power rating $P_{\text{bat}}^{\text{max}} = 250\text{ kW}$ (a 0.5C storage architecture). The internal state-of-charge $\text{SoC}_t \in [0, 1]$ evolves according to:
-   $$\text{SoC}_{t+1} = \text{SoC}_t + \frac{\Delta t}{E_{\text{nom}}} \left( \eta_{\text{ch}} P_{\text{ch}, t} - \frac{1}{\eta_{\text{dis}}} P_{\text{dis}, t} \right)$$
-   where symmetric charge and discharge efficiencies are parameterized as $\eta_{\text{ch}} = \eta_{\text{dis}} = 0.95$. Operational boundaries are strictly confined to $\text{SoC} \in [\text{SoC}_{\text{min}}, \text{SoC}_{\text{max}}] = [0.10, 0.90]$ to prevent accelerated cell degradation.
+
+   ```math
+   \text{SoC}_{t+1} = \text{SoC}_t + \frac{\Delta t}{E_{\text{nom}}} \left( \eta_{\text{ch}} P_{\text{ch}, t} - \frac{1}{\eta_{\text{dis}}} P_{\text{dis}, t} \right)
+   ```
+
+   where symmetric charge and discharge efficiencies are parameterized as $\eta_{\text{ch}} = \eta_{\text{dis}} = 0.95$. Operational boundaries are strictly confined to $`\text{SoC} \in [\text{SoC}_{\text{min}}, \text{SoC}_{\text{max}}] = [0.10, 0.90]`$ to prevent accelerated cell degradation.
 
 3. **Solar Photovoltaic Generation:**
    Rooftop solar generation is synthesized from empirical solar irradiance $G_t$ ($\text{W/m}^2$) collected from the EU Joint Research Centre PVGIS database:
-   $$P_{\text{pv}, t} = G_t \cdot A_{\text{pv}} \cdot \eta_{\text{pv}} \cdot PR \cdot 10^{-3}$$
+
+   ```math
+   P_{\text{pv}, t} = G_t \cdot A_{\text{pv}} \cdot \eta_{\text{pv}} \cdot PR \cdot 10^{-3}
+   ```
+
    with an effective aperture area $A_{\text{pv}} = 1{,}471\,\text{m}^2$, nominal module conversion efficiency $\eta_{\text{pv}} = 0.20$, and balance-of-system performance ratio $PR = 0.85$, yielding a peak generation rating of $250\,\text{kW}$.
 
 4. **Heterogeneous Demand Sectors & Non-Linear Industrial Motor Constraints:**
@@ -50,29 +56,48 @@ The modeled infrastructure comprises four coupled physical subsystems:
    - Street Lighting: 5% of total base demand (subject to astronomical solar zenith cycles).
    
    Crucially, the industrial zone features heavy inductive motor and machining loads subject to non-linear physical operating limits: continuous operational throttling between 0% and 70% is physically disallowed due to minimum motor cooling and torque stability thresholds. The industrial load fraction $u_{\text{ind}, t} = 1 - a_{\text{shed}, \text{ind}, t}$ must satisfy:
-   $$u_{\text{ind}, t} \in \{0\} \cup [0.70, 1.00]$$
+
+   ```math
+   u_{\text{ind}, t} \in \{0\} \cup [0.70, 1.00]
+   ```
+
    Consequently, the microgrid controller must either maintain at least 70% baseline industrial throughput or execute a full sectoral process shutdown.
 
 ### Multi-Component Economic Objective & The 50:1 Cost Asymmetry
 
 The microgrid operational cost $c_t$ at step $t$ is composed of energy import acquisition, battery cell wear degradation, and customer curtailment penalties:
-$$c_t = \underbrace{p_t \cdot P_{\text{grid}, t} \cdot \Delta t}_{\text{Grid Purchase Cost}} + \underbrace{c_w \cdot |P_{\text{bat}, t}| \cdot \Delta t}_{\text{Battery Wear Degradation}} + \underbrace{c_u \cdot \sum_{z=1}^5 P_{\text{shed}, z, t} \cdot \Delta t}_{\text{Unserved Load Penalty}}$$
+
+```math
+c_t = \underbrace{p_t \cdot P_{\text{grid}, t} \cdot \Delta t}_{\text{Grid Purchase Cost}} + \underbrace{c_w \cdot |P_{\text{bat}, t}| \cdot \Delta t}_{\text{Battery Wear Degradation}} + \underbrace{c_u \cdot \sum_{z=1}^5 P_{\text{shed}, z, t} \cdot \Delta t}_{\text{Unserved Load Penalty}}
+```
+
 where:
 - $p_t$ is the day-ahead spot electricity price (EUR/kWh) obtained from Open Power System Data (OPSD).
 - $c_w = 0.02\text{ EUR/kWh}$ (€20/MWh) denotes the marginal battery wear degradation cost per unit of energy throughput.
 - $c_u = 1.00\text{ EUR/kWh}$ (€1,000/MWh) represents the regulatory Value of Lost Load (VoLL) curtailment penalty applied uniformly across unserved demand.
 
 The policy maximizes the discounted economic return $R(s_t, a_t) = -c_t$:
-$$\max_\pi \mathbb{E}_{\tau \sim \pi} \left[ \sum_{t=0}^{T-1} \gamma^t R(s_t, a_t) \right] \quad \text{s.t.} \quad \mathbb{E}_{\tau \sim \pi} \left[ \frac{1}{T} \sum_{t=0}^{T-1} \max(0, P_{\text{grid}, t} - P_{\text{cap}}) \right] \le d$$
+
+```math
+\max_\pi \mathbb{E}_{\tau \sim \pi} \left[ \sum_{t=0}^{T-1} \gamma^t R(s_t, a_t) \right] \quad \text{s.t.} \quad \mathbb{E}_{\tau \sim \pi} \left[ \frac{1}{T} \sum_{t=0}^{T-1} \max(0, P_{\text{grid}, t} - P_{\text{cap}}) \right] \le d
+```
 
 The economic coefficients establish an acute 50:1 cost trade-off: curtailing 1 kWh of electrical load costs €1.00, whereas cycling 1 kWh through the battery incurs only €0.02 in wear degradation. Any cost-minimizing control policy must prioritize battery discharge during demand surges before shedding customer load, yielding a net economic benefit of €0.98 per kWh of load preserved.
 
 ### Safety Constraint
 
 The microgrid operates under a contractual grid-import capacity limit:
-$$P_{\text{cap}} = 368.15\,\text{kW}$$
-This threshold is fixed at the 90th percentile (P90) of unmanaged net load ($P_{\text{net}} = \max(0, P_{\text{load}} - P_{\text{pv}})$) evaluated across the 104-week training split. The constraint cost is defined as the hourly grid-import exceedance:
-$$C(s_t, a_t) = \max(0, P_{\text{grid}, t} - P_{\text{cap}})$$
+
+```math
+P_{\text{cap}} = 368.15\,\text{kW}
+```
+
+This threshold is fixed at the 90th percentile (P90) of unmanaged net load ($`P_{\text{net}} = \max(0, P_{\text{load}} - P_{\text{pv}})`$) evaluated across the 104-week training split. The constraint cost is defined as the hourly grid-import exceedance:
+
+```math
+C(s_t, a_t) = \max(0, P_{\text{grid}, t} - P_{\text{cap}})
+```
+
 The threshold $d = 0.05\,\text{kW/step}$ serves as the soft $G_1$ gate in CMDP formulations, while physical system reliability requires strict feasibility (0 violation hours, 0.00 kW exceedance).
 
 ### Environment Families Introduced Upfront
@@ -83,7 +108,11 @@ To systematically isolate the physical and algorithmic drivers of control failur
    The unconstrained legacy physical formulation where battery charging commands are executed without reference to the grid-import cap. Under this formulation, battery charging can independently push total site demand over $P_{\text{cap}}$, inducing charging-driven capacity violations.
 2. `clamped`:
    The reference physical formulation implementing an automated physical operator interlock. The environment dynamically restricts battery charging power to the instantaneous available contractual headroom:
-   $$P_{\text{ch}, t}^{\text{allowed}} = \min\left( P_{\text{ch}, t}^{\text{req}}, \max(0, P_{\text{cap}} - P_{\text{net\_served}, t}) \right)$$
+
+   ```math
+   P_{\text{ch}, t}^{\text{allowed}} = \min\left( P_{\text{ch}, t}^{\text{req}}, \max(0, P_{\text{cap}} - P_{\text{net\_served}, t}) \right)
+   ```
+
    This interlock guarantees that battery charging can never induce a grid-cap violation by construction, isolating load shedding as the sole mechanism for resolving capacity emergencies.
 3. `clamped_mb`:
    Combines the clamped physical environment with a minibatch policy gradient optimizer (`batch_size=64`, 5 value epochs per rollout, raw unshielded action storage) on the base 17-dimensional state space. Introduced to resolve temporal credit assignment failures and escape stationary policy equilibria.
@@ -160,12 +189,20 @@ To investigate constraint enforcement in continuous action spaces ($\mathcal{A} 
 
 2. **Dual-Lagrangian PPO (PPO-Lagrangian):**
    The canonical formulation for Constrained MDPs (Tessler et al., 2019; Spoor et al., 2025). It defines a saddle-point Lagrangian objective $\mathcal{L}(\theta, \lambda) = J(\pi_\theta) - \lambda (\bar{C}(\pi_\theta) - d)$, where the non-negative dual multiplier $\lambda \ge 0$ is dynamically adapted via subgradient ascent:
-   $$\lambda_{k+1} = \max\left(0, \lambda_k + \alpha_\lambda (\bar{C}_k - d)\right)$$
+
+   ```math
+   \lambda_{k+1} = \max\left(0, \lambda_k + \alpha_\lambda (\bar{C}_k - d)\right)
+   ```
+
    Selected to evaluate whether adaptive constraint weighting can reliably balance cost minimization against capacity exceedance.
 
 3. **Residual Policy Learning (PPO-Residual):**
    Following Silver et al. (2018), a parameterized policy network $\pi_\theta(s)$ is superimposed onto the tuned domain heuristic $\pi_{\text{base}}(s) = \text{PSM'}(s)$:
-   $$a_t = \pi_{\text{base}}(s_t) + \alpha_{\text{res}} \cdot \pi_\theta(s_t)$$
+
+   ```math
+   a_t = \pi_{\text{base}}(s_t) + \alpha_{\text{res}} \cdot \pi_\theta(s_t)
+   ```
+
    Selected to test whether RL can refine a safe, high-performing heuristic to extract dynamic price arbitrage without destabilizing safety.
 
 4. **Post-Hoc Environmental Safety Shield (Shielded PPO):**
@@ -173,9 +210,17 @@ To investigate constraint enforcement in continuous action spaces ($\mathcal{A} 
 
 5. **In-the-Loop Safe RL (Differentiable Safety Layer & Auxiliary Shield Loss):**
    Following Dalal et al. (2018), an analytical closed-form Euclidean projection layer ([`agents/safety_layer.py`](agents/safety_layer.py)) is embedded directly inside the policy computational graph:
-   $$\tilde{a}_t = \arg\min_{\tilde{a}} \frac{1}{2} \|\tilde{a} - a_t\|_2^2 \quad \text{s.t.} \quad P_{\text{net}}(s_t) + P_{\text{bat}}^{\text{max}} \cdot \tilde{a}_{\text{bat}} \le P_{\text{cap}}$$
+
+   ```math
+   \tilde{a}_t = \arg\min_{\tilde{a}} \frac{1}{2} \|\tilde{a} - a_t\|_2^2 \quad \text{s.t.} \quad P_{\text{net}}(s_t) + P_{\text{bat}}^{\text{max}} \cdot \tilde{a}_{\text{bat}} \le P_{\text{cap}}
+   ```
+
    Because the constraint is linear in continuous battery dispatch, the projection has an exact closed-form solution:
-   $$\tilde{a}_{\text{bat}} = \operatorname{clip}\left( a_{\text{bat}} - \frac{\operatorname{ReLU}(P_{\text{net}} + P_{\text{bat}}^{\text{max}} a_{\text{bat}} - P_{\text{cap}})}{P_{\text{bat}}^{\text{max}}}, -1.0, 1.0 \right)$$
+
+   ```math
+   \tilde{a}_{\text{bat}} = \operatorname{clip}\left( a_{\text{bat}} - \frac{\operatorname{ReLU}(P_{\text{net}} + P_{\text{bat}}^{\text{max}} a_{\text{bat}} - P_{\text{cap}})}{P_{\text{bat}}^{\text{max}}}, -1.0, 1.0 \right)
+   ```
+
    Exact gradients $\frac{\partial \tilde{a}}{\partial a}$ flow backward through the projection into the policy network during backpropagation. An auxiliary loss variant (`PPO-Aux-Shield`) penalizing policy deviation from safe actions ($\mathcal{L}_{\text{aux}} = \frac{1}{2} \|a - \tilde{a}\|_2^2$) is also benchmarked. Selected to test whether end-to-end gradient feedback through the safety constraint resolves the "battery parking" failure mode.
 
 ---
@@ -232,7 +277,7 @@ To systematically evaluate continuous-action microgrid energy management under c
 
 We evaluate three systematic PPO formulations across 5 independent random seeds on the 26-week Validation Split (H1 2019, 4,368 operating hours):
 - **`unclamped_ppo` (`PPO [Unclamped]`):** Legacy physical simulation where battery charging commands execute without reference to $P_{\text{cap}}$, allowing unmanaged charging to push total site demand over the contractual threshold.
-- **`clamped_ppo` (`PPO [Clamped Full-Batch]`):** Implements an automated physical charging interlock ($P_{\text{ch}}^{\text{allowed}} = \min(P_{\text{ch}}^{\text{req}}, \max(0, P_{\text{cap}} - P_{\text{net\_served}}))$) under standard 168-hour full-batch trajectory rollouts.
+- **`clamped_ppo` (`PPO [Clamped Full-Batch]`):** Implements an automated physical charging interlock ($`P_{\text{ch}}^{\text{allowed}} = \min(P_{\text{ch}}^{\text{req}}, \max(0, P_{\text{cap}} - P_{\text{net\_served}}))`$) under standard 168-hour full-batch trajectory rollouts.
 - **`clamped_mb_ppo` (`PPO [Clamped Minibatch]`):** Combines the clamped physical environment with minibatch policy optimization (`batch_size=64`, 5 value epochs per rollout) on the base 17-dimensional state space.
 
 #### Phase 1 Empirical Comparison Table (Validation Split, Mean ± SD across 5 Seeds)
@@ -382,7 +427,7 @@ Adhering to the two-stage evaluation framework, the methodological breakdown exa
 - **Root Cause:** In the unclamped environment, battery charging commands can independently push facility net load over $P_{\text{cap}}$. Coupled with the 50:1 cost asymmetry between customer load curtailment (€1,000/MWh) and electricity purchases (~€50–€150/MWh), the unconstrained policy learns to charge aggressively during low tariffs without regard to capacity headroom, triggering charging-induced capacity violations.
 
 #### 2. Clamped Full-Batch PPO (`clamped_ppo`)
-- **Strengths:** Eliminates charging-induced violations by construction via the automated physical charging interlock ($P_{\text{ch}}^{\text{allowed}} \le \max(0, P_{\text{cap}} - P_{\text{net\_served}})$).
+- **Strengths:** Eliminates charging-induced violations by construction via the automated physical charging interlock ($`P_{\text{ch}}^{\text{allowed}} \le \max(0, P_{\text{cap}} - P_{\text{net\_served}})`$).
 - **Failures:** Still incurs 466.0 violation hours and 3.24 kW mean exceedance, while battery throughput remains parked at only 6.32 MWh (21.4% active SoC).
 - **Root Cause:** While the charging interlock guarantees charging cannot cause violations, capacity emergencies from uncontrollable facility demand require active load curtailment or battery discharge. Under full-batch updates, policy gradients averaged over 168 hours fail to associate localized peak surges with shedding actions. The policy executes zero load shedding and leaves the battery essentially idle.
 
@@ -457,8 +502,6 @@ The codebase is organized into modular packages separating environment physics, 
 | [`tools/report/`](tools/report) | Evaluation, oracles, & figure generation | [`lp_oracle.py`](tools/report/lp_oracle.py) (HiGHS LP oracle), [`evaluate_test_split.py`](tools/report/evaluate_test_split.py) (locked test runner), [`plots.py`](tools/report/plots.py) (publication figures) |
 | [`tests/`](tests) | Deterministic unit and integration tests | 57 automated unit tests covering physics, buffer mechanics, GAE advantages, agent serialization, and LP oracles |
 | [`results/`](results) | Committed experimental artifacts | `tables/` (CSVs, frozen baselines), `figures/` (thematic evaluation plots), `runs/` (per-seed JSON logs) |
-
-Developer working notes and decision logs are documented strictly in [`NOTES.md`](NOTES.md).
 
 ### Quickstart Execution Guide
 
