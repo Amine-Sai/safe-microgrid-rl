@@ -1,4 +1,6 @@
-method,val_cost_eur,mean_exceedance_kw,feasible
-Grid-Only,45337.92,3.2571,False
-PSM',55530.22,0.0000,True
-LP',53290.51,0.0000,True
+method,val_cost_eur,mean_exceedance_kw,feasible,energy_purchase_eur,battery_wear_eur,unserved_penalty_eur,battery_throughput_mwh,active_soc_pct
+Grid-Only,45337.92,3.2571,False,45337.92,0.00,0.00,0.000,100.00
+PSM',55530.22,0.0000,True,44658.60,246.95,10624.67,12.348,11.20
+Shield + Idle,58644.70,0.0000,True,44417.53,0.00,14227.17,0.000,100.00
+Shield + PSM',55500.35,0.0000,True,44660.23,246.95,10593.17,12.348,11.20
+LP',53290.51,0.0000,True,44192.97,436.73,8660.86,24.990,85.00

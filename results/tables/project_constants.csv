@@ -3,10 +3,10 @@ grid_import_cap_kw,368.15,kW,env/smartgrid_env.py DEFAULTS grid_import_cap_kw (f
 d_main_kw_per_step,0.05,kW/step,configs/config.yaml defaults cost_limit
 g2_cost_multiplier,1.05,ratio,G2 gate = 1.05 x PSM' Val cost
 g2_cost_eur,58306.73,EUR,1.05 x PSM' Val cost (results/tables/frozen_baselines.csv)
-lp_prime_val_eur,53290.51,EUR,tools/report/lp_oracle.py perfect foresight HiGHS solver on Val (windowed; per-week LP, SoC reset to 0.50/week)
+lp_prime_val_eur,53290.51,EUR,tools/report/lp_oracle.py perfect foresight HiGHS solver on Val
 gap_psm_to_lp_eur,2239.71,EUR,PSM' Val cost minus LP' Val cost
 w_unserved_eur_kwh,1.00,EUR/kWh,env/smartgrid_env.py reward (unserved kWh)
 w_wear_eur_kwh,0.02,EUR/kWh,env/smartgrid_env.py DEFAULTS cost_wear_eur_kwh
 battery_soc_min,0.10,SoC fraction,env/smartgrid_env.py DEFAULTS battery_soc_min
-lp_prime_test_eur,36991.67,EUR,tools/report/lp_oracle.py perfect foresight HiGHS solver on Test (windowed; per-week LP, SoC reset to 0.50/week)
+lp_prime_test_eur,36991.67,EUR,tools/report/lp_oracle.py perfect foresight HiGHS solver on Test
 gap_psm_to_lp_test_eur,682.60,EUR,PSM' Test cost minus LP' Test cost

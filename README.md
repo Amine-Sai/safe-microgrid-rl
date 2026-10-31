@@ -8,7 +8,7 @@ An empirical benchmark evaluating model-free reinforcement learning against tune
 
 Real-time microgrid energy management requires balancing electricity acquisition costs, battery degradation, and customer curtailment penalties while strictly respecting contractual grid-import limits. While deep reinforcement learning (RL) has demonstrated effectiveness in unconstrained economic dispatch, its deployment in safety-critical power systems is challenged by constraint violations, exploration instability, and credit assignment failures. 
 
-This repository provides an empirical benchmark evaluating continuous-action safe reinforcement learning paradigms on an urban microgrid with a 500 kWh / 250 kW battery energy storage system (BESS), 250 kW peak rooftop photovoltaic (PV) generation, and five heterogeneous demand zones. Under a contractual grid-import limit of $P_{\text{cap}} = 368.15\text{ kW}$ (the 90th percentile of unmanaged net facility demand), we evaluate unconstrained Proximal Policy Optimization (PPO), dual-Lagrangian PPO, residual policy learning, post-hoc environmental safety shielding, and in-the-loop differentiable safety layers against a tuned domain heuristic (Peak-Shave-Minimum, PSM') and an exact linear programming hindsight oracle (LP' via HiGHS). Evaluations span 104 weeks of training (2017–2018), 26 weeks of validation (H1 2019, 4,368 h), and 24 weeks of locked out-of-sample testing (H2 2019, 4,032 h) across 5 independent random seeds.
+This repository provides an empirical benchmark evaluating continuous-action safe reinforcement learning paradigms on an urban microgrid with a 500 kWh / 250 kW battery energy storage system (BESS), 250 kW peak rooftop photovoltaic (PV) generation, and five heterogeneous demand zones. Under a contractual grid-import limit of $P_{\text{cap}} = 368.15\,\text{kW}$ (the 90th percentile of unmanaged net facility demand), we evaluate unconstrained Proximal Policy Optimization (PPO), dual-Lagrangian PPO, residual policy learning, post-hoc environmental safety shielding, and in-the-loop differentiable safety layers against a tuned domain heuristic (Peak-Shave-Minimum, PSM') and an exact linear programming hindsight oracle (LP' via HiGHS). Evaluations span 104 weeks of training (2017–2018), 26 weeks of validation (H1 2019, 4,368 h), and 24 weeks of locked out-of-sample testing (H2 2019, 4,032 h) across 5 independent random seeds.
 
 The empirical analysis establishes four core quantitative conclusions:
 1. **Unconstrained and dual-Lagrangian PPO fail to maintain grid feasibility**, incurring between 225 and 468 violation hours per semester with up to 3.26 kW mean exceedance. In full-batch updates, Lagrangian optimization experiences credit assignment collapse (zero load shedding despite multiplier ascent to $\lambda \to 5.3$); in minibatch updates, dual multiplier overshoot induces excessive defensive over-shedding (€24,173 in unserved energy penalties; €70,040 total cost) while still permitting 1.01 kW mean exceedance.
@@ -39,7 +39,7 @@ The modeled infrastructure comprises four coupled physical subsystems:
 3. **Solar Photovoltaic Generation:**
    Rooftop solar generation is synthesized from empirical solar irradiance $G_t$ ($\text{W/m}^2$) collected from the EU Joint Research Centre PVGIS database:
    $$P_{\text{pv}, t} = G_t \cdot A_{\text{pv}} \cdot \eta_{\text{pv}} \cdot PR \cdot 10^{-3}$$
-   with an effective aperture area $A_{\text{pv}} = 1,471\text{ m}^2$, nominal module conversion efficiency $\eta_{\text{pv}} = 0.20$, and balance-of-system performance ratio $PR = 0.85$, yielding a peak generation rating of $250\text{ kW}$.
+   with an effective aperture area $A_{\text{pv}} = 1{,}471\,\text{m}^2$, nominal module conversion efficiency $\eta_{\text{pv}} = 0.20$, and balance-of-system performance ratio $PR = 0.85$, yielding a peak generation rating of $250\,\text{kW}$.
 
 4. **Heterogeneous Demand Sectors & Non-Linear Industrial Motor Constraints:**
    The aggregate facility electrical load $P_{\text{load}, t}$ is partitioned across five distinct demand sectors:
@@ -70,10 +70,10 @@ The economic coefficients establish an acute 50:1 cost trade-off: curtailing 1 k
 ### Safety Constraint
 
 The microgrid operates under a contractual grid-import capacity limit:
-$$P_{\text{cap}} = 368.15\text{ kW}$$
+$$P_{\text{cap}} = 368.15\,\text{kW}$$
 This threshold is fixed at the 90th percentile (P90) of unmanaged net load ($P_{\text{net}} = \max(0, P_{\text{load}} - P_{\text{pv}})$) evaluated across the 104-week training split. The constraint cost is defined as the hourly grid-import exceedance:
 $$C(s_t, a_t) = \max(0, P_{\text{grid}, t} - P_{\text{cap}})$$
-The threshold $d = 0.05\text{ kW/step}$ serves as the soft $G_1$ gate in CMDP formulations, while physical system reliability requires strict feasibility (0 violation hours, 0.00 kW exceedance).
+The threshold $d = 0.05\,\text{kW/step}$ serves as the soft $G_1$ gate in CMDP formulations, while physical system reliability requires strict feasibility (0 violation hours, 0.00 kW exceedance).
 
 ### Environment Families Introduced Upfront
 
@@ -279,6 +279,8 @@ The economic objective evaluates total operational expenditure alongside its thr
 | **PPO-Aux-Shield (Aux. Shield Loss)**| 59,889.30 ± 354 | 44,315.71 | 1,612.18 | 13,961.41 | Exceeds Gate by 2.7% |
 | **PPO-Lagrangian [Clamped Minibatch]**| 70,040.15 ± 8326 | 44,232.45 | 1,634.95 | 24,172.75 | Exceeds Gate by 20.1% |
 
+![Economic Cost Breakdown — Safe Benchmark](results/figures/economic_breakdown/safe_benchmark_cost_breakdown.png)
+
 **Key Economic Findings:**
 - **The 50:1 Asymmetry Dictates Cost:** Load curtailment at €1,000/MWh dominates total expenditure whenever safety constraints bind. PPO-Diff-Shield achieves the lowest safe cost among all RL methods (€58,350.52) by curbing unserved load penalties to €12,314.63 (€738.75 lower than Minibatch Shielded PPO and €1,912.54 lower than Full-Batch Shielded PPO), satisfying the strict $G_2 \le 1.05 \times \text{PSM'}$ economic gate on individual seeds (Seed 101: €57,701.17; Seed 105: €57,807.00).
 - **Lagrangian Economic Breakdown:** In minibatch Lagrangian optimization, multiplier instability triggers excessive defensive over-shedding (€24,172.75 in unserved penalties), inflating total operating costs to €70,040.15 while still failing safety.
@@ -301,6 +303,10 @@ Storage asset utilization quantifies total throughput dispatched, active cycling
 | **PPO-Aux-Shield (Aux. Shield Loss)** | 80.61 | 30.5% | 1,612.18 | Active Learning with Shield Signal |
 | **PPO-Lagrangian [Clamped Minibatch]**| 81.75 | 58.0% | 1,634.95 | Multiplier Churn with Over-Shedding |
 | **Shielded PPO [Clamped Minibatch]**  | 101.46 | 42.0% | 2,029.18 | **"High Churn" / High Wear** |
+
+![Battery Dynamics — Safe Benchmark](results/figures/battery_dynamics/safe_benchmark_battery_dynamics.png)
+
+![Unified Pareto Frontier — Cost vs Exceedance](results/figures/overview_and_pareto/unified_pareto.png)
 
 **Key Asset Utilization Findings:**
 - **The "Battery Parking" Pathology:** Under full-batch policy gradients (`clamped_ppo_shielded`), downstream safety shielding absorbs constraint enforcement. The actor network learns that idling the battery saves wear costs (€0.02/kWh) while the shield curtails load, parking the battery at its ceiling for 95.9% of the time (4.1% active SoC, 5.47 MWh throughput) and matching the zero-battery `Shield + Idle` baseline to the cent (€14,227.17 unserved penalty).
@@ -325,23 +331,17 @@ Safety evaluates compliance with the contractual import threshold ($P_{\text{cap
 | **PPO [Clamped Minibatch] (Best PPO)**| 0.21% | 2,742.92 | 430.2h (9.8%) | 152.4h (3.8%) | 2.9160 | Fails Safety |
 | **Grid-Only (Unmanaged Baseline)** | 0.00% | 0.00 | 468.0h (10.7%) | 153.0h (3.8%) | 3.2571 | Fails Safety |
 
+![Safety Architectures Comparison](results/figures/safety_and_exceedance/safety_architectures_comparison.png)
+
+![Stress Weeks Comparison](results/figures/safety_and_exceedance/stress_weeks_comparison.png)
+
 ---
 
 ### Comprehensive Benchmark Figures
 
-The empirical results across both phases are visualised in the following publication figures:
-
-![Safe Benchmark Battery Dynamics](results/figures/battery_dynamics/safe_benchmark_battery_dynamics.png)
-
-![Safe Benchmark Cost Breakdown](results/figures/economic_breakdown/safe_benchmark_cost_breakdown.png)
-
-![Unified Pareto Frontier](results/figures/overview_and_pareto/unified_pareto.png)
-
-![Safety Architectures Comparison](results/figures/safety_and_exceedance/safety_architectures_comparison.png)
+Additional publication figures for reference:
 
 ![Week 49 Dispatch Trajectory](results/figures/battery_dynamics/w49_dispatch_trajectory.png)
-
-![Stress Weeks Comparison](results/figures/safety_and_exceedance/stress_weeks_comparison.png)
 
 ![Learning and Constraint Dynamics](results/figures/training_dynamics/learning_and_constraint_dynamics.png)
 
@@ -429,7 +429,7 @@ Adhering to the two-stage evaluation framework, the methodological breakdown exa
 
 
 
-## Limitations & Threats to Validity
+## Limitations
 
 1. **Simulation Fidelity & Battery Degradation Modeling:**
    Battery degradation is modeled via a linear marginal throughput cost ($c_w = 0.02\text{ EUR/kWh}$). This linear formulation abstracts away non-linear electrochemical degradation mechanisms, including temperature sensitivity, high C-rate mechanical stress, calendar aging, and solid electrolyte interphase (SEI) growth.
