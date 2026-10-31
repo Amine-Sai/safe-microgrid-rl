@@ -32,18 +32,14 @@ The modeled infrastructure comprises four coupled physical subsystems:
 2. **Battery Energy Storage System (BESS):**
    The storage system possesses a nominal energy capacity $E_{\text{nom}} = 500\text{ kWh}$ and continuous power rating $P_{\text{bat}}^{\text{max}} = 250\text{ kW}$ (a 0.5C storage architecture). The internal state-of-charge $\text{SoC}_t \in [0, 1]$ evolves according to:
 
-   ```math
-   \text{SoC}_{t+1} = \text{SoC}_t + \frac{\Delta t}{E_{\text{nom}}} \left( \eta_{\text{ch}} P_{\text{ch}, t} - \frac{1}{\eta_{\text{dis}}} P_{\text{dis}, t} \right)
-   ```
+   $$\text{SoC}\_{t+1} = \text{SoC}\_t + \frac{\Delta t}{E\_{\text{nom}}} \left( \eta\_{\text{ch}} P\_{\text{ch}, t} - \frac{1}{\eta\_{\text{dis}}} P\_{\text{dis}, t} \right)$$
 
    where symmetric charge and discharge efficiencies are parameterized as $\eta_{\text{ch}} = \eta_{\text{dis}} = 0.95$. Operational boundaries are strictly confined to $`\text{SoC} \in [\text{SoC}_{\text{min}}, \text{SoC}_{\text{max}}] = [0.10, 0.90]`$ to prevent accelerated cell degradation.
 
 3. **Solar Photovoltaic Generation:**
    Rooftop solar generation is synthesized from empirical solar irradiance $G_t$ ($\text{W/m}^2$) collected from the EU Joint Research Centre PVGIS database:
 
-   ```math
-   P_{\text{pv}, t} = G_t \cdot A_{\text{pv}} \cdot \eta_{\text{pv}} \cdot PR \cdot 10^{-3}
-   ```
+   $$P\_{\text{pv}, t} = G\_t \cdot A\_{\text{pv}} \cdot \eta\_{\text{pv}} \cdot PR \cdot 10^{-3}$$
 
    with an effective aperture area $A_{\text{pv}} = 1{,}471\,\text{m}^2$, nominal module conversion efficiency $\eta_{\text{pv}} = 0.20$, and balance-of-system performance ratio $PR = 0.85$, yielding a peak generation rating of $250\,\text{kW}$.
 
@@ -57,9 +53,7 @@ The modeled infrastructure comprises four coupled physical subsystems:
    
    Crucially, the industrial zone features heavy inductive motor and machining loads subject to non-linear physical operating limits: continuous operational throttling between 0% and 70% is physically disallowed due to minimum motor cooling and torque stability thresholds. The industrial load fraction $u_{\text{ind}, t} = 1 - a_{\text{shed}, \text{ind}, t}$ must satisfy:
 
-   ```math
-   u_{\text{ind}, t} \in \{0\} \cup [0.70, 1.00]
-   ```
+   $$u\_{\text{ind}, t} \in \\{0\\} \cup [0.70, 1.00]$$
 
    Consequently, the microgrid controller must either maintain at least 70% baseline industrial throughput or execute a full sectoral process shutdown.
 
@@ -67,9 +61,7 @@ The modeled infrastructure comprises four coupled physical subsystems:
 
 The microgrid operational cost $c_t$ at step $t$ is composed of energy import acquisition, battery cell wear degradation, and customer curtailment penalties:
 
-```math
-c_t = \underbrace{p_t \cdot P_{\text{grid}, t} \cdot \Delta t}_{\text{Grid Purchase Cost}} + \underbrace{c_w \cdot |P_{\text{bat}, t}| \cdot \Delta t}_{\text{Battery Wear Degradation}} + \underbrace{c_u \cdot \sum_{z=1}^5 P_{\text{shed}, z, t} \cdot \Delta t}_{\text{Unserved Load Penalty}}
-```
+$$c\_t = \underbrace{p\_t \cdot P\_{\text{grid}, t} \cdot \Delta t}\_{\text{Grid Purchase Cost}} + \underbrace{c\_w \cdot |P\_{\text{bat}, t}| \cdot \Delta t}\_{\text{Battery Wear Degradation}} + \underbrace{c\_u \cdot \sum\_{z=1}^5 P\_{\text{shed}, z, t} \cdot \Delta t}\_{\text{Unserved Load Penalty}}$$
 
 where:
 - $p_t$ is the day-ahead spot electricity price (EUR/kWh) obtained from Open Power System Data (OPSD).
@@ -78,9 +70,7 @@ where:
 
 The policy maximizes the discounted economic return $R(s_t, a_t) = -c_t$:
 
-```math
-\max_\pi \mathbb{E}_{\tau \sim \pi} \left[ \sum_{t=0}^{T-1} \gamma^t R(s_t, a_t) \right] \quad \text{s.t.} \quad \mathbb{E}_{\tau \sim \pi} \left[ \frac{1}{T} \sum_{t=0}^{T-1} \max(0, P_{\text{grid}, t} - P_{\text{cap}}) \right] \le d
-```
+$$\max\_\pi \mathbb{E}\_{\tau \sim \pi} \left[ \sum\_{t=0}^{T-1} \gamma^t R(s\_t, a\_t) \right] \quad \text{s.t.} \quad \mathbb{E}\_{\tau \sim \pi} \left[ \frac{1}{T} \sum\_{t=0}^{T-1} \max(0, P\_{\text{grid}, t} - P\_{\text{cap}}) \right] \le d$$
 
 The economic coefficients establish an acute 50:1 cost trade-off: curtailing 1 kWh of electrical load costs €1.00, whereas cycling 1 kWh through the battery incurs only €0.02 in wear degradation. Any cost-minimizing control policy must prioritize battery discharge during demand surges before shedding customer load, yielding a net economic benefit of €0.98 per kWh of load preserved.
 
@@ -88,15 +78,11 @@ The economic coefficients establish an acute 50:1 cost trade-off: curtailing 1 k
 
 The microgrid operates under a contractual grid-import capacity limit:
 
-```math
-P_{\text{cap}} = 368.15\,\text{kW}
-```
+$$P\_{\text{cap}} = 368.15\,\text{kW}$$
 
 This threshold is fixed at the 90th percentile (P90) of unmanaged net load ($`P_{\text{net}} = \max(0, P_{\text{load}} - P_{\text{pv}})`$) evaluated across the 104-week training split. The constraint cost is defined as the hourly grid-import exceedance:
 
-```math
-C(s_t, a_t) = \max(0, P_{\text{grid}, t} - P_{\text{cap}})
-```
+$$C(s\_t, a\_t) = \max(0, P\_{\text{grid}, t} - P\_{\text{cap}})$$
 
 The threshold $d = 0.05\,\text{kW/step}$ serves as the soft $G_1$ gate in CMDP formulations, while physical system reliability requires strict feasibility (0 violation hours, 0.00 kW exceedance).
 
@@ -109,9 +95,7 @@ To systematically isolate the physical and algorithmic drivers of control failur
 2. `clamped`:
    The reference physical formulation implementing an automated physical operator interlock. The environment dynamically restricts battery charging power to the instantaneous available contractual headroom:
 
-   ```math
-   P_{\text{ch}, t}^{\text{allowed}} = \min\left( P_{\text{ch}, t}^{\text{req}}, \max(0, P_{\text{cap}} - P_{\text{net\_served}, t}) \right)
-   ```
+   $$P\_{\text{ch}, t}^{\text{allowed}} = \min\left( P\_{\text{ch}, t}^{\text{req}}, \max(0, P\_{\text{cap}} - P\_{\text{net\\\_served}, t}) \right)$$
 
    This interlock guarantees that battery charging can never induce a grid-cap violation by construction, isolating load shedding as the sole mechanism for resolving capacity emergencies.
 3. `clamped_mb`:
@@ -190,18 +174,14 @@ To investigate constraint enforcement in continuous action spaces ($\mathcal{A} 
 2. **Dual-Lagrangian PPO (PPO-Lagrangian):**
    The canonical formulation for Constrained MDPs (Tessler et al., 2019; Spoor et al., 2025). It defines a saddle-point Lagrangian objective $\mathcal{L}(\theta, \lambda) = J(\pi_\theta) - \lambda (\bar{C}(\pi_\theta) - d)$, where the non-negative dual multiplier $\lambda \ge 0$ is dynamically adapted via subgradient ascent:
 
-   ```math
-   \lambda_{k+1} = \max\left(0, \lambda_k + \alpha_\lambda (\bar{C}_k - d)\right)
-   ```
+   $$\lambda\_{k+1} = \max\left(0, \lambda\_k + \alpha\_\lambda (\bar{C}\_k - d)\right)$$
 
    Selected to evaluate whether adaptive constraint weighting can reliably balance cost minimization against capacity exceedance.
 
 3. **Residual Policy Learning (PPO-Residual):**
    Following Silver et al. (2018), a parameterized policy network $\pi_\theta(s)$ is superimposed onto the tuned domain heuristic $\pi_{\text{base}}(s) = \text{PSM'}(s)$:
 
-   ```math
-   a_t = \pi_{\text{base}}(s_t) + \alpha_{\text{res}} \cdot \pi_\theta(s_t)
-   ```
+   $$a\_t = \pi\_{\text{base}}(s\_t) + \alpha\_{\text{res}} \cdot \pi\_\theta(s\_t)$$
 
    Selected to test whether RL can refine a safe, high-performing heuristic to extract dynamic price arbitrage without destabilizing safety.
 
@@ -211,15 +191,11 @@ To investigate constraint enforcement in continuous action spaces ($\mathcal{A} 
 5. **In-the-Loop Safe RL (Differentiable Safety Layer & Auxiliary Shield Loss):**
    Following Dalal et al. (2018), an analytical closed-form Euclidean projection layer ([`agents/safety_layer.py`](agents/safety_layer.py)) is embedded directly inside the policy computational graph:
 
-   ```math
-   \tilde{a}_t = \arg\min_{\tilde{a}} \frac{1}{2} \|\tilde{a} - a_t\|_2^2 \quad \text{s.t.} \quad P_{\text{net}}(s_t) + P_{\text{bat}}^{\text{max}} \cdot \tilde{a}_{\text{bat}} \le P_{\text{cap}}
-   ```
+   $$\tilde{a}\_t = \arg\min\_{\tilde{a}} \frac{1}{2} \|\tilde{a} - a\_t\|\_2^2 \quad \text{s.t.} \quad P\_{\text{net}}(s\_t) + P\_{\text{bat}}^{\text{max}} \cdot \tilde{a}\_{\text{bat}} \le P\_{\text{cap}}$$
 
    Because the constraint is linear in continuous battery dispatch, the projection has an exact closed-form solution:
 
-   ```math
-   \tilde{a}_{\text{bat}} = \operatorname{clip}\left( a_{\text{bat}} - \frac{\operatorname{ReLU}(P_{\text{net}} + P_{\text{bat}}^{\text{max}} a_{\text{bat}} - P_{\text{cap}})}{P_{\text{bat}}^{\text{max}}}, -1.0, 1.0 \right)
-   ```
+   $$\tilde{a}\_{\text{bat}} = \operatorname{clip}\left( a\_{\text{bat}} - \frac{\operatorname{ReLU}(P\_{\text{net}} + P\_{\text{bat}}^{\text{max}} a\_{\text{bat}} - P\_{\text{cap}})}{P\_{\text{bat}}^{\text{max}}}, -1.0, 1.0 \right)$$
 
    Exact gradients $\frac{\partial \tilde{a}}{\partial a}$ flow backward through the projection into the policy network during backpropagation. An auxiliary loss variant (`PPO-Aux-Shield`) penalizing policy deviation from safe actions ($\mathcal{L}_{\text{aux}} = \frac{1}{2} \|a - \tilde{a}\|_2^2$) is also benchmarked. Selected to test whether end-to-end gradient feedback through the safety constraint resolves the "battery parking" failure mode.
 
