@@ -16,7 +16,7 @@ The empirical analysis establishes four core quantitative conclusions:
 3. **Post-hoc environmental shielding induces an acute "battery parking" moral hazard under full-batch policy gradients**: downstream safety overrides absorb constraint handling, causing the policy network to park the battery at its maximum state-of-charge ceiling (4.1% active cycling time, 5.47 MWh throughput), incurring €14,227.17 in unserved load penalties and matching a zero-battery control baseline to the cent.
 4. **In-the-loop differentiable safety projections resolve the gradient disconnect**, achieving the lowest safe operating cost among all RL methods (€58,350.52 ± €585 on validation, satisfying the strict $G_2 \le 1.05 \times \text{PSM'}$ economic gate on Seeds 101 and 105), activating battery throughput (77.52 MWh, 37.7% active cycling), and reducing unserved load penalties to €12,314.63 while guaranteeing zero constraint violations.
 
-Developer working notes, architectural decisions, and verification logs are maintained in [`NOTES.md`](file:///home/judas/research/safe-microgrid-rl/NOTES.md).
+Developer working notes, architectural decisions, and verification logs are maintained in [`NOTES.md`](NOTES.md).
 
 ---
 
@@ -103,7 +103,7 @@ In real-world power distribution, soft penalties fail to enforce grid-import bou
 
 ### Hardcoded & Classical Baselines (Pros, Cons, and Why They Fail)
 
-To contextualize the performance of reinforcement learning, five classical baselines were implemented in [`agents/heuristics.py`](file:///home/judas/research/safe-microgrid-rl/agents/heuristics.py) and [`tools/report/lp_oracle.py`](file:///home/judas/research/safe-microgrid-rl/tools/report/lp_oracle.py):
+To contextualize the performance of reinforcement learning, five classical baselines were implemented in [`agents/heuristics.py`](agents/heuristics.py) and [`tools/report/lp_oracle.py`](tools/report/lp_oracle.py):
 
 | Baseline Controller | Total Cost (€, Val) | Grid Purchase (€) | Battery Wear (€) | Unserved Penalty (€) | Throughput (MWh) | Mean Exceedance (kW) | Violation Hours | Strict Feasible? |
 |---|---:|---:|---:|---:|---:|---:|:---:|:---:|
@@ -124,7 +124,7 @@ To contextualize the performance of reinforcement learning, five classical basel
 - **Cons & Failure Mode:** Governed by static threshold rules. It cannot execute dynamic price arbitrage, adapt to fluctuating spot tariffs, or perform predictive multi-hour storage management.
 
 #### 3. Shield + Idle (Zero-Battery Safety Baseline)
-- **Description:** Fixes battery dispatch to zero ($a_{\text{bat}} = 0$) and passes demand through an analytical post-hoc safety shield ([`env/cap_shield.py`](file:///home/judas/research/safe-microgrid-rl/env/cap_shield.py)), shedding load whenever unmanaged demand exceeds $P_{\text{cap}}$.
+- **Description:** Fixes battery dispatch to zero ($a_{\text{bat}} = 0$) and passes demand through an analytical post-hoc safety shield ([`env/cap_shield.py`](env/cap_shield.py)), shedding load whenever unmanaged demand exceeds $P_{\text{cap}}$.
 - **Pros:** Guarantees strict feasibility (0h violations, 0.0000 kW exceedance).
 - **Cons & Failure Mode:** Zero storage utilization (0.00 MWh throughput) results in severe unserved load curtailment penalties (€14,227.17 on Val, €58,644.70 total cost). This confirms empirically that deploying a safety shield without active energy storage dispatch is economically non-viable.
 
@@ -133,7 +133,7 @@ To contextualize the performance of reinforcement learning, five classical basel
 - **Outcome:** Yields €55,500.35 on Val (12.35 MWh throughput, 0h violations), confirming that safety shielding does not distort a well-tuned heuristic policy.
 
 #### 5. LP' Theoretical Oracle (Hindsight Linear Programming)
-- **Description:** Formulates the exact discrete microgrid dynamics as a global linear program over each 168-hour weekly horizon, solved with perfect hindsight using the HiGHS solver via [`tools/report/lp_oracle.py`](file:///home/judas/research/safe-microgrid-rl/tools/report/lp_oracle.py).
+- **Description:** Formulates the exact discrete microgrid dynamics as a global linear program over each 168-hour weekly horizon, solved with perfect hindsight using the HiGHS solver via [`tools/report/lp_oracle.py`](tools/report/lp_oracle.py).
 - **Pros:** Establishes the absolute theoretical lower bound on attainable operating costs (€53,290.51 on Val, €36,991.67 on Test), achieving 24.99 MWh throughput and €9,790.71 in load shedding penalties while guaranteeing 0h violations.
 - **Cons & Failure Mode:** Non-causal. It requires 168 hours of perfect, deterministic future knowledge of solar insolation, sector loads, and spot prices, rendering it physically unrealizable in online operations.
 
@@ -169,10 +169,10 @@ To investigate constraint enforcement in continuous action spaces ($\mathcal{A} 
    Selected to test whether RL can refine a safe, high-performing heuristic to extract dynamic price arbitrage without destabilizing safety.
 
 4. **Post-Hoc Environmental Safety Shield (Shielded PPO):**
-   An external runtime verification wrapper ([`env/cap_shield.py`](file:///home/judas/research/safe-microgrid-rl/env/cap_shield.py)) placed at the environment boundary. If an action proposed by the policy network violates $P_{\text{cap}}$, the shield deterministically clamps battery charging and sheds minimal necessary load according to priority rankings. Selected to enforce a zero-violation safety guarantee at execution time while testing whether external shielding distorts policy gradient updates.
+   An external runtime verification wrapper ([`env/cap_shield.py`](env/cap_shield.py)) placed at the environment boundary. If an action proposed by the policy network violates $P_{\text{cap}}$, the shield deterministically clamps battery charging and sheds minimal necessary load according to priority rankings. Selected to enforce a zero-violation safety guarantee at execution time while testing whether external shielding distorts policy gradient updates.
 
 5. **In-the-Loop Safe RL (Differentiable Safety Layer & Auxiliary Shield Loss):**
-   Following Dalal et al. (2018), an analytical closed-form Euclidean projection layer ([`agents/safety_layer.py`](file:///home/judas/research/safe-microgrid-rl/agents/safety_layer.py)) is embedded directly inside the policy computational graph:
+   Following Dalal et al. (2018), an analytical closed-form Euclidean projection layer ([`agents/safety_layer.py`](agents/safety_layer.py)) is embedded directly inside the policy computational graph:
    $$\tilde{a}_t = \arg\min_{\tilde{a}} \frac{1}{2} \|\tilde{a} - a_t\|_2^2 \quad \text{s.t.} \quad P_{\text{net}}(s_t) + P_{\text{bat}}^{\text{max}} \cdot \tilde{a}_{\text{bat}} \le P_{\text{cap}}$$
    Because the constraint is linear in continuous battery dispatch, the projection has an exact closed-form solution:
    $$\tilde{a}_{\text{bat}} = \operatorname{clip}\left( a_{\text{bat}} - \frac{\operatorname{ReLU}(P_{\text{net}} + P_{\text{bat}}^{\text{max}} a_{\text{bat}} - P_{\text{cap}})}{P_{\text{bat}}^{\text{max}}}, -1.0, 1.0 \right)$$
@@ -189,7 +189,7 @@ In reinforcement learning for physical infrastructure, random splitting across t
 - **Validation Split:** H1 2019 (Weeks 02–27, 26 continuous weeks = 4,368 operating hours).
 - **Test Split:** H2 2019 (Weeks 29–52, 24 continuous weeks = 4,032 operating hours).
 
-The Test split was kept strictly sealed throughout all model development and hyperparameter tuning, unlocked exactly once via [`tools/report/evaluate_test_split.py`](file:///home/judas/research/safe-microgrid-rl/tools/report/evaluate_test_split.py) for final evaluation.
+The Test split was kept strictly sealed throughout all model development and hyperparameter tuning, unlocked exactly once via [`tools/report/evaluate_test_split.py`](tools/report/evaluate_test_split.py) for final evaluation.
 
 ### Seasonal Distribution Shift Between Validation and Test Splits
 
@@ -450,15 +450,15 @@ The codebase is organized into modular packages separating environment physics, 
 
 | Subdirectory | Core Responsibility | Key Modules |
 |---|---|---|
-| [`configs/`](file:///home/judas/research/safe-microgrid-rl/configs) | Centralized configuration management | [`config.yaml`](file:///home/judas/research/safe-microgrid-rl/configs/config.yaml) (hyperparameters, physics constants, experiment aliases) |
-| [`env/`](file:///home/judas/research/safe-microgrid-rl/env) | Physical microgrid simulation | [`smartgrid_env.py`](file:///home/judas/research/safe-microgrid-rl/env/smartgrid_env.py) (Gymnasium physics, charging interlock), [`cap_shield.py`](file:///home/judas/research/safe-microgrid-rl/env/cap_shield.py) (analytical safety shield) |
-| [`agents/`](file:///home/judas/research/safe-microgrid-rl/agents) | OOP policy hierarchy & safety projections | [`ppo.py`](file:///home/judas/research/safe-microgrid-rl/agents/ppo.py) (`PPOAgent`, `PPOLagrangianAgent`, `PPOResidualAgent`, `PPOShieldedAgent`), [`safety_layer.py`](file:///home/judas/research/safe-microgrid-rl/agents/safety_layer.py) (`DifferentiableSafetyLayer`), [`heuristics.py`](file:///home/judas/research/safe-microgrid-rl/agents/heuristics.py) (`PSM'`, `GridOnly`) |
-| [`experiments/`](file:///home/judas/research/safe-microgrid-rl/experiments) | Training harnesses & batch execution | [`train_core.py`](file:///home/judas/research/safe-microgrid-rl/experiments/train_core.py) (inner loop), [`run_shield_variants.py`](file:///home/judas/research/safe-microgrid-rl/experiments/run_shield_variants.py) (comparative evaluation suites) |
-| [`tools/report/`](file:///home/judas/research/safe-microgrid-rl/tools/report) | Evaluation, oracles, & figure generation | [`lp_oracle.py`](file:///home/judas/research/safe-microgrid-rl/tools/report/lp_oracle.py) (HiGHS LP oracle), [`evaluate_test_split.py`](file:///home/judas/research/safe-microgrid-rl/tools/report/evaluate_test_split.py) (locked test runner), [`plots.py`](file:///home/judas/research/safe-microgrid-rl/tools/report/plots.py) (publication figures) |
-| [`tests/`](file:///home/judas/research/safe-microgrid-rl/tests) | Deterministic unit and integration tests | 57 automated unit tests covering physics, buffer mechanics, GAE advantages, agent serialization, and LP oracles |
-| [`results/`](file:///home/judas/research/safe-microgrid-rl/results) | Committed experimental artifacts | `tables/` (CSVs, frozen baselines), `figures/` (thematic evaluation plots), `runs/` (per-seed JSON logs) |
+| [`configs/`](configs) | Centralized configuration management | [`config.yaml`](configs/config.yaml) (hyperparameters, physics constants, experiment aliases) |
+| [`env/`](env) | Physical microgrid simulation | [`smartgrid_env.py`](env/smartgrid_env.py) (Gymnasium physics, charging interlock), [`cap_shield.py`](env/cap_shield.py) (analytical safety shield) |
+| [`agents/`](agents) | OOP policy hierarchy & safety projections | [`ppo.py`](agents/ppo.py) (`PPOAgent`, `PPOLagrangianAgent`, `PPOResidualAgent`, `PPOShieldedAgent`), [`safety_layer.py`](agents/safety_layer.py) (`DifferentiableSafetyLayer`), [`heuristics.py`](agents/heuristics.py) (`PSM'`, `GridOnly`) |
+| [`experiments/`](experiments) | Training harnesses & batch execution | [`train_core.py`](experiments/train_core.py) (inner loop), [`run_shield_variants.py`](experiments/run_shield_variants.py) (comparative evaluation suites) |
+| [`tools/report/`](tools/report) | Evaluation, oracles, & figure generation | [`lp_oracle.py`](tools/report/lp_oracle.py) (HiGHS LP oracle), [`evaluate_test_split.py`](tools/report/evaluate_test_split.py) (locked test runner), [`plots.py`](tools/report/plots.py) (publication figures) |
+| [`tests/`](tests) | Deterministic unit and integration tests | 57 automated unit tests covering physics, buffer mechanics, GAE advantages, agent serialization, and LP oracles |
+| [`results/`](results) | Committed experimental artifacts | `tables/` (CSVs, frozen baselines), `figures/` (thematic evaluation plots), `runs/` (per-seed JSON logs) |
 
-Developer working notes and decision logs are documented strictly in [`NOTES.md`](file:///home/judas/research/safe-microgrid-rl/NOTES.md).
+Developer working notes and decision logs are documented strictly in [`NOTES.md`](NOTES.md).
 
 ### Quickstart Execution Guide
 
