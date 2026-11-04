@@ -195,12 +195,12 @@ def _extract_violation_hours(key, cat, all_families, baselines):
 
 
 # ===========================================================================
-# STUDY 1: CLAMPING & BATCHING ABLATION IN PPO (Validation split)
+# STUDY 1: BATCHING & CLAMPING ABLATION IN PPO (Validation split)
 # ===========================================================================
 
 STUDY1_ITEMS = [
-    ("s3_ppo", "PPO [Unclamped]", "Ablation", PALETTE["PPO_UNC"]),
-    ("clamped_ppo", "PPO [Clamped Full-Batch]", "Ablation", PALETTE["PPO_FB"]),
+    ("clamped_ppo", "PPO [Full-Batch]", "Ablation", PALETTE["PPO_FB"]),
+    ("s3_ppo", "PPO [Mini-Batch]", "Ablation", PALETTE["PPO_UNC"]),
     ("clamped_mb_ppo", "PPO [Clamped Minibatch]", "Ablation", PALETTE["PPO"]),
 ]
 
@@ -273,7 +273,7 @@ def fig_study1_cost(baselines: dict, out_dir: str = None):
         ncol=3, frameon=True, fontsize=9.8
     )
     ax.set_title(
-        "Total Operational Cost Breakdown across PPO Clamping & Batching Variants",
+        "Total Operational Cost Breakdown across PPO Batching & Clamping Variants",
         fontsize=12.0, fontweight="bold", pad=52
     )
 

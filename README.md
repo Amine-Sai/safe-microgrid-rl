@@ -249,19 +249,19 @@ To systematically evaluate continuous-action microgrid energy management under c
 
 ---
 
-### Phase 1: PPO Environment & Optimizer Ablation (Clamping, Batching)
+### Phase 1: PPO Optimizer & Environment Ablation (Batching, Clamping)
 
-We evaluate three systematic PPO formulations across 5 independent random seeds on the 26-week Validation Split (H1 2019, 4,368 operating hours):
-- **`unclamped_ppo` (`PPO [Unclamped]`):** Legacy physical simulation where battery charging commands execute without reference to $P_{\text{cap}}$, allowing unmanaged charging to push total site demand over the contractual threshold.
-- **`clamped_ppo` (`PPO [Clamped Full-Batch]`):** Implements an automated physical charging interlock ($`P_{\text{ch}}^{\text{allowed}} = \min(P_{\text{ch}}^{\text{req}}, \max(0, P_{\text{cap}} - P_{\text{net\_served}}))`$) under standard 168-hour full-batch trajectory rollouts.
+We evaluate three systematic PPO formulations across 5 independent random seeds on the 26-week Validation Split (H1 2019, 4,368 operating hours), varying batch size first, then clamping:
+- **`clamped_ppo` (`PPO [Full-Batch]`):** Standard 168-hour full-batch trajectory rollouts ($B=2048$, 10 epochs) with the automated physical charging interlock.
+- **`unclamped_ppo` / `s3_ppo` (`PPO [Mini-Batch]`):** Unclamped baseline formulation without charging constraints.
 - **`clamped_mb_ppo` (`PPO [Clamped Minibatch]`):** Combines the clamped physical environment with minibatch policy optimization (`batch_size=64`, 5 value epochs per rollout) on the base 17-dimensional state space.
 
 #### Phase 1 Empirical Comparison Table (Validation Split, Mean ± SD across 5 Seeds)
 
 | PPO Formulation | Total Cost (€) | Grid Purchases (€) | Battery Wear (€) | Unserved Penalty (€) | Throughput (MWh) | Active SoC (%) | Mean Exceedance (kW) | Violation Hours | Violation Rate (%) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **`PPO [Unclamped]`** | 45,513.38 ± 192 | 45,406.63 | 106.75 | 0.00 | 5.34 | 7.0% | 3.35 | 475.4h | 10.9% |
-| **`PPO [Clamped Full-Batch]`** | 45,517.31 ± 198 | 45,390.94 | 126.37 | 0.00 | 6.32 | 21.4% | 3.24 | 466.0h | 10.7% |
+| **`PPO [Full-Batch]`** | 45,517.31 ± 198 | 45,390.94 | 126.37 | 0.00 | 6.32 | 21.4% | 3.24 | 466.0h | 10.7% |
+| **`PPO [Mini-Batch]`** | 45,513.38 ± 192 | 45,406.63 | 106.75 | 0.00 | 5.34 | 7.0% | 3.35 | 475.4h | 10.9% |
 | **`PPO [Clamped Minibatch]` (★ Best PPO)** | **48,760.55 ± 1083** | 45,026.23 | **991.40** | **2,742.92** | **49.57** | **34.1%** | **2.92** | **430.2h** | **9.8%** |
 
 ![PPO Ablation Battery Dynamics](results/figures/battery_dynamics/ppo_ablation_battery_dynamics.png)
