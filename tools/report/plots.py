@@ -239,11 +239,12 @@ def fig_study1_cost(baselines: dict, out_dir: str = None):
             ecolor="#1A252C", elinewidth=1.8, capsize=6.0, capthick=1.8, zorder=5
         )
 
-        # End-of-bar text on top of each bar
-        y_label = tot + s_tot + 1100.0
+        # End-of-bar text on top of each bar with clean pill badge
+        y_label = tot + s_tot + 1200.0
         ax.text(
             x, y_label, f"€{tot/1e3:.1f}k ± €{s_tot/1e3:.1f}k",
-            ha="center", va="bottom", fontsize=10.5, fontweight="bold", color="#1A252C"
+            ha="center", va="bottom", fontsize=10.0, fontweight="bold", color="#1A252C",
+            bbox=dict(boxstyle="round,pad=0.22", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Horizontal reference lines (Oracle present; no black Grid-Only line!)
@@ -310,18 +311,22 @@ def fig_study1_grid_exceedance(baselines: dict, out_dir: str = None):
         y_label = exc + s_exc + 0.12
         ax.text(
             x, y_label, f"{exc:.2f} kW/step\n({m_vh:.0f}h / {pct_vh:.1f}%)",
-            ha="center", va="bottom", fontsize=10.0, fontweight="bold", color="#1A252C"
+            ha="center", va="bottom", fontsize=9.8, fontweight="bold", color="#1A252C",
+            bbox=dict(boxstyle="round,pad=0.20", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Reference lines (Oracle and G1 present; no black Grid-Only line!)
     ax.axhline(G1_EXC_KW, color=PALETTE["Gate"], ls="-.", lw=1.8, zorder=2)
 
-    # Clean legend for reference lines
+    # Clean legend for reference lines placed horizontally above axes
     ref_handles = [
         Line2D([0], [0], color=PALETTE["Gate"], ls="-.", lw=1.8, label=f"G1 Exceedance Gate ({G1_EXC_KW:.2f} kW/step)"),
         Line2D([0], [0], color=PALETTE["LP'"], ls="-.", lw=1.6, label="LP' Oracle: 0.00 kW/step (0h)"),
     ]
-    ax.legend(handles=ref_handles, loc="upper right", frameon=True, fontsize=10.0)
+    ax.legend(
+        handles=ref_handles, loc="lower center", bbox_to_anchor=(0.5, 1.02),
+        ncol=2, frameon=True, fontsize=10.0
+    )
 
     ax.set_xticks(x_positions)
     ax.set_xticklabels(x_labels, fontweight="bold", fontsize=11)
@@ -330,10 +335,10 @@ def fig_study1_grid_exceedance(baselines: dict, out_dir: str = None):
     ax.set_ylabel("Mean Exceedance (kW/step)", fontweight="bold", fontsize=11.0)
     ax.set_title(
         "Mean Grid Import Exceedance & Violation Hours across PPO Variants",
-        fontsize=12.0, fontweight="bold", pad=16
+        fontsize=12.0, fontweight="bold", pad=36
     )
 
-    fig.subplots_adjust(top=0.90, bottom=0.10, left=0.12, right=0.96)
+    fig.subplots_adjust(top=0.86, bottom=0.10, left=0.12, right=0.96)
     out_file = os.path.join(dest_dir, "grid_exceedance.png")
     fig.savefig(out_file, bbox_inches="tight")
     plt.close(fig)
@@ -367,7 +372,8 @@ def fig_study1_battery_throughput(baselines: dict, out_dir: str = None):
         y_tp_label = max(tp + s_tp + 2.0, tp_lp + 2.5) if x <= 1 else tp + s_tp + 2.5
         ax.text(
             x, y_tp_label, f"{tp:.2f} MWh\n(€{wear:.0f})",
-            ha="center", va="bottom", fontsize=10.0, fontweight="bold", color="#1A252C"
+            ha="center", va="bottom", fontsize=9.8, fontweight="bold", color="#1A252C",
+            bbox=dict(boxstyle="round,pad=0.20", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Reference lines (Oracle present)
@@ -378,7 +384,10 @@ def fig_study1_battery_throughput(baselines: dict, out_dir: str = None):
         Line2D([0], [0], color=PALETTE["PSM'"], ls=":", lw=1.8, label=f"PSM' ({tp_psm:.2f} MWh)"),
         Line2D([0], [0], color=PALETTE["LP'"], ls="-.", lw=1.8, label=f"LP' Oracle ({tp_lp:.2f} MWh)"),
     ]
-    ax.legend(handles=ref_handles, loc="upper left", frameon=True, fontsize=9.5)
+    ax.legend(
+        handles=ref_handles, loc="lower center", bbox_to_anchor=(0.5, 1.02),
+        ncol=2, frameon=True, fontsize=9.8
+    )
 
     # Secondary y-axis for wear cost
     ax.set_ylim(0, 115.0)
@@ -393,9 +402,9 @@ def fig_study1_battery_throughput(baselines: dict, out_dir: str = None):
     ax.set_xticklabels(x_labels, rotation=15, ha="right", rotation_mode="anchor", fontweight="bold", fontsize=10.5)
     ax.set_xlim(-0.6, len(STUDY1_ITEMS) - 0.4)
     ax.set_ylabel("Throughput (MWh)", fontweight="bold", fontsize=11.0)
-    ax.set_title("Battery Energy Throughput & Degradation Wear", fontsize=11.5, fontweight="bold", pad=14)
+    ax.set_title("Battery Energy Throughput & Degradation Wear", fontsize=11.5, fontweight="bold", pad=36)
 
-    fig.subplots_adjust(top=0.90, bottom=0.16, left=0.12, right=0.88)
+    fig.subplots_adjust(top=0.86, bottom=0.16, left=0.12, right=0.88)
     out_file = os.path.join(dest_dir, "throughput.png")
     fig.savefig(out_file, bbox_inches="tight")
     plt.close(fig)
@@ -426,10 +435,11 @@ def fig_study1_battery_active_soc(baselines: dict, out_dir: str = None):
             x, soc, yerr=s_soc, fmt="none",
             ecolor="#1A252C", elinewidth=1.8, capsize=6.0, capthick=1.8, zorder=5
         )
-        y_soc_label = soc + s_soc + 2.2
+        y_soc_label = soc + s_soc + 2.5
         ax.text(
             x, y_soc_label, f"{soc:.1f}%\n({soc*43.68:.0f}h)",
-            ha="center", va="bottom", fontsize=10.0, fontweight="bold", color="#1A252C"
+            ha="center", va="bottom", fontsize=9.8, fontweight="bold", color="#1A252C",
+            bbox=dict(boxstyle="round,pad=0.20", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Reference lines (Oracle present)
@@ -440,21 +450,25 @@ def fig_study1_battery_active_soc(baselines: dict, out_dir: str = None):
         Line2D([0], [0], color=PALETTE["PSM'"], ls=":", lw=1.8, label=f"PSM' ({soc_psm:.1f}%)"),
         Line2D([0], [0], color=PALETTE["LP'"], ls="-.", lw=1.8, label=f"LP' Oracle ({soc_lp:.1f}%)"),
     ]
-    ax.legend(handles=ref_handles, loc="upper left", frameon=True, fontsize=9.5)
+    ax.legend(
+        handles=ref_handles, loc="lower center", bbox_to_anchor=(0.5, 1.02),
+        ncol=2, frameon=True, fontsize=9.8
+    )
 
     ax.set_xticks(x_positions)
     ax.set_xticklabels(x_labels, rotation=15, ha="right", rotation_mode="anchor", fontweight="bold", fontsize=10.5)
     ax.set_xlim(-0.6, len(STUDY1_ITEMS) - 0.4)
-    ax.set_ylim(0, 95.0)
+    ax.set_ylim(0, 98.0)
     ax.set_ylabel("Active SoC Time (%)", fontweight="bold", fontsize=11.0)
     ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{y:.0f}%"))
-    ax.set_title("Active Unpinned SoC Operating Time (% of 4,368h)", fontsize=11.5, fontweight="bold", pad=14)
+    ax.set_title("Active Unpinned SoC Operating Time (% of 4,368h)", fontsize=11.5, fontweight="bold", pad=36)
 
-    fig.subplots_adjust(top=0.90, bottom=0.16, left=0.12, right=0.92)
+    fig.subplots_adjust(top=0.86, bottom=0.16, left=0.12, right=0.92)
     out_file = os.path.join(dest_dir, "active_soc.png")
     fig.savefig(out_file, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved: {out_file}")
+
 
 
 # ===========================================================================
@@ -531,16 +545,11 @@ def fig_study2_cost(baselines: dict, out_dir: str = None):
         else:
             label_text = f"€{tot/1e3:.1f}k"
 
-        # Position labels cleanly: for bars near or below the 3 reference lines (46k-60k), sit above G2 gate line
-        if 46000.0 <= tot < 60000.0:
-            y_label = max(tot + s_tot + 1400.0, c_g2 + 1800.0)
-        else:
-            y_label = tot + s_tot + 1400.0
-
+        y_label = tot + s_tot + 1200.0
         ax.text(
             x_pos, y_label, label_text,
-            ha="center", va="bottom", fontsize=9.0, fontweight="bold", color="#1A252C",
-            bbox=dict(boxstyle="round,pad=0.15", fc="#FFFFFF", ec="none", alpha=0.88)
+            ha="center", va="bottom", fontsize=8.8, fontweight="bold", color="#1A252C",
+            bbox=dict(boxstyle="round,pad=0.20", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Vertical group divider lines
@@ -560,7 +569,7 @@ def fig_study2_cost(baselines: dict, out_dir: str = None):
         (8.0, "Hard Shielded / Safety-Layer"),
     ]
     for hx, htext in group_headers:
-        ax.text(hx, 88500, htext, ha="center", va="top", fontsize=9.5, fontweight="bold", color="#555555")
+        ax.text(hx, 88500, htext, ha="center", va="top", fontsize=9.8, fontweight="bold", color="#4A5568")
 
     ax.set_xticks([c[0] for c in controllers])
     ax.set_xticklabels([c[2] for c in controllers], rotation=35, ha="right", rotation_mode="anchor", fontweight="bold", fontsize=10.0)
@@ -618,20 +627,22 @@ def fig_study2_grid_exceedance(baselines: dict, out_dir: str = None):
                     x_pos, exc, yerr=s_exc, fmt="none",
                     ecolor="#1A252C", elinewidth=1.8, capsize=5.0, capthick=1.8, zorder=5
                 )
-                y_label = exc + s_exc + 0.10
+                y_label = exc + s_exc + 0.12
             else:
-                y_label = exc + 0.10
+                y_label = exc + 0.12
 
             pct_vh = (m_vh / 4368.0) * 100.0
             ax.text(
                 x_pos, y_label, f"{exc:.2f} kW/step\n({m_vh:.0f}h / {pct_vh:.1f}%)",
-                ha="center", va="bottom", fontsize=8.8, fontweight="bold", color="#1A252C"
+                ha="center", va="bottom", fontsize=8.6, fontweight="bold", color="#1A252C",
+                bbox=dict(boxstyle="round,pad=0.18", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
             )
         else:
-            # Safe controllers: placed at y = 0.14 above the G1 red line (at 0.05)
+            # Safe controllers: placed at y = 0.14 above the G1 red line (at 0.05) with clean green pill
             ax.text(
                 x_pos, 0.14, "0.00 kW/step\n(0h / 0.0%)",
-                ha="center", va="bottom", fontsize=8.8, fontweight="bold", color="#1E8449"
+                ha="center", va="bottom", fontsize=8.6, fontweight="bold", color="#1E8449",
+                bbox=dict(boxstyle="round,pad=0.18", fc="#FFFFFF", ec="#27AE60", alpha=0.92, lw=0.7)
             )
 
     # Vertical group divider lines
@@ -644,7 +655,10 @@ def fig_study2_grid_exceedance(baselines: dict, out_dir: str = None):
         Line2D([0], [0], color=PALETTE["Gate"], ls="-.", lw=1.8, label=f"G1 Exceedance Gate ({G1_EXC_KW:.2f} kW/step)"),
         Line2D([0], [0], color=PALETTE["LP'"], ls="-.", lw=1.6, label="LP' Oracle: 0.00 kW/step (0h)"),
     ]
-    ax.legend(handles=ref_handles, loc="upper right", frameon=True, fontsize=10.0)
+    ax.legend(
+        handles=ref_handles, loc="lower center", bbox_to_anchor=(0.5, 1.02),
+        ncol=2, frameon=True, fontsize=10.0
+    )
 
     # Group header annotations
     group_headers = [
@@ -654,19 +668,19 @@ def fig_study2_grid_exceedance(baselines: dict, out_dir: str = None):
         (8.0, "Hard Shielded / Safety-Layer"),
     ]
     for hx, htext in group_headers:
-        ax.text(hx, 4.15, htext, ha="center", va="top", fontsize=9.5, fontweight="bold", color="#555555")
+        ax.text(hx, 4.15, htext, ha="center", va="top", fontsize=9.8, fontweight="bold", color="#4A5568")
 
     ax.set_xticks([c[0] for c in controllers])
     ax.set_xticklabels([c[2] for c in controllers], rotation=35, ha="right", rotation_mode="anchor", fontweight="bold", fontsize=10.0)
     ax.set_xlim(-0.7, 9.7)
-    ax.set_ylim(0, 4.4)
+    ax.set_ylim(0, 4.45)
     ax.set_ylabel("Mean Exceedance (kW/step)", fontweight="bold", fontsize=11.0)
-    fig.suptitle(
+    ax.set_title(
         "Mean Grid Import Exceedance & Violation Hours across Capped PPO Variants",
-        fontsize=12.5, fontweight="bold", y=0.98
+        fontsize=12.5, fontweight="bold", pad=36
     )
 
-    fig.subplots_adjust(top=0.91, bottom=0.18, left=0.08, right=0.97)
+    fig.subplots_adjust(top=0.86, bottom=0.18, left=0.08, right=0.97)
     out_file = os.path.join(dest_dir, "grid_exceedance.png")
     fig.savefig(out_file, bbox_inches="tight")
     plt.close(fig)
@@ -720,14 +734,14 @@ def fig_study2_unserved_load(baselines: dict, out_dir: str = None):
                 ecolor="#1A252C", elinewidth=1.8, capsize=4.5, capthick=1.8, zorder=5
             )
             label_text = f"{u_mwh:.1f} MWh\n±{su_mwh:.1f}\n({m_pct:.2f}%)"
-            y_label = u_mwh + su_mwh + 0.9
+            y_label = u_mwh + su_mwh + 1.0
         else:
             label_text = f"{u_mwh:.1f} MWh\n({m_pct:.2f}%)"
-            y_label = u_mwh + 0.9
+            y_label = u_mwh + 1.0
 
         ax.text(
             x_pos, y_label, label_text, ha="center", va="bottom", fontsize=8.6, fontweight="bold", color="#1A252C",
-            bbox=dict(boxstyle="round,pad=0.12", fc="#FFFFFF", ec="none", alpha=0.88)
+            bbox=dict(boxstyle="round,pad=0.15", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Vertical group divider lines
@@ -742,11 +756,14 @@ def fig_study2_unserved_load(baselines: dict, out_dir: str = None):
         Line2D([0], [0], color=PALETTE["LP'"], ls="-.", lw=1.8, label=f"LP' Oracle ({unserv_lp:.2f} MWh / €{unserv_lp*1e3:,.0f})"),
         Line2D([0], [0], color=PALETTE["PSM'"], ls=":", lw=1.8, label=f"PSM' ({unserv_psm:.2f} MWh / €{unserv_psm*1e3:,.0f})"),
     ]
-    ax.legend(handles=ref_handles, loc="upper left", frameon=True, fontsize=9.5)
+    ax.legend(
+        handles=ref_handles, loc="lower center", bbox_to_anchor=(0.5, 1.02),
+        ncol=2, frameon=True, fontsize=9.8
+    )
 
-    ax.set_ylim(0, 38.0)
+    ax.set_ylim(0, 42.0)
     ax_twin = ax.twinx()
-    ax_twin.set_ylim(0, 38.0 * 1000.0)
+    ax_twin.set_ylim(0, 42.0 * 1000.0)
     ax_twin.set_ylabel("Unserved Penalty (€)", fontweight="bold", fontsize=10.5)
     ax_twin.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"€{y*1e-3:.0f}k"))
     ax_twin.spines["right"].set_visible(True)
@@ -759,15 +776,15 @@ def fig_study2_unserved_load(baselines: dict, out_dir: str = None):
         (8.0, "Hard Shielded / Safety-Layer"),
     ]
     for hx, htext in group_headers:
-        ax.text(hx, 36.2, htext, ha="center", va="top", fontsize=9.5, fontweight="bold", color="#555555")
+        ax.text(hx, 39.5, htext, ha="center", va="top", fontsize=9.8, fontweight="bold", color="#4A5568")
 
     ax.set_xticks([c[0] for c in controllers])
     ax.set_xticklabels([c[2] for c in controllers], rotation=35, ha="right", rotation_mode="anchor", fontweight="bold", fontsize=10.0)
     ax.set_xlim(-0.7, 9.7)
     ax.set_ylabel("Unserved Load (MWh)", fontweight="bold", fontsize=11.0)
-    ax.set_title("Unserved Load Demand & Curtailment Penalty across Capped PPO Variants", fontsize=12.0, fontweight="bold", pad=14)
+    ax.set_title("Unserved Load Demand & Curtailment Penalty across Capped PPO Variants", fontsize=12.0, fontweight="bold", pad=36)
 
-    fig.subplots_adjust(top=0.90, bottom=0.18, left=0.08, right=0.92)
+    fig.subplots_adjust(top=0.86, bottom=0.18, left=0.08, right=0.92)
     out_file = os.path.join(dest_dir, "unserved_load.png")
     fig.savefig(out_file, bbox_inches="tight")
     plt.close(fig)
@@ -799,14 +816,14 @@ def fig_study2_battery_throughput(baselines: dict, out_dir: str = None):
                 ecolor="#1A252C", elinewidth=1.8, capsize=4.5, capthick=1.8, zorder=5
             )
             label_text = f"{tp:.1f} MWh\n±{s_tp:.1f}"
-            y_label = tp + s_tp + 2.8
+            y_label = tp + s_tp + 3.0
         else:
             label_text = f"{tp:.1f} MWh"
-            y_label = tp + 2.8
+            y_label = tp + 3.0
 
         ax.text(
             x_pos, y_label, label_text, ha="center", va="bottom", fontsize=8.8, fontweight="bold", color="#1A252C",
-            bbox=dict(boxstyle="round,pad=0.12", fc="#FFFFFF", ec="none", alpha=0.88)
+            bbox=dict(boxstyle="round,pad=0.15", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Vertical group divider lines
@@ -821,12 +838,15 @@ def fig_study2_battery_throughput(baselines: dict, out_dir: str = None):
         Line2D([0], [0], color=PALETTE["PSM'"], ls=":", lw=1.8, label=f"PSM' ({tp_psm:.2f} MWh)"),
         Line2D([0], [0], color=PALETTE["LP'"], ls="-.", lw=1.8, label=f"LP' Oracle ({tp_lp:.2f} MWh)"),
     ]
-    ax.legend(handles=ref_handles, loc="upper left", frameon=True, fontsize=9.5)
+    ax.legend(
+        handles=ref_handles, loc="lower center", bbox_to_anchor=(0.5, 1.02),
+        ncol=2, frameon=True, fontsize=9.8
+    )
 
     # Secondary y-axis for wear cost
     ax_twin = ax.twinx()
-    ax.set_ylim(0, 150.0)
-    ax_twin.set_ylim(0, 150.0 * WEAR_COST_PER_MWH)
+    ax.set_ylim(0, 155.0)
+    ax_twin.set_ylim(0, 155.0 * WEAR_COST_PER_MWH)
     ax_twin.set_ylabel("Wear Cost (€)", fontweight="bold", fontsize=10.5)
     ax_twin.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"€{y:,.0f}"))
     ax_twin.spines["right"].set_visible(True)
@@ -840,15 +860,15 @@ def fig_study2_battery_throughput(baselines: dict, out_dir: str = None):
         (8.0, "Hard Shielded / Safety-Layer"),
     ]
     for hx, htext in group_headers:
-        ax.text(hx, 142.0, htext, ha="center", va="top", fontsize=9.5, fontweight="bold", color="#555555")
+        ax.text(hx, 145.0, htext, ha="center", va="top", fontsize=9.8, fontweight="bold", color="#4A5568")
 
     ax.set_xticks([c[0] for c in controllers])
     ax.set_xticklabels([c[2] for c in controllers], rotation=35, ha="right", rotation_mode="anchor", fontweight="bold", fontsize=10.0)
     ax.set_xlim(-0.7, 9.7)
     ax.set_ylabel("Throughput (MWh)", fontweight="bold", fontsize=11.0)
-    ax.set_title("Battery Energy Throughput & Degradation Wear across Capped PPO Variants", fontsize=12.0, fontweight="bold", pad=14)
+    ax.set_title("Battery Energy Throughput & Degradation Wear across Capped PPO Variants", fontsize=12.0, fontweight="bold", pad=36)
 
-    fig.subplots_adjust(top=0.90, bottom=0.18, left=0.08, right=0.92)
+    fig.subplots_adjust(top=0.86, bottom=0.18, left=0.08, right=0.92)
     out_file = os.path.join(dest_dir, "throughput.png")
     fig.savefig(out_file, bbox_inches="tight")
     plt.close(fig)
@@ -880,14 +900,14 @@ def fig_study2_battery_active_soc(baselines: dict, out_dir: str = None):
                 ecolor="#1A252C", elinewidth=1.8, capsize=4.5, capthick=1.8, zorder=5
             )
             label_text = f"{soc:.1f}%\n±{s_soc:.1f}%"
-            y_label = soc + s_soc + 2.2
+            y_label = soc + s_soc + 2.5
         else:
             label_text = f"{soc:.1f}%"
-            y_label = soc + 2.2
+            y_label = soc + 2.5
 
         ax.text(
             x_pos, y_label, label_text, ha="center", va="bottom", fontsize=8.8, fontweight="bold", color="#1A252C",
-            bbox=dict(boxstyle="round,pad=0.12", fc="#FFFFFF", ec="none", alpha=0.88)
+            bbox=dict(boxstyle="round,pad=0.15", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Vertical group divider lines
@@ -902,7 +922,10 @@ def fig_study2_battery_active_soc(baselines: dict, out_dir: str = None):
         Line2D([0], [0], color=PALETTE["PSM'"], ls=":", lw=1.8, label=f"PSM' ({soc_psm:.1f}%)"),
         Line2D([0], [0], color=PALETTE["LP'"], ls="-.", lw=1.8, label=f"LP' Oracle ({soc_lp:.1f}%)"),
     ]
-    ax.legend(handles=ref_handles, loc="upper left", frameon=True, fontsize=9.5)
+    ax.legend(
+        handles=ref_handles, loc="lower center", bbox_to_anchor=(0.5, 1.02),
+        ncol=2, frameon=True, fontsize=9.8
+    )
 
     # Group header annotations
     group_headers = [
@@ -912,17 +935,17 @@ def fig_study2_battery_active_soc(baselines: dict, out_dir: str = None):
         (8.0, "Hard Shielded / Safety-Layer"),
     ]
     for hx, htext in group_headers:
-        ax.text(hx, 100.0, htext, ha="center", va="top", fontsize=9.5, fontweight="bold", color="#555555")
+        ax.text(hx, 104.0, htext, ha="center", va="top", fontsize=9.8, fontweight="bold", color="#4A5568")
 
     ax.set_xticks([c[0] for c in controllers])
     ax.set_xticklabels([c[2] for c in controllers], rotation=35, ha="right", rotation_mode="anchor", fontweight="bold", fontsize=10.0)
     ax.set_xlim(-0.7, 9.7)
-    ax.set_ylim(0, 105.0)
+    ax.set_ylim(0, 110.0)
     ax.set_ylabel("Active SoC Time (%)", fontweight="bold", fontsize=11.0)
     ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{y:.0f}%"))
-    ax.set_title("Active Unpinned SoC Operating Time (% of 4,368h) across Capped PPO Variants", fontsize=12.0, fontweight="bold", pad=14)
+    ax.set_title("Active Unpinned SoC Operating Time (% of 4,368h) across Capped PPO Variants", fontsize=12.0, fontweight="bold", pad=36)
 
-    fig.subplots_adjust(top=0.90, bottom=0.18, left=0.08, right=0.94)
+    fig.subplots_adjust(top=0.86, bottom=0.18, left=0.08, right=0.94)
     out_file = os.path.join(dest_dir, "active_soc.png")
     fig.savefig(out_file, bbox_inches="tight")
     plt.close(fig)
@@ -938,14 +961,14 @@ def fig_study3_stress_pareto(baselines: dict, out_dir: str = None):
     dest_dir = out_dir or STUDY3_DIR
     os.makedirs(dest_dir, exist_ok=True)
 
-    fig, ax = plt.subplots(figsize=(15.2, 8.2))
+    fig, ax = plt.subplots(figsize=(15.8, 8.4))
     floor_val = 1e-4
 
     ax.set_xscale("log")
     ax.set_xlim(floor_val * 0.45, 6.0)
     ax.set_ylim(41000, 83000)
 
-    # Safe Zone: Rectangle shaped by G1 (exceedance <= 0.05 kW) and G2 (cost <= €58,306.73)
+    # Safe Zone: Rectangle shaped by G1 (exceedance <= 0.05 kW) and G2 (cost <= G2_COST_EUR)
     ax.fill_between(
         [floor_val * 0.45, G1_EXC_KW], [41000, 41000], [G2_COST_EUR, G2_COST_EUR],
         facecolor="#D5F5E3", edgecolor="#27AE60", lw=1.8, ls="--", alpha=0.45, zorder=1
@@ -955,10 +978,10 @@ def fig_study3_stress_pareto(baselines: dict, out_dir: str = None):
     ax.axvline(G1_EXC_KW, color=PALETTE["Gate"], ls="-.", lw=1.6, zorder=2)
     ax.axhline(G2_COST_EUR, color=PALETTE["Gate"], ls="--", lw=1.6, zorder=2)
 
-    # Text box inside the Safe Zone rectangle
+    # Text box inside the Safe Zone rectangle (dynamically formatted to match G1 and G2)
     ax.text(
         0.0006, 47500,
-        "SAFE ZONE\nPasses G1 & G2 Gates\n• Cost ≤ €58.3k\n• Exceedance ≤ 0.05 kW",
+        f"SAFE ZONE\nPasses G1 & G2 Gates\n• Cost ≤ €{G2_COST_EUR/1e3:.1f}k\n• Exceedance ≤ {G1_EXC_KW:.2f} kW",
         fontsize=9.8, fontweight="bold", color="#145A32",
         bbox=dict(boxstyle="round,pad=0.45", facecolor="#E8F8F5", edgecolor="#27AE60", alpha=0.92),
         zorder=3
@@ -985,9 +1008,9 @@ def fig_study3_stress_pareto(baselines: dict, out_dir: str = None):
     ]
 
     zero_x_map = {
-        "LP' Oracle": 0.70e-4,
-        "PSM'": 0.90e-4,
-        "PPO-Diff-Shield": 1.15e-4,
+        "LP' Oracle": 0.65e-4,
+        "PSM'": 0.85e-4,
+        "PPO-Diff-Shield": 1.10e-4,
         "Shielded PPO": 1.45e-4,
         "PPO-Aux-Shield": 1.85e-4,
     }
@@ -1008,17 +1031,80 @@ def fig_study3_stress_pareto(baselines: dict, out_dir: str = None):
             )
         ax.scatter([px], [tot], marker=mk, color=col, s=sz, edgecolors="#FFFFFF", linewidths=1.2, zorder=5)
 
-    # Point text annotations cleanly positioned
-    ax.text(zero_x_map["LP' Oracle"] * 1.30, 53290.5, "LP' Oracle (€53.3k)", ha="left", va="center", fontsize=9.2, fontweight="bold", color=PALETTE["LP'"])
-    ax.text(zero_x_map["PSM'"] * 1.30, 55530.2, "PSM' (€55.5k)", ha="left", va="center", fontsize=9.2, fontweight="bold", color=PALETTE["PSM'"])
-    ax.text(zero_x_map["PPO-Diff-Shield"] * 1.30, 58350.5, "PPO-Diff-Shield (€58.4k)", ha="left", va="center", fontsize=9.2, fontweight="bold", color=PALETTE["PPO-Diff-Shield"])
-    ax.text(zero_x_map["Shielded PPO"] * 1.30, 59526.4 + 260, "Shielded PPO (€59.5k)", ha="left", va="bottom", fontsize=9.2, fontweight="bold", color=PALETTE["Shielded PPO_MB"])
-    ax.text(zero_x_map["PPO-Aux-Shield"] * 1.30, 59889.3 - 260, "PPO-Aux-Shield (€59.9k)", ha="left", va="top", fontsize=9.2, fontweight="bold", color=PALETTE["PPO-Aux-Shield"])
+    # Point text annotations cleanly positioned with soft white pill badges
+    points_dict = {p[0]: p for p in points}
 
-    ax.text(0.236 * 1.15, 54570.5, "PPO-Residual (€54.6k)", ha="left", va="center", fontsize=9.2, fontweight="bold", color=PALETTE["PPO-Residual"])
-    ax.text(1.015, 70040.2 + 8325.5 + 900, "PPO-Lagrangian (€70.0k)", ha="center", va="bottom", fontsize=9.2, fontweight="bold", color=PALETTE["PPO-Lagrangian"])
-    ax.text(2.916, 48760.6 + 1063.3 + 900, "Vanilla PPO (€48.8k)", ha="center", va="bottom", fontsize=9.2, fontweight="bold", color=PALETTE["PPO"])
-    ax.text(3.257 * 1.08, 45337.9, "Grid-Only (€45.3k)", ha="left", va="center", fontsize=9.2, fontweight="bold", color=PALETTE["Grid-Only"])
+    # 1. LP' Oracle (53.3k)
+    lp = points_dict["LP' Oracle"]
+    ax.text(
+        lp[1] * 1.35, lp[4], f"{lp[0]} (€{lp[4]/1e3:.1f}k)",
+        ha="left", va="center", fontsize=9.2, fontweight="bold", color=PALETTE["LP'"],
+        bbox=dict(boxstyle="round,pad=0.22", fc="#FFFFFF", ec=PALETTE["LP'"], alpha=0.92, lw=0.7)
+    )
+
+    # 2. PSM' (55.5k) - Sit comfortably below point inside safe zone, avoiding G2 line
+    psm = points_dict["PSM'"]
+    ax.text(
+        psm[1] * 1.35, psm[4] - 900, f"{psm[0]} (€{psm[4]/1e3:.1f}k)",
+        ha="left", va="top", fontsize=9.2, fontweight="bold", color=PALETTE["PSM'"],
+        bbox=dict(boxstyle="round,pad=0.22", fc="#FFFFFF", ec=PALETTE["PSM'"], alpha=0.92, lw=0.7)
+    )
+
+    # 3. PPO-Diff-Shield (58.5k) - Sit below lower error bar
+    diff = points_dict["PPO-Diff-Shield"]
+    ax.text(
+        diff[1] * 1.35, diff[4] - diff[5] - 600, f"{diff[0]} (€{diff[4]/1e3:.1f}k)",
+        ha="left", va="top", fontsize=9.2, fontweight="bold", color=PALETTE["PPO-Diff-Shield"],
+        bbox=dict(boxstyle="round,pad=0.22", fc="#FFFFFF", ec=PALETTE["PPO-Diff-Shield"], alpha=0.92, lw=0.7)
+    )
+
+    # 4. Shielded PPO (59.5k) - Sit above upper error bar to the right
+    sh = points_dict["Shielded PPO"]
+    ax.text(
+        sh[1] * 1.35, sh[4] + sh[5] + 800, f"{sh[0]} (€{sh[4]/1e3:.1f}k)",
+        ha="left", va="bottom", fontsize=9.2, fontweight="bold", color=PALETTE["Shielded PPO_MB"],
+        bbox=dict(boxstyle="round,pad=0.22", fc="#FFFFFF", ec=PALETTE["Shielded PPO_MB"], alpha=0.92, lw=0.7)
+    )
+
+    # 5. PPO-Aux-Shield (60.0k) - Sit cleanly to the right in open space
+    aux = points_dict["PPO-Aux-Shield"]
+    ax.text(
+        aux[1] * 2.2, aux[4], f"{aux[0]} (€{aux[4]/1e3:.1f}k)",
+        ha="left", va="center", fontsize=9.2, fontweight="bold", color=PALETTE["PPO-Aux-Shield"],
+        bbox=dict(boxstyle="round,pad=0.22", fc="#FFFFFF", ec=PALETTE["PPO-Aux-Shield"], alpha=0.92, lw=0.7)
+    )
+
+    # 6. PPO-Residual (54.6k) - Sit above marker to avoid horizontal error bar
+    res = points_dict["PPO-Residual"]
+    ax.text(
+        res[1], res[4] + 1100, f"{res[0]} (€{res[4]/1e3:.1f}k)",
+        ha="center", va="bottom", fontsize=9.2, fontweight="bold", color=PALETTE["PPO-Residual"],
+        bbox=dict(boxstyle="round,pad=0.22", fc="#FFFFFF", ec=PALETTE["PPO-Residual"], alpha=0.92, lw=0.7)
+    )
+
+    # 7. PPO-Lagrangian (70.0k) - Sit above vertical error bar
+    lag = points_dict["PPO-Lagrangian"]
+    ax.text(
+        lag[1], lag[4] + lag[5] + 900, f"{lag[0]} (€{lag[4]/1e3:.1f}k)",
+        ha="center", va="bottom", fontsize=9.2, fontweight="bold", color=PALETTE["PPO-Lagrangian"],
+        bbox=dict(boxstyle="round,pad=0.22", fc="#FFFFFF", ec=PALETTE["PPO-Lagrangian"], alpha=0.92, lw=0.7)
+    )
+
+    # 8. Vanilla PPO (48.8k) - Sit above vertical error bar
+    van = points_dict["Vanilla PPO"]
+    ax.text(
+        van[1], van[4] + van[5] + 900, f"{van[0]} (€{van[4]/1e3:.1f}k)",
+        ha="center", va="bottom", fontsize=9.2, fontweight="bold", color=PALETTE["PPO"],
+        bbox=dict(boxstyle="round,pad=0.22", fc="#FFFFFF", ec=PALETTE["PPO"], alpha=0.92, lw=0.7)
+    )
+
+    # 9. Grid-Only (45.3k)
+    grd = points_dict["Grid-Only"]
+    ax.text(
+        grd[1] * 1.15, grd[4], f"{grd[0]} (€{grd[4]/1e3:.1f}k)",
+        ha="left", va="center", fontsize=9.2, fontweight="bold", color=PALETTE["Grid-Only"],
+        bbox=dict(boxstyle="round,pad=0.22", fc="#FFFFFF", ec=PALETTE["Grid-Only"], alpha=0.92, lw=0.7)
+    )
 
     # Legend - enlarged and placed cleanly outside to the right so it never hides any data
     legend_handles = [
@@ -1031,12 +1117,12 @@ def fig_study3_stress_pareto(baselines: dict, out_dir: str = None):
             lbl = f"{name}: €{tot/1e3:.1f}k (0.00 kW)"
         else:
             lbl = f"{name}: €{tot/1e3:.1f}k ({exc:.2f} kW)"
-        legend_handles.append(Line2D([0], [0], marker=mk, color="w", markerfacecolor=col, markersize=10.0, label=lbl))
+        legend_handles.append(Line2D([0], [0], marker=mk, color="w", markerfacecolor=col, markersize=10.5, label=lbl))
 
     ax.legend(
         handles=legend_handles, bbox_to_anchor=(1.02, 1.0), loc="upper left", frameon=True,
-        fontsize=9.8, title="Controllers & Gates", title_fontsize=10.8,
-        borderaxespad=0.0, labelspacing=0.5, framealpha=0.95, edgecolor="#CBD5E0"
+        fontsize=10.0, title="Controllers & Gates", title_fontsize=11.0,
+        borderaxespad=0.0, labelspacing=0.55, framealpha=0.96, edgecolor="#CBD5E0"
     )
 
     ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"€{y*1e-3:.0f}k"))
@@ -1047,13 +1133,14 @@ def fig_study3_stress_pareto(baselines: dict, out_dir: str = None):
         fontsize=13.0, fontweight="bold", pad=16, loc="left"
     )
 
-    fig.subplots_adjust(top=0.92, bottom=0.10, left=0.08, right=0.75)
+    fig.subplots_adjust(top=0.92, bottom=0.10, left=0.09, right=0.74)
     out_file = os.path.join(dest_dir, "stress_week_pareto.png")
     fig.savefig(out_file, bbox_inches="tight")
     pareto_file = os.path.join(dest_dir, "pareto.png")
     fig.savefig(pareto_file, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved: {out_file} and {pareto_file}")
+
 
 
 # ===========================================================================
@@ -1151,15 +1238,11 @@ def fig_study4_cost(baselines: dict, out_dir: str = None):
         else:
             label_text = f"€{tot/1e3:.1f}k"
 
-        if 46000.0 <= tot < 60000.0:
-            y_label = max(tot + s_tot + 1400.0, c_g2 + 1800.0)
-        else:
-            y_label = tot + s_tot + 1400.0
-
+        y_label = tot + s_tot + 1200.0
         ax.text(
             x_pos, y_label, label_text,
-            ha="center", va="bottom", fontsize=9.2, fontweight="bold", color="#1A252C",
-            bbox=dict(boxstyle="round,pad=0.15", fc="#FFFFFF", ec="none", alpha=0.88)
+            ha="center", va="bottom", fontsize=9.0, fontweight="bold", color="#1A252C",
+            bbox=dict(boxstyle="round,pad=0.20", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Vertical group divider lines
@@ -1173,12 +1256,12 @@ def fig_study4_cost(baselines: dict, out_dir: str = None):
 
     # Group header annotations
     for hx, htext in headers:
-        ax.text(hx, 89500, htext, ha="center", va="top", fontsize=10.5, fontweight="bold", color="#444444")
+        ax.text(hx, 88500, htext, ha="center", va="top", fontsize=10.5, fontweight="bold", color="#444444")
 
     ax.set_xticks([c[0] for c in controllers])
     ax.set_xticklabels([c[2] for c in controllers], rotation=20, ha="right", rotation_mode="anchor", fontweight="bold", fontsize=10.5)
     ax.set_xlim(-0.7, 6.7)
-    ax.set_ylim(0, 95000)
+    ax.set_ylim(0, 93000)
     ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"€{y*1e-3:.0f}k"))
     ax.set_ylabel("Cost (€)", fontweight="bold", fontsize=11.5)
 
@@ -1233,7 +1316,8 @@ def fig_study4_grid_exceedance(baselines: dict, out_dir: str = None):
         y_label = exc + s_exc + 0.12
         ax.text(
             x_pos, y_label, f"{exc:.2f} kW/step\n({m_vh:.0f}h / {pct_vh:.1f}%)",
-            ha="center", va="bottom", fontsize=9.2, fontweight="bold", color="#1A252C"
+            ha="center", va="bottom", fontsize=9.2, fontweight="bold", color="#1A252C",
+            bbox=dict(boxstyle="round,pad=0.18", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Vertical group divider lines
@@ -1247,7 +1331,10 @@ def fig_study4_grid_exceedance(baselines: dict, out_dir: str = None):
         Line2D([0], [0], color=PALETTE["Gate"], ls="-.", lw=1.8, label=f"G1 Exceedance Gate ({G1_EXC_KW:.2f} kW/step)"),
         Line2D([0], [0], color=PALETTE["LP'"], ls="-.", lw=1.6, label="LP' Oracle: 0.00 kW/step (0h)"),
     ]
-    ax.legend(handles=ref_handles, loc="upper right", frameon=True, fontsize=10.0)
+    ax.legend(
+        handles=ref_handles, loc="lower center", bbox_to_anchor=(0.5, 1.02),
+        ncol=2, frameon=True, fontsize=10.0
+    )
 
     # Group header annotations
     for hx, htext in headers:
@@ -1260,10 +1347,10 @@ def fig_study4_grid_exceedance(baselines: dict, out_dir: str = None):
     ax.set_ylabel("Mean Exceedance (kW/step)", fontweight="bold", fontsize=11.0)
     ax.set_title(
         "Mean Grid Import Exceedance & Violation Hours: Plain PPO vs. PPO-Lagrangian",
-        fontsize=12.0, fontweight="bold", pad=18
+        fontsize=12.0, fontweight="bold", pad=36
     )
 
-    fig.subplots_adjust(top=0.90, bottom=0.14, left=0.10, right=0.97)
+    fig.subplots_adjust(top=0.86, bottom=0.14, left=0.10, right=0.97)
     out_file = os.path.join(dest_dir, "grid_exceedance.png")
     fig.savefig(out_file, bbox_inches="tight")
     plt.close(fig)
@@ -1301,7 +1388,8 @@ def fig_study4_battery_throughput(baselines: dict, out_dir: str = None):
         y_label = tp + s_tp + 2.5
         ax.text(
             x_pos, y_label, lbl,
-            ha="center", va="bottom", fontsize=9.2, fontweight="bold", color="#1A252C"
+            ha="center", va="bottom", fontsize=9.2, fontweight="bold", color="#1A252C",
+            bbox=dict(boxstyle="round,pad=0.18", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Vertical group divider lines
@@ -1323,12 +1411,12 @@ def fig_study4_battery_throughput(baselines: dict, out_dir: str = None):
 
     # Group header annotations
     for hx, htext in headers:
-        ax.text(hx, 122.0, htext, ha="center", va="top", fontsize=10.5, fontweight="bold", color="#444444")
+        ax.text(hx, 142.0, htext, ha="center", va="top", fontsize=10.5, fontweight="bold", color="#444444")
 
     ax.set_xticks([c[0] for c in controllers])
     ax.set_xticklabels([c[2] for c in controllers], rotation=20, ha="right", rotation_mode="anchor", fontweight="bold", fontsize=10.5)
     ax.set_xlim(-0.7, 6.7)
-    ax.set_ylim(0, 130)
+    ax.set_ylim(0, 150)
     ax.set_ylabel("Throughput (MWh)", fontweight="bold", fontsize=11.0)
     ax.set_title(
         "Battery Throughput: Plain PPO vs. PPO-Lagrangian",
@@ -1370,10 +1458,11 @@ def fig_study4_battery_active_soc(baselines: dict, out_dir: str = None):
         else:
             lbl = f"{soc:.1f}%"
 
-        y_label = soc + s_soc + 2.0
+        y_label = soc + s_soc + 2.5
         ax.text(
             x_pos, y_label, lbl,
-            ha="center", va="bottom", fontsize=9.2, fontweight="bold", color="#1A252C"
+            ha="center", va="bottom", fontsize=9.2, fontweight="bold", color="#1A252C",
+            bbox=dict(boxstyle="round,pad=0.18", fc="#FFFFFF", ec="#CBD5E0", alpha=0.92, lw=0.7)
         )
 
     # Vertical group divider lines
@@ -1395,15 +1484,16 @@ def fig_study4_battery_active_soc(baselines: dict, out_dir: str = None):
 
     # Group header annotations
     for hx, htext in headers:
-        ax.text(hx, 94.0, htext, ha="center", va="top", fontsize=10.5, fontweight="bold", color="#444444")
+        ax.text(hx, 108.0, htext, ha="center", va="top", fontsize=10.5, fontweight="bold", color="#444444")
 
     ax.set_xticks([c[0] for c in controllers])
     ax.set_xticklabels([c[2] for c in controllers], rotation=20, ha="right", rotation_mode="anchor", fontweight="bold", fontsize=10.5)
     ax.set_xlim(-0.7, 6.7)
-    ax.set_ylim(0, 100)
+    ax.set_ylim(0, 115.0)
     ax.set_ylabel("Active SoC Time (%)", fontweight="bold", fontsize=11.0)
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{y:.0f}%"))
     ax.set_title(
-        "Active Battery SoC Operating Time: Plain PPO vs. PPO-Lagrangian",
+        "Active Unpinned SoC Operating Time: Plain PPO vs. PPO-Lagrangian",
         fontsize=12.0, fontweight="bold", pad=44
     )
 
