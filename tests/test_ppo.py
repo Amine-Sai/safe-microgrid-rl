@@ -5,9 +5,13 @@ import numpy as np
 import pytest
 import torch as th
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from agents.ppo import PPOAgent, compute_gae, grid_only_action
+from tests.conftest import load_frozen_baselines, load_project_constants
 
-from agents.ppo import PPOAgent, compute_gae, grid_only_action  # noqa: E402
+DEFAULT_STATE_DIM = 17
+DEFAULT_ACTION_DIM = 6
+HOURS_PER_WEEK = 168
+VAL_WEEKS = 26
 
 
 def _gae_reference(rewards, values, dones, truncated, last_value, gamma, lam):
@@ -32,7 +36,7 @@ def test_gae_matches_numpy_reference():
     r = np.array([1.0, 0.0, 2.0, 1.0, 3.0])
     v = np.array([1.0, 2.0, 1.0, 3.0, 2.0])
     d = np.array([0, 0, 0, 1, 0], dtype=bool)      # terminal at step 3
-    tr = np.array([0, 1, 0, 0, 0], dtype=bool)      # truncation at step 1
+    tr = np.array([0, 1, 0, 0, 0], dtype=bool)     # truncation at step 1
     expected = np.array([0.75, -1.0, 2.0, -2.0, 3.0])
 
     adv = compute_gae(r, v, d, tr, last_value=4.0, gamma=0.5, lam=0.5)[0]
@@ -50,23 +54,25 @@ def test_truncation_bootstrapping():
     d_terminal = np.array([0, 0, 1], dtype=bool)
     d_trunc = np.array([0, 0, 0], dtype=bool)
     trunc_flag = np.array([0, 0, 1], dtype=bool)
+    last_val = 100.0
 
-    adv_trunc = compute_gae(r, v, d_trunc, trunc_flag, last_value=100.0,
+    adv_trunc = compute_gae(r, v, d_trunc, trunc_flag, last_value=last_val,
                             gamma=0.99, lam=0.95)[0]
-    adv_term = compute_gae(r, v, d_terminal, trunc_flag, last_value=100.0,
+    adv_term = compute_gae(r, v, d_terminal, trunc_flag, last_value=last_val,
                            gamma=0.99, lam=0.95)[0]
     # the terminal episode gets NO bootstrap: its last advantage must be far smaller
     assert adv_trunc[-1] > adv_term[-1] + 50.0
     assert adv_term[-1] == pytest.approx(1.0 - 0.5, abs=1e-9)
 
 
-def test_seed_determinism():
+def test_seed_determinism(project_constants):
     """Two full seeded runs (rollout + finish_path + update) produce identical results."""
+    d_main = project_constants.get("d_main_kw_per_step", 0.05)
     results = []
     for _ in range(2):
         th.manual_seed(42)
         np.random.seed(42)
-        ag = PPOAgent(state_dim=4, action_dim=2, lagrangian=True, cost_limit=0.05)
+        ag = PPOAgent(state_dim=4, action_dim=2, lagrangian=True, cost_limit=d_main)
 
         actions, values = [], []
         states = np.random.randn(20, 4).astype(np.float32)
@@ -88,14 +94,16 @@ def test_seed_determinism():
     assert np.allclose(results[0][3], results[1][3], atol=1e-6), "final policy differs"
 
 
-def test_lambda_nonnegative_and_rises_when_cost_exceeds_d():
-    ag = PPOAgent(state_dim=4, action_dim=2, lagrangian=True, cost_limit=0.05,
+def test_lambda_nonnegative_and_rises_when_cost_exceeds_d(project_constants):
+    d_main = project_constants.get("d_main_kw_per_step", 0.05)
+    ag = PPOAgent(state_dim=4, action_dim=2, lagrangian=True, cost_limit=d_main,
                   lambda_lr_mult=0.5)
     lam0 = ag.lambda_
     assert lam0 >= 0.0
 
+    high_cost_per_step = d_main * 100.0  # well above d_main to force multiplier rise
     for _ in range(10):
-        ag.rollout_costs = [5.0, 5.0, 5.0]        # way above d_main = 0.05
+        ag.rollout_costs = [high_cost_per_step] * 3
         ag.end_episode(terminated=True)
         lam = ag.update_lambda_from_source()
         assert lam >= 0.0
@@ -111,8 +119,8 @@ def test_lambda_nonnegative_and_rises_when_cost_exceeds_d():
 
 
 @pytest.mark.needs_real_data
-def test_init_policy_reproduces_grid_only_val():
-    """Init policy mean IS Grid-Only; untrained agent produces Val 45,337.92 to the cent.
+def test_init_policy_reproduces_grid_only_val(frozen_baselines):
+    """Init policy mean IS Grid-Only; untrained agent produces Val cost matching frozen baseline.
     Also verifies grid_only_action tracks the env's mapping rule."""
     from env.smartgrid_env import SmartGridEnv
 
@@ -122,27 +130,32 @@ def test_init_policy_reproduces_grid_only_val():
         env = SmartGridEnv({"split": "val", "shed_mapping": mapping})
         env.reset(seed=42)
         _, _, _, _, info = env.step(a)
-        assert max(info["shed_fractions"]) == pytest.approx(0.0, abs=1e-9), \
-            f"{mapping}: {info['shed_fractions']}"
+        max_shed = max(info["shed_fractions"])
+        assert max_shed == pytest.approx(0.0, abs=1e-9), \
+            f"Mapping {mapping} produced non-zero shed fraction: {info['shed_fractions']}"
 
     # Part B: grid_only_action("linear") produces exact Grid-Only Val cost
     a_linear = grid_only_action("linear")
     assert np.allclose(a_linear[1:], -1.0) and a_linear[0] == 0.0
     env = SmartGridEnv({"split": "val", "shed_mapping": "linear"})
-    total = 0.0
-    for ep in range(26):
-        obs, _ = env.reset(options={"start_idx": ep * 168})
-        for _ in range(168):
+    total_val_cost = 0.0
+    for ep in range(VAL_WEEKS):
+        obs, _ = env.reset(options={"start_idx": ep * HOURS_PER_WEEK})
+        for _ in range(HOURS_PER_WEEK):
             _, _, _, _, info = env.step(a_linear)
-            total += (info["energy_cost"] + info["unserved_cost"]
-                      + info["battery_wear_cost"])
-    assert abs(total - 45337.92170812376) < 0.01, total
+            total_val_cost += (info["energy_cost"] + info["unserved_cost"]
+                               + info["battery_wear_cost"])
+    expected_grid_only_cost = frozen_baselines["Grid-Only"]["val_cost_eur"]
+    assert abs(total_val_cost - expected_grid_only_cost) < 0.05, (
+        f"Simulated Grid-Only val cost ({total_val_cost:.2f} EUR) did not match "
+        f"frozen baseline ({expected_grid_only_cost:.2f} EUR)"
+    )
 
     # Part C: policy network mean == grid_only_action (zero-init weights)
-    ag = PPOAgent(state_dim=17, action_dim=6, shed_mapping="linear")
+    ag = PPOAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM, shed_mapping="linear")
     with th.no_grad():
-        mu = ag.policy.forward(th.zeros(1, 17)).numpy().ravel()
-    assert np.allclose(mu, a_linear, atol=1e-6), (mu, a_linear)
+        mu = ag.policy.forward(th.zeros(1, DEFAULT_STATE_DIM)).numpy().ravel()
+    assert np.allclose(mu, a_linear, atol=1e-6), f"Initial policy {mu} != grid_only_action {a_linear}"
 
 
 def test_no_test_split_access_under_agents():
@@ -158,14 +171,14 @@ def test_no_test_split_access_under_agents():
 
 def test_checkpoint_round_trip(tmp_path):
     """save_models/load_models restore weights, normalisers, and lambda."""
-    agent = PPOAgent(state_dim=17, action_dim=6, lagrangian=True)
+    agent = PPOAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM, lagrangian=True)
     with th.no_grad():
         for p in agent.policy.parameters():
             p.add_(0.01)
         for p in agent.value_net.parameters():
             p.add_(0.01)
-    agent.obs_normalizer.mean = np.arange(17, dtype=np.float64) + 0.5
-    agent.obs_normalizer.var = np.arange(17, dtype=np.float64) + 1.5
+    agent.obs_normalizer.mean = np.arange(DEFAULT_STATE_DIM, dtype=np.float64) + 0.5
+    agent.obs_normalizer.var = np.arange(DEFAULT_STATE_DIM, dtype=np.float64) + 1.5
     agent.obs_normalizer.count = 11
     agent.ret_normalizer.mean = np.array(1.25)
     agent.ret_normalizer.var = np.array(2.5)
@@ -175,7 +188,7 @@ def test_checkpoint_round_trip(tmp_path):
     path = tmp_path / "ckpt.pt"
     agent.save_models(str(path))
 
-    restored = PPOAgent(state_dim=17, action_dim=6, lagrangian=True)
+    restored = PPOAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM, lagrangian=True)
     restored.load_models(str(path))
 
     for key, value in agent.policy.state_dict().items():
@@ -189,7 +202,7 @@ def test_checkpoint_round_trip(tmp_path):
     assert restored.ret_normalizer.var == pytest.approx(agent.ret_normalizer.var)
     assert restored.lambda_ == pytest.approx(agent.lambda_)
 
-    step = th.zeros(1, 17)
+    step = th.zeros(1, DEFAULT_STATE_DIM)
     assert th.equal(agent.policy(step), restored.policy(step))
 
 
@@ -204,37 +217,47 @@ def test_ppo_subclass_hierarchy():
         PPOLagrangianPotentialShapingAgent,
     )
 
-    base = PPOAgent(state_dim=17, action_dim=6)
+    base = PPOAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM)
     assert isinstance(base, PPOAgent)
     assert not base.lagrangian
     assert not base.pbrs
 
-    lag = PPOLagrangianAgent(state_dim=17, action_dim=6)
+    lag = PPOLagrangianAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM)
     assert isinstance(lag, PPOAgent)
     assert isinstance(lag, PPOLagrangianAgent)
     assert lag.lagrangian
     assert lag.cost_net is not None
 
-    res = PPOResidualAgent(state_dim=17, action_dim=6)
+    res = PPOResidualAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM)
     assert isinstance(res, PPOLagrangianAgent)
     assert res.residual_policy is not None
     # Residual policy mean starts at 0 (zero correction)
     with th.no_grad():
-        mu_res = res.policy.forward(th.zeros(1, 17)).numpy().ravel()
+        mu_res = res.policy.forward(th.zeros(1, DEFAULT_STATE_DIM)).numpy().ravel()
     assert np.allclose(mu_res, 0.0, atol=1e-6)
 
-    shi = PPOShieldedAgent(state_dim=17)
+    shi = PPOShieldedAgent(state_dim=DEFAULT_STATE_DIM)
     assert isinstance(shi, PPOAgent)
     assert shi.action_dim == 1
 
-    ps = PPOPotentialShapingAgent(state_dim=17, action_dim=6)
+    ps = PPOPotentialShapingAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM)
     assert isinstance(ps, PPOAgent)
     assert ps.pbrs
 
-    lag_ps = PPOLagrangianPotentialShapingAgent(state_dim=17, action_dim=6)
+    lag_ps = PPOLagrangianPotentialShapingAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM)
     assert isinstance(lag_ps, PPOLagrangianAgent)
     assert isinstance(lag_ps, PPOPotentialShapingAgent)
     assert lag_ps.lagrangian and lag_ps.pbrs
+
+    from agents.ppo import PPOAuxShieldLossAgent, PPODiffSafetyLayerAgent
+    aux = PPOAgent(state_dim=DEFAULT_STATE_DIM, action_dim=1, method="ppo_shield_aux", aux_shield_coef=0.5)
+    assert isinstance(aux, PPOAuxShieldLossAgent)
+    assert aux.aux_shield_coef == 0.5
+
+    diff = PPOAgent(state_dim=DEFAULT_STATE_DIM, action_dim=1, method="ppo_diff_shield")
+    assert isinstance(diff, PPODiffSafetyLayerAgent)
+    from agents.safety_layer import SafePolicyNetwork
+    assert isinstance(diff.policy, SafePolicyNetwork)
 
 
 def test_raw_action_storage_prevents_off_policy_start():
@@ -242,10 +265,10 @@ def test_raw_action_storage_prevents_off_policy_start():
     from agents.ppo import PPOAgent, PPOResidualAgent
 
     for agent in (
-        PPOAgent(state_dim=17, action_dim=6, store_raw_action=True),
-        PPOResidualAgent(state_dim=17, action_dim=6, store_raw_action=True),
+        PPOAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM, store_raw_action=True),
+        PPOResidualAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM, store_raw_action=True),
     ):
-        states = np.random.randn(10, 17).astype(np.float32)
+        states = np.random.randn(10, DEFAULT_STATE_DIM).astype(np.float32)
         for s in states:
             a, lp, v, cv = agent.select_action(s)
             agent.store_transition(s, a, 1.0, 0.0, v, cv, lp, False, False)
@@ -270,9 +293,9 @@ def test_explained_variance_diagnostic_consistency():
 
 def test_from_checkpoint_restores_variant_and_residual(tmp_path):
     """Caveat 7: PPOAgent.from_checkpoint restores subclass, residual policy, and weights."""
-    from agents.ppo import PPOAgent, PPOResidualAgent, PPOLagrangianAgent
+    from agents.ppo import PPOAgent, PPOResidualAgent
 
-    res_agent = PPOResidualAgent(state_dim=17, action_dim=6)
+    res_agent = PPOResidualAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM)
     ckpt_path = tmp_path / "residual_ckpt.pt"
     res_agent.save_models(str(ckpt_path))
 
@@ -281,7 +304,25 @@ def test_from_checkpoint_restores_variant_and_residual(tmp_path):
     assert restored.residual_policy is not None
     assert restored.lagrangian is True
 
-    test_obs = np.ones(17, dtype=np.float32) * 0.5
+    test_obs = np.ones(DEFAULT_STATE_DIM, dtype=np.float32) * 0.5
     a_orig = res_agent.select_action(test_obs, evaluate=True)[0]
     a_rest = restored.select_action(test_obs, evaluate=True)[0]
     assert np.allclose(a_orig, a_rest, atol=1e-6)
+
+    # Test restoring PPOAuxShieldLossAgent
+    from agents.ppo import PPOAuxShieldLossAgent, PPODiffSafetyLayerAgent
+    aux_agent = PPOAuxShieldLossAgent(state_dim=DEFAULT_STATE_DIM, action_dim=1, aux_shield_coef=0.75)
+    ckpt_aux = tmp_path / "aux_ckpt.pt"
+    aux_agent.save_models(str(ckpt_aux))
+    restored_aux = PPOAgent.from_checkpoint(str(ckpt_aux))
+    assert isinstance(restored_aux, PPOAuxShieldLossAgent)
+    assert restored_aux.aux_shield_coef == 0.75
+
+    # Test restoring PPODiffSafetyLayerAgent
+    diff_agent = PPODiffSafetyLayerAgent(state_dim=DEFAULT_STATE_DIM, action_dim=1, p_max=200.0, p_cap=350.0)
+    ckpt_diff = tmp_path / "diff_ckpt.pt"
+    diff_agent.save_models(str(ckpt_diff))
+    restored_diff = PPOAgent.from_checkpoint(str(ckpt_diff))
+    assert isinstance(restored_diff, PPODiffSafetyLayerAgent)
+    assert restored_diff.p_max == 200.0
+    assert restored_diff.p_cap == 350.0

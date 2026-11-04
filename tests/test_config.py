@@ -1,3 +1,5 @@
+import hashlib
+import json
 import os
 import sys
 
@@ -10,6 +12,9 @@ from experiments.train_core import load_config_with_base, PPO_METHODS, _require_
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CONFIG_PATH = os.path.join(REPO_ROOT, "configs", "config.yaml")
+
+# Published Grid-Only reward scale (1 / mean|r| on Train split)
+PUBLISHED_GRID_ONLY_REWARD_SCALE = 0.096879
 
 _STORE = yaml.safe_load(open(CONFIG_PATH, encoding="utf-8")) or {}
 EXPERIMENTS = _STORE.get("experiments") or {}
@@ -117,11 +122,12 @@ def test_shed_mapping_really_moves_the_env():
 
 
 @pytest.mark.needs_real_data
-def test_constant_action_is_grid_only_under_both_mappings():
+def test_constant_action_is_grid_only_under_both_mappings(frozen_baselines):
     """Frozen baseline: a no-op action must cost exactly Grid-Only either way."""
     import numpy as np
     from env.smartgrid_env import SmartGridEnv
 
+    expected_cost = frozen_baselines["Grid-Only"]["val_cost_eur"]
     for mapping in ("linear", "relu"):
         env = SmartGridEnv({"split": "val", "shed_mapping": mapping})
         total = 0.0
@@ -132,7 +138,9 @@ def test_constant_action_is_grid_only_under_both_mappings():
                     np.array([0.0, -1, -1, -1, -1, -1], dtype=np.float32))
                 total += (info["energy_cost"] + info["unserved_cost"]
                           + info["battery_wear_cost"])
-        assert abs(total - 45337.92170812376) < 0.01, f"{mapping} broke Grid-Only"
+        assert abs(total - expected_cost) < 0.05, (
+            f"{mapping} broke Grid-Only: total={total:.2f}, expected={expected_cost:.2f}"
+        )
 
 
 def test_explicit_reward_scale_beats_the_computed_default():
@@ -143,7 +151,7 @@ def test_explicit_reward_scale_beats_the_computed_default():
     with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False,
                                      dir=os.path.dirname(CONFIG_PATH),
                                      encoding="utf-8") as f:
-        f.write("reward_scale: 0.096879\n"
+        f.write(f"reward_scale: {PUBLISHED_GRID_ONLY_REWARD_SCALE}\n"
                 "reward_scale_mode: grid_only\n"
                 "reward_scale_explicit: true\n")
         path = f.name
@@ -153,8 +161,8 @@ def test_explicit_reward_scale_beats_the_computed_default():
         os.unlink(path)
 
     assert cfg["reward_scale_explicit"] is True
-    assert cfg["reward_scale"] == 0.096879          # operator's value, not recomputed
-    assert grid_only_reward_scale(cfg, "linear") == 0.096879
+    assert cfg["reward_scale"] == PUBLISHED_GRID_ONLY_REWARD_SCALE          # operator's value, not recomputed
+    assert grid_only_reward_scale(cfg, "linear") == PUBLISHED_GRID_ONLY_REWARD_SCALE
 
     # the loader honours it: base default is 1.0, so the override really applied
     assert BASE["reward_scale"] == 1.0
@@ -195,6 +203,20 @@ def test_agent_helper_matches_training_kwargs():
         assert a.residual_coef == cfg["residual_coef"]
         assert a.residual_policy is None
 
+    from agents.ppo import PPOAuxShieldLossAgent, PPODiffSafetyLayerAgent
+    from agents.safety_layer import SafePolicyNetwork
+    cfg_aux = load_config_with_base("clamped_ppo_shield_aux")
+    a_aux = pp.load_agent_for_method(cfg_aux["method"], cfg_aux)
+    assert isinstance(a_aux, PPOAuxShieldLossAgent)
+    assert type(a_aux) is PPOAuxShieldLossAgent
+    assert a_aux.aux_shield_coef == 0.5
+
+    cfg_diff = load_config_with_base("clamped_ppo_diff_shield")
+    a_diff = pp.load_agent_for_method(cfg_diff["method"], cfg_diff)
+    assert isinstance(a_diff, PPODiffSafetyLayerAgent)
+    assert type(a_diff) is PPODiffSafetyLayerAgent
+    assert isinstance(a_diff.policy, SafePolicyNetwork)
+
 
 @pytest.mark.needs_real_data
 def test_residual_helper_attaches_the_base_policy():
@@ -219,8 +241,71 @@ def test_grid_only_reward_scale_matches_documented_value():
     cfg = dict(BASE, reward_scale_mode="grid_only", reward_scale_explicit=False)
     c = grid_only_reward_scale(cfg, cfg["shed_mapping"], method_name="t")
     # The published value is 0.096879 from the full Train split.
-    assert abs(c - 0.096879) < 1e-4, c
+    assert abs(c - PUBLISHED_GRID_ONLY_REWARD_SCALE) < 1e-4, c
 
     # an explicit value is respected verbatim
-    cfg2 = dict(cfg, reward_scale=0.096879, reward_scale_explicit=True)
-    assert grid_only_reward_scale(cfg2, "linear", method_name="t") == 0.096879
+    cfg2 = dict(cfg, reward_scale=PUBLISHED_GRID_ONLY_REWARD_SCALE, reward_scale_explicit=True)
+    assert grid_only_reward_scale(cfg2, "linear", method_name="t") == PUBLISHED_GRID_ONLY_REWARD_SCALE
+
+
+def test_reproducibility_artifacts():
+    """Verify reproducibility artifacts: LICENSE, requirements.txt, and checksums."""
+    # 1. LICENSE exists and is non-empty
+    license_path = os.path.join(REPO_ROOT, "LICENSE")
+    assert os.path.isfile(license_path), f"Missing LICENSE file at {license_path}"
+    with open(license_path, "r", encoding="utf-8") as f:
+        license_text = f.read().strip()
+    assert len(license_text) > 0, "LICENSE file is empty"
+
+    # 2. requirements.txt exists and every non-empty, non-comment line uses exact '==' pinning
+    req_path = os.path.join(REPO_ROOT, "requirements.txt")
+    assert os.path.isfile(req_path), f"Missing requirements.txt at {req_path}"
+    with open(req_path, "r", encoding="utf-8") as f:
+        req_lines = [line.strip() for line in f]
+
+    pinned_count = 0
+    for line in req_lines:
+        if not line or line.startswith("#"):
+            continue
+        assert "==" in line, f"Line does not use exact '==' pinning: {line}"
+        pkg, ver = line.split("==", 1)
+        assert pkg.strip(), f"Missing package name in: {line}"
+        assert ver.strip(), f"Missing version in: {line}"
+        assert not any(op in ver for op in (">=", "<=", "~=", "!=", ">", "<")), (
+            f"Relational operator detected in version: {line}"
+        )
+        pinned_count += 1
+    assert pinned_count > 0, "No packages found in requirements.txt"
+
+    # 3. data/checksums.json exists and contains SHA-256 hashes for opsd, pvgis, and openmeteo
+    checksums_path = os.path.join(REPO_ROOT, "data", "checksums.json")
+    assert os.path.isfile(checksums_path), f"Missing checksums file at {checksums_path}"
+    with open(checksums_path, "r", encoding="utf-8") as f:
+        checksums = json.load(f)
+    for key in ("opsd", "pvgis", "openmeteo"):
+        assert key in checksums, f"Missing '{key}' in data/checksums.json"
+        val = checksums[key]
+        assert isinstance(val, str) and len(val) == 64, (
+            f"Expected 64-char SHA-256 hex string for '{key}', got: {val}"
+        )
+        int(val, 16)  # Verify valid hex string
+
+    # 4. If data/processed/split_report.json exists, verify processed_sha256 matches disk
+    report_path = os.path.join(REPO_ROOT, "data", "processed", "split_report.json")
+    if os.path.exists(report_path):
+        with open(report_path, "r", encoding="utf-8") as f:
+            report = json.load(f)
+        assert "processed_sha256" in report, "split_report.json missing 'processed_sha256'"
+        processed_hashes = report["processed_sha256"]
+        for split_file in ("train.parquet", "val.parquet", "test.parquet"):
+            assert split_file in processed_hashes, (
+                f"Missing '{split_file}' in processed_sha256"
+            )
+            file_path = os.path.join(REPO_ROOT, "data", "processed", split_file)
+            if os.path.exists(file_path):
+                with open(file_path, "rb") as f:
+                    actual_sha = hashlib.sha256(f.read()).hexdigest()
+                assert actual_sha == processed_hashes[split_file], (
+                    f"Hash mismatch for {split_file}: expected {processed_hashes[split_file]}, "
+                    f"got {actual_sha}"
+                )

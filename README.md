@@ -197,7 +197,7 @@ To investigate constraint enforcement in continuous action spaces ($\mathcal{A} 
 
    $$\tilde{a}\_{\text{bat}} = \operatorname{clip}\left( a\_{\text{bat}} - \frac{\operatorname{ReLU}(P\_{\text{net}} + P\_{\text{bat}}^{\text{max}} a\_{\text{bat}} - P\_{\text{cap}})}{P\_{\text{bat}}^{\text{max}}}, -1.0, 1.0 \right)$$
 
-   Exact gradients $\frac{\partial \tilde{a}}{\partial a}$ flow backward through the projection into the policy network during backpropagation. An auxiliary loss variant (`PPO-Aux-Shield`) penalizing policy deviation from safe actions ($\mathcal{L}_{\text{aux}} = \frac{1}{2} \|a - \tilde{a}\|_2^2$) is also benchmarked. Selected to test whether end-to-end gradient feedback through the safety constraint resolves the "battery parking" failure mode.
+   Exact gradients $\frac{\partial \tilde{a}}{\partial a}$ flow backward through the projection into the policy network during backpropagation. An auxiliary loss variant (`PPO-Aux-Shield`) penalizing policy deviation from safe actions ($\mathcal{L}_{\text{aux}} = \frac{1}{2} \|a - \tilde{a}\|_2^2$) is also benchmarked. Because battery dispatch is physically bounded by rated power ($P_{\text{bat}}^{\text{max}} = 250\,\text{kW}$) and energy capacity ($\text{SoC} \ge \text{SoC}_{\text{min}} = 0.10$), `PPODiffSafetyLayerAgent` is co-designed with an outer `CapShield` environment filter that handles priority-ordered 5-sector customer curtailment whenever net demand exceeds $P_{\text{cap}} + P_{\text{bat}}^{\text{max}}$ or when battery energy is exhausted. Selected to test whether end-to-end gradient feedback through the safety constraint resolves the "battery parking" failure mode.
 
 ---
 
@@ -473,10 +473,10 @@ The codebase is organized into modular packages separating environment physics, 
 |---|---|---|
 | [`configs/`](configs) | Centralized configuration management | [`config.yaml`](configs/config.yaml) (hyperparameters, physics constants, experiment aliases) |
 | [`env/`](env) | Physical microgrid simulation | [`smartgrid_env.py`](env/smartgrid_env.py) (Gymnasium physics, charging interlock), [`cap_shield.py`](env/cap_shield.py) (analytical safety shield) |
-| [`agents/`](agents) | OOP policy hierarchy & safety projections | [`ppo.py`](agents/ppo.py) (`PPOAgent`, `PPOLagrangianAgent`, `PPOResidualAgent`, `PPOShieldedAgent`), [`safety_layer.py`](agents/safety_layer.py) (`DifferentiableSafetyLayer`), [`heuristics.py`](agents/heuristics.py) (`PSM'`, `GridOnly`) |
+| [`agents/`](agents) | OOP policy hierarchy & safety projections | [`ppo.py`](agents/ppo.py) (`PPOAgent`, `PPOLagrangianAgent`, `PPOResidualAgent`, `PPOShieldedAgent`, `PPOAuxShieldLossAgent`, `PPODiffSafetyLayerAgent`), [`safety_layer.py`](agents/safety_layer.py) (`DifferentiableSafetyLayer`, `SafePolicyNetwork`), [`heuristics.py`](agents/heuristics.py) (`PSM'`, `GridOnly`) |
 | [`experiments/`](experiments) | Training harnesses & batch execution | [`train_core.py`](experiments/train_core.py) (inner loop), [`run_shield_variants.py`](experiments/run_shield_variants.py) (comparative evaluation suites) |
 | [`tools/report/`](tools/report) | Evaluation, oracles, & figure generation | [`lp_oracle.py`](tools/report/lp_oracle.py) (HiGHS LP oracle), [`evaluate_test_split.py`](tools/report/evaluate_test_split.py) (locked test runner), [`plots.py`](tools/report/plots.py) (publication figures) |
-| [`tests/`](tests) | Deterministic unit and integration tests | 57 automated unit tests covering physics, buffer mechanics, GAE advantages, agent serialization, and LP oracles |
+| [`tests/`](tests) | Deterministic unit and integration tests | 61 automated unit tests covering physics, buffer mechanics, GAE advantages, agent serialization, and LP oracles |
 | [`results/`](results) | Committed experimental artifacts | `tables/` (CSVs, frozen baselines), `figures/` (thematic evaluation plots), `runs/` (per-seed JSON logs) |
 
 ### Quickstart Execution Guide
@@ -492,7 +492,7 @@ pip install -r requirements.txt
 python data/download.py
 python data/prepare.py
 
-# 3. Execute comprehensive unit and integration test suite (57 tests)
+# 3. Execute comprehensive unit and integration test suite (61 tests)
 pytest tests/ -v
 
 # 4. Train an agent configuration (e.g., Differentiable Safety Layer, Seed 101)

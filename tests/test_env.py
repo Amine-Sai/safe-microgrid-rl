@@ -80,13 +80,14 @@ def test_truncated_not_terminated():
 
 
 def test_industrial_off_or_at_least_70():
-    """Industrial shed: either off (1.0) or <=0.30 (motor >= 70%). Continuous off reachable."""
+    """Industrial shed: either off (1.0) or <= max_continuous_shed (motor >= motor_min_pct). Continuous off reachable."""
     env = make_env()
     env.reset(seed=42)
+    max_continuous_shed = 1.0 - env.motor_min_pct
     for _ in range(48):
         _, _, _, _, info = env.step(env.action_space.sample())
         s = info["shed_fractions"][4]
-        assert s <= 0.30 + 1e-6 or abs(s - 1.0) < 1e-6
+        assert s <= max_continuous_shed + 1e-6 or abs(s - 1.0) < 1e-6
     # Verify off is reachable with action = 1.0
     env.reset(seed=42)
     a = np.array([0, 0, 0, 0, 0, 1.0], dtype=np.float32)
@@ -132,7 +133,7 @@ def test_cost_ignores_soc_deficit():
     env.reset(seed=42)
     saw_deficit = False
     for _ in range(6):
-        # Full discharge, no shedding: drives SoC below the 0.20 reserve floor.
+        # Full discharge, no shedding: drives SoC below the reserve floor.
         _, _, _, _, info = env.step(np.array([-1.0, -1, -1, -1, -1, -1.0], dtype=np.float32))
         assert np.isclose(info["cost"], max(0.0, info["grid_import_kw"] - env.grid_import_cap_kw))
         if info["soc_deficit_kwh"] > 0.0:
@@ -141,7 +142,7 @@ def test_cost_ignores_soc_deficit():
             assert info["soc_violation"] > 0.0
             assert np.isclose(info["soc_deficit_kwh"],
                               (env.soc_reserve_floor - info["soc"]) * env.bat_capacity_kwh)
-    assert saw_deficit, "test setup never drove SoC below the 0.20 reserve floor"
+    assert saw_deficit, f"test setup never drove SoC below the {env.soc_reserve_floor} reserve floor"
 
 
 def test_shed_action_mapping_linear():
@@ -154,13 +155,25 @@ def test_shed_action_mapping_linear():
         _, _, _, _, info = env.step(a)
         sf = np.array(info["shed_fractions"])  # 5 zone shed fractions
         assert np.allclose(sf[:4], expected_s, atol=1e-6), f"a={a_val}: zones0-3 shed {sf[:4]} != {expected_s}"
-    # industrial: a=0.8 -> s=0.9 -> not >0.9 -> shed 0.3; a=0.81 -> s=0.905>0.9 -> off
+    # industrial: continuous shedding up to max_continuous_shed = (1 - env.motor_min_pct)
+    # At s = env.industrial_shutdown_threshold, linear action a = 2 * thresh - 1
+    max_continuous_shed = 1.0 - env.motor_min_pct
+    thresh_action = 2.0 * env.industrial_shutdown_threshold - 1.0
+    above_thresh_action = thresh_action + 0.01
+
     env.reset(seed=42)
-    _, _, _, _, info = env.step(np.array([0.0, 0, 0, 0, 0, 0.8], dtype=np.float32))
-    assert np.isclose(info["shed_fractions"][4], 0.3, atol=1e-6)
+    _, _, _, _, info = env.step(np.array([0.0, 0, 0, 0, 0, thresh_action], dtype=np.float32))
+    assert np.isclose(info["shed_fractions"][4], max_continuous_shed, atol=1e-6)
     env.reset(seed=42)
-    _, _, _, _, info = env.step(np.array([0.0, 0, 0, 0, 0, 0.81], dtype=np.float32))
+    _, _, _, _, info = env.step(np.array([0.0, 0, 0, 0, 0, above_thresh_action], dtype=np.float32))
     assert np.isclose(info["shed_fractions"][4], 1.0, atol=1e-6)
+
+    # Standalone shed_action_to_fractions consistency
+    from env.smartgrid_env import shed_action_to_fractions
+    direct_sf = shed_action_to_fractions(np.array([0, 0, 0, 0, thresh_action], dtype=np.float32))
+    assert np.isclose(direct_sf[4], max_continuous_shed, atol=1e-6)
+    direct_sf_off = shed_action_to_fractions(np.array([0, 0, 0, 0, above_thresh_action], dtype=np.float32))
+    assert np.isclose(direct_sf_off[4], 1.0, atol=1e-6)
 
 
 def test_episode_start_window_within_split():
@@ -235,8 +248,9 @@ def test_cap_shield_defaults_to_env_cap():
     """CapShield must shave to the env's cap, not to a stale module constant."""
     from env.cap_shield import CapShield
     env = make_env()  # synthetic cap = 400.0
-    assert CapShield(env).cap_kw == 400.0
-    assert CapShield(env, cap_kw=50.0).cap_kw == 50.0
+    assert CapShield(env).cap_kw == env.grid_import_cap_kw
+    override_cap = 50.0
+    assert CapShield(env, cap_kw=override_cap).cap_kw == override_cap
 
 
 def test_cap_shield_agreement_with_env():
@@ -263,22 +277,29 @@ def test_charge_clipped_by_cap_vs_soc_separation():
     """Verify that charge_clipped_by_cap_kw is 0 when clipping is purely SoC-induced."""
     from env.smartgrid_env import battery_power_kw
     env = make_env(seed=42, charge_clamp=True)
-    # SoC is at bat_soc_max (0.90), headroom is huge (400 kW cap, 50 kW served)
-    cmd = 1.0  # requests +250 kW
-    p, info = battery_power_kw(cmd, soc=0.90, served_load_kw=50.0, pv_generation_kw=0.0, env=env, return_info=True)
+    # SoC is at bat_soc_max, headroom is huge (cap_kw - served_load_kw)
+    cmd = 1.0  # requests maximum battery charging power
+    max_charge = env.bat_max_power_kw
+    p, info = battery_power_kw(cmd, soc=env.bat_soc_max, served_load_kw=50.0, pv_generation_kw=0.0, env=env, return_info=True)
     assert p == pytest.approx(0.0)
-    assert info["charge_requested_kw"] == pytest.approx(250.0)
+    assert info["charge_requested_kw"] == pytest.approx(max_charge)
     assert info["charge_soc_bounded_kw"] == pytest.approx(0.0)
-    assert info["charge_clipped_by_soc_kw"] == pytest.approx(250.0)
+    assert info["charge_clipped_by_soc_kw"] == pytest.approx(max_charge)
     assert info["charge_clipped_by_cap_kw"] == pytest.approx(0.0)
     assert info["is_charge_clipped_by_cap"] is False
 
     # Now SoC is low (0.50), but headroom is tiny (cap=400, served=380, headroom=20 kW)
-    p_cap, info_cap = battery_power_kw(cmd, soc=0.50, served_load_kw=380.0, pv_generation_kw=0.0, env=env, return_info=True)
-    assert p_cap == pytest.approx(20.0, abs=1e-5)
-    assert info_cap["charge_requested_kw"] == pytest.approx(250.0)
-    assert info_cap["charge_soc_bounded_kw"] == pytest.approx(210.5263, abs=0.1)
-    assert info_cap["charge_clipped_by_cap_kw"] == pytest.approx(210.5263 - 20.0, abs=0.1)
+    served_kw = 380.0
+    headroom_kw = max(0.0, env.grid_import_cap_kw - served_kw)
+    expected_soc_bounded_kw = min(
+        max_charge,
+        (env.bat_soc_max - 0.50) * env.bat_capacity_kwh / (env.dt_hours * env.bat_eta_charge),
+    )
+    p_cap, info_cap = battery_power_kw(cmd, soc=0.50, served_load_kw=served_kw, pv_generation_kw=0.0, env=env, return_info=True)
+    assert p_cap == pytest.approx(headroom_kw, abs=1e-5)
+    assert info_cap["charge_requested_kw"] == pytest.approx(max_charge)
+    assert info_cap["charge_soc_bounded_kw"] == pytest.approx(expected_soc_bounded_kw, abs=0.1)
+    assert info_cap["charge_clipped_by_cap_kw"] == pytest.approx(expected_soc_bounded_kw - headroom_kw, abs=0.1)
     assert info_cap["is_charge_clipped_by_cap"] is True
 
 
@@ -442,18 +463,21 @@ def test_pct_to_action_parametric_industrial_and_mapping():
     from agents.heuristics import pct_to_action
 
     # 1. Custom industrial shutdown threshold (0.80 instead of 0.90) and motor min (75%)
+    custom_motor_min = 75.0
+    custom_shutdown_thresh = 0.80
     # Max linear shed = 1 - 0.75 = 0.25 (25% shed)
     # If pct_ind = 75 (25% shed), s_ind = (0.25 / 0.25) * 0.80 = 0.80 -> action = 2*0.80 - 1 = 0.60
+    expected_linear_action = 2.0 * custom_shutdown_thresh - 1.0
     act_linear = pct_to_action(
-        100, 100, 100, 100, pct_ind=75.0,
-        motor_min_pct=75.0, industrial_shutdown_threshold=0.80, shed_mapping="linear"
+        100, 100, 100, 100, pct_ind=custom_motor_min,
+        motor_min_pct=custom_motor_min, industrial_shutdown_threshold=custom_shutdown_thresh, shed_mapping="linear"
     )
-    assert np.isclose(act_linear[5], 0.60, atol=1e-5)
+    assert np.isclose(act_linear[5], expected_linear_action, atol=1e-5)
 
     # If pct_ind = 0 (shutdown), action = 1.0
     act_off = pct_to_action(
         100, 100, 100, 100, pct_ind=0.0,
-        motor_min_pct=75.0, industrial_shutdown_threshold=0.80, shed_mapping="linear"
+        motor_min_pct=custom_motor_min, industrial_shutdown_threshold=custom_shutdown_thresh, shed_mapping="linear"
     )
     assert np.isclose(act_off[5], 1.0, atol=1e-5)
 

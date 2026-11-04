@@ -54,16 +54,59 @@ def run_job(job):
     }
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Train PPO-Shield-Aux and PPO-Diff-Shield variants.")
+    parser.add_argument(
+        "--methods",
+        nargs="+",
+        default=["ppo_shield_aux", "ppo_diff_shield"],
+        help="Methods to run: diff_shield, ppo_diff_shield, shield_aux, ppo_shield_aux, or all.",
+    )
+    parser.add_argument(
+        "--seeds",
+        nargs="+",
+        type=int,
+        default=[101, 102, 103, 104, 105],
+        help="Random seeds to train (default: 101 102 103 104 105).",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=10,
+        help="Max parallel worker processes.",
+    )
+    args = parser.parse_args()
+
+    # Normalise methods
+    selected_methods = set()
+    for m in args.methods:
+        m_lower = m.lower().replace("-", "_")
+        if m_lower in ("all",):
+            selected_methods.add("ppo_shield_aux")
+            selected_methods.add("ppo_diff_shield")
+        elif m_lower in ("diff_shield", "ppo_diff_shield", "diff"):
+            selected_methods.add("ppo_diff_shield")
+        elif m_lower in ("shield_aux", "ppo_shield_aux", "aux"):
+            selected_methods.add("ppo_shield_aux")
+        else:
+            selected_methods.add(m_lower)
+
     jobs = []
-    seeds = [101, 102, 103, 104, 105]
-    for s in seeds:
-        jobs.append(("clamped_ppo_shield_aux", "ppo_shield_aux", s, "clamped_ppo_shield_aux"))
-    for s in seeds:
-        jobs.append(("clamped_ppo_diff_shield", "ppo_diff_shield", s, "clamped_ppo_diff_shield"))
-        
-    print(f"Submitting {len(jobs)} jobs to Pool(10)...", flush=True)
+    if "ppo_shield_aux" in selected_methods:
+        for s in args.seeds:
+            jobs.append(("clamped_ppo_shield_aux", "ppo_shield_aux", s, "clamped_ppo_shield_aux"))
+    if "ppo_diff_shield" in selected_methods:
+        for s in args.seeds:
+            jobs.append(("clamped_ppo_diff_shield", "ppo_diff_shield", s, "clamped_ppo_diff_shield"))
+
+    if not jobs:
+        print(f"No matching jobs for methods={args.methods} and seeds={args.seeds}.")
+        return
+
+    n_workers = min(len(jobs), max(1, args.workers))
+    print(f"Submitting {len(jobs)} jobs to Pool({n_workers})...", flush=True)
     t_start = time.time()
-    with Pool(processes=10) as pool:
+    with Pool(processes=n_workers) as pool:
         results = pool.map(run_job, jobs)
         
     total_time = time.time() - t_start

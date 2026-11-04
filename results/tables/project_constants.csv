@@ -1,8 +1,10 @@
 name,value,unit,source
 grid_import_cap_kw,368.15,kW,env/smartgrid_env.py DEFAULTS grid_import_cap_kw (fixed P90 of Train grid-only import)
 d_main_kw_per_step,0.05,kW/step,configs/config.yaml defaults cost_limit
-g2_cost_multiplier,1.05,ratio,G2 gate = 1.05 x PSM' Val cost
-g2_cost_eur,58306.73,EUR,1.05 x PSM' Val cost (results/tables/frozen_baselines.csv)
+g2_cost_multiplier,1.00,ratio,G2 gate = 1.00 x PSM' Val cost
+g2_cost_eur,55530.22,EUR,1.00 x PSM' Val cost (results/tables/frozen_baselines.csv)
+g3_shed_multiplier,1.20,ratio,G3 gate = 1.20 x PSM' Val load shedding
+g3_shed_mwh,12.75,MWh,G3 gate load shedding limit (12.75 MWh / 12750 kWh)
 lp_prime_val_eur,53290.51,EUR,tools/report/lp_oracle.py perfect foresight HiGHS solver on Val
 gap_psm_to_lp_eur,2239.71,EUR,PSM' Val cost minus LP' Val cost
 w_unserved_eur_kwh,1.00,EUR/kWh,env/smartgrid_env.py reward (unserved kWh)

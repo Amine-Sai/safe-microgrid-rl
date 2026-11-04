@@ -115,6 +115,8 @@ PPO_METHODS = (
     "ppo_lagrangian",
     "ppo_potential_shaping",
     "ppo_lagrangian_potential_shaping",
+    "ppo_shield_aux",
+    "ppo_diff_shield",
 )
 
 ENV_KEYS = (
@@ -147,7 +149,9 @@ def build_env(cfg: dict, split: str = "train", seed: Optional[int] = None) -> Sm
 
 
 def agent_name(method_name: str, cfg: dict) -> str:
-    """Folder name for a run: ppo, ppo_lagrangian, ppo_residual, or ppo_shielded."""
+    """Folder name for a run: ppo, ppo_lagrangian, ppo_residual, ppo_shielded, ppo_shield_aux, or ppo_diff_shield."""
+    if method_name in ("ppo_shield_aux", "ppo_diff_shield"):
+        return method_name
     if cfg.get("shielded"):
         return "ppo_shielded"
     if cfg.get("residual_on_heuristic"):
@@ -212,9 +216,16 @@ def load_agent_for_method(method_name: str, cfg: dict):
         PPOShieldedAgent,
         PPOPotentialShapingAgent,
         PPOLagrangianPotentialShapingAgent,
+        PPOAuxShieldLossAgent,
+        PPODiffSafetyLayerAgent,
     )
 
     kwargs = _ppo_kwargs(cfg, method_name)
+    if method_name == "ppo_shield_aux":
+        return PPOAuxShieldLossAgent(**kwargs)
+    elif method_name == "ppo_diff_shield":
+        return PPODiffSafetyLayerAgent(**kwargs)
+
     is_residual = bool(cfg.get("residual_on_heuristic", False))
     is_shielded = bool(cfg.get("shielded", False)) or int(cfg.get("action_dim", 6)) == 1
     is_lag = bool(kwargs.get("lagrangian", False))
@@ -264,6 +275,9 @@ def _ppo_kwargs(cfg: dict, method_name: str) -> dict:
         init_log_std=cfg.get("ppo_init_log_std", -1.0),
         init_log_std_shed=cfg.get("ppo_init_log_std_shed", None),
         device=cfg.get("device", "cpu"),
+        aux_shield_coef=cfg.get("aux_shield_coef", 0.5),
+        p_max=cfg.get("battery_max_power_kw", 250.0),
+        p_cap=cfg.get("grid_import_cap_kw", 368.153918),
     )
 
 
@@ -302,7 +316,7 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
     env_val = build_env(dict(cfg, shed_mapping=shed_mapping), split="val", seed=cfg["seed"] + 100)
 
     # CapShield wraps the env and sheds excess over cap
-    shielded = bool(cfg.get("shielded", False))
+    shielded = bool(cfg.get("shielded", False)) or method_name in ("ppo_shield_aux", "ppo_diff_shield")
     if shielded:
         from env.cap_shield import CapShield
         env_train = CapShield(env_train)
@@ -321,6 +335,8 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
     agent = load_agent_for_method(method_name, cfg)
     agent.rng = np.random.RandomState(cfg["seed"])
     agent.shed_mapping = shed_mapping
+    if hasattr(agent, "safety_layer"):
+        agent.safety_layer.p_cap = env_train.grid_import_cap_kw
 
     ckpt_stem = "%s_seed%s" % (run_id, cfg["seed"])
     os.makedirs(ckpt_dir, exist_ok=True)
@@ -355,8 +371,11 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
             actions_taken.append(np.asarray(action, dtype=np.float32))
             soc_history.append(float(next_obs[0]))
             shaped = agent.scale_reward(reward, obs, next_obs, terminated, truncated)
-            agent.store_transition(obs, action, shaped, cost, value, cost_value,
-                                   logp, terminated, truncated)
+            agent.store_transition(
+                obs, action, shaped, cost, value, cost_value,
+                logp, terminated, truncated,
+                shield_shed_kw=float(info.get("shield_shed_kw", 0.0)),
+            )
             obs = next_obs
             last_term = bool(terminated)
             if truncated or terminated:

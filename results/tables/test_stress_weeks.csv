@@ -9,6 +9,16 @@ PSM',baseline,N/A,highest_price,2019-W45,2139.56,0.0,0
 PSM',baseline,N/A,hottest,2019-W30,1377.89,0.0,0
 PSM',baseline,N/A,stormiest,2019-W51,1737.9,0.0,0
 PSM',baseline,N/A,highest_exceedance,2019-W49,2990.43,0.0,0
+Shield + Idle,baseline,N/A,lowest_pv,2019-W48,2206.41,0.0,0
+Shield + Idle,baseline,N/A,highest_price,2019-W45,2130.31,0.0,0
+Shield + Idle,baseline,N/A,hottest,2019-W30,1366.47,0.0,0
+Shield + Idle,baseline,N/A,stormiest,2019-W51,1727.2,0.0,0
+Shield + Idle,baseline,N/A,highest_exceedance,2019-W49,3785.4,0.0,0
+Shield + PSM',baseline,N/A,lowest_pv,2019-W48,2218.2,0.0,0
+Shield + PSM',baseline,N/A,highest_price,2019-W45,2139.56,0.0,0
+Shield + PSM',baseline,N/A,hottest,2019-W30,1377.89,0.0,0
+Shield + PSM',baseline,N/A,stormiest,2019-W51,1737.8,0.0,0
+Shield + PSM',baseline,N/A,highest_exceedance,2019-W49,2985.58,0.0,0
 clamped_mb_ppo_seed101,clamped_mb,101,lowest_pv,2019-W48,2397.06,0.0,0
 clamped_mb_ppo_seed101,clamped_mb,101,highest_price,2019-W45,2248.77,0.0,0
 clamped_mb_ppo_seed101,clamped_mb,101,hottest,2019-W30,1410.64,0.0,0
@@ -59,6 +69,31 @@ clamped_ppo_seed105,clamped,105,highest_price,2019-W45,2129.65,0.0,0
 clamped_ppo_seed105,clamped,105,hottest,2019-W30,1363.75,0.0,0
 clamped_ppo_seed105,clamped,105,stormiest,2019-W51,1725.27,0.0,0
 clamped_ppo_seed105,clamped,105,highest_exceedance,2019-W49,2146.75,10.2537,66
+clamped_ppo_diff_shield_seed101,clamped_ppo_diff_shield,101,lowest_pv,2019-W48,2240.33,0.0,0
+clamped_ppo_diff_shield_seed101,clamped_ppo_diff_shield,101,highest_price,2019-W45,2185.52,0.0,0
+clamped_ppo_diff_shield_seed101,clamped_ppo_diff_shield,101,hottest,2019-W30,1418.17,0.0,0
+clamped_ppo_diff_shield_seed101,clamped_ppo_diff_shield,101,stormiest,2019-W51,1746.65,0.0,0
+clamped_ppo_diff_shield_seed101,clamped_ppo_diff_shield,101,highest_exceedance,2019-W49,3152.7,0.0,0
+clamped_ppo_diff_shield_seed102,clamped_ppo_diff_shield,102,lowest_pv,2019-W48,2260.09,0.0,0
+clamped_ppo_diff_shield_seed102,clamped_ppo_diff_shield,102,highest_price,2019-W45,2187.57,0.0,0
+clamped_ppo_diff_shield_seed102,clamped_ppo_diff_shield,102,hottest,2019-W30,1413.25,0.0,0
+clamped_ppo_diff_shield_seed102,clamped_ppo_diff_shield,102,stormiest,2019-W51,1795.23,0.0,0
+clamped_ppo_diff_shield_seed102,clamped_ppo_diff_shield,102,highest_exceedance,2019-W49,3677.08,0.0,0
+clamped_ppo_diff_shield_seed103,clamped_ppo_diff_shield,103,lowest_pv,2019-W48,2230.65,0.0,0
+clamped_ppo_diff_shield_seed103,clamped_ppo_diff_shield,103,highest_price,2019-W45,2177.18,0.0,0
+clamped_ppo_diff_shield_seed103,clamped_ppo_diff_shield,103,hottest,2019-W30,1412.68,0.0,0
+clamped_ppo_diff_shield_seed103,clamped_ppo_diff_shield,103,stormiest,2019-W51,1782.52,0.0,0
+clamped_ppo_diff_shield_seed103,clamped_ppo_diff_shield,103,highest_exceedance,2019-W49,3523.3,0.0,0
+clamped_ppo_diff_shield_seed104,clamped_ppo_diff_shield,104,lowest_pv,2019-W48,2289.57,0.0,0
+clamped_ppo_diff_shield_seed104,clamped_ppo_diff_shield,104,highest_price,2019-W45,2222.25,0.0,0
+clamped_ppo_diff_shield_seed104,clamped_ppo_diff_shield,104,hottest,2019-W30,1448.65,0.0,0
+clamped_ppo_diff_shield_seed104,clamped_ppo_diff_shield,104,stormiest,2019-W51,1809.46,0.0,0
+clamped_ppo_diff_shield_seed104,clamped_ppo_diff_shield,104,highest_exceedance,2019-W49,3414.43,0.0,0
+clamped_ppo_diff_shield_seed105,clamped_ppo_diff_shield,105,lowest_pv,2019-W48,2273.56,0.0,0
+clamped_ppo_diff_shield_seed105,clamped_ppo_diff_shield,105,highest_price,2019-W45,2187.57,0.0,0
+clamped_ppo_diff_shield_seed105,clamped_ppo_diff_shield,105,hottest,2019-W30,1466.1,0.0,0
+clamped_ppo_diff_shield_seed105,clamped_ppo_diff_shield,105,stormiest,2019-W51,1795.19,0.0,0
+clamped_ppo_diff_shield_seed105,clamped_ppo_diff_shield,105,highest_exceedance,2019-W49,3294.8,0.0,0
 clamped_mb_ppo_lagrangian_seed101,clamped_mb,101,lowest_pv,2019-W48,3290.09,0.0,0
 clamped_mb_ppo_lagrangian_seed101,clamped_mb,101,highest_price,2019-W45,2886.25,0.0,0
 clamped_mb_ppo_lagrangian_seed101,clamped_mb,101,hottest,2019-W30,1587.93,0.0,0
@@ -159,6 +194,31 @@ clamped_ppo_residual_seed105,clamped,105,highest_price,2019-W45,2160.81,0.0,0
 clamped_ppo_residual_seed105,clamped,105,hottest,2019-W30,1390.75,0.0,0
 clamped_ppo_residual_seed105,clamped,105,stormiest,2019-W51,1756.41,0.0,0
 clamped_ppo_residual_seed105,clamped,105,highest_exceedance,2019-W49,2981.52,0.1309,66
+clamped_ppo_shield_aux_seed101,clamped_ppo_shield_aux,101,lowest_pv,2019-W48,2261.12,0.0,0
+clamped_ppo_shield_aux_seed101,clamped_ppo_shield_aux,101,highest_price,2019-W45,2199.77,0.0,0
+clamped_ppo_shield_aux_seed101,clamped_ppo_shield_aux,101,hottest,2019-W30,1425.7,0.0,0
+clamped_ppo_shield_aux_seed101,clamped_ppo_shield_aux,101,stormiest,2019-W51,1792.41,0.0,0
+clamped_ppo_shield_aux_seed101,clamped_ppo_shield_aux,101,highest_exceedance,2019-W49,3825.24,0.0,0
+clamped_ppo_shield_aux_seed102,clamped_ppo_shield_aux,102,lowest_pv,2019-W48,2230.86,0.0,0
+clamped_ppo_shield_aux_seed102,clamped_ppo_shield_aux,102,highest_price,2019-W45,2151.62,0.0,0
+clamped_ppo_shield_aux_seed102,clamped_ppo_shield_aux,102,hottest,2019-W30,1425.64,0.0,0
+clamped_ppo_shield_aux_seed102,clamped_ppo_shield_aux,102,stormiest,2019-W51,1726.5,0.0,0
+clamped_ppo_shield_aux_seed102,clamped_ppo_shield_aux,102,highest_exceedance,2019-W49,3799.36,0.0,0
+clamped_ppo_shield_aux_seed103,clamped_ppo_shield_aux,103,lowest_pv,2019-W48,2237.28,0.0,0
+clamped_ppo_shield_aux_seed103,clamped_ppo_shield_aux,103,highest_price,2019-W45,2168.54,0.0,0
+clamped_ppo_shield_aux_seed103,clamped_ppo_shield_aux,103,hottest,2019-W30,1438.68,0.0,0
+clamped_ppo_shield_aux_seed103,clamped_ppo_shield_aux,103,stormiest,2019-W51,1734.26,0.0,0
+clamped_ppo_shield_aux_seed103,clamped_ppo_shield_aux,103,highest_exceedance,2019-W49,3798.66,0.0,0
+clamped_ppo_shield_aux_seed104,clamped_ppo_shield_aux,104,lowest_pv,2019-W48,2231.64,0.0,0
+clamped_ppo_shield_aux_seed104,clamped_ppo_shield_aux,104,highest_price,2019-W45,2150.5,0.0,0
+clamped_ppo_shield_aux_seed104,clamped_ppo_shield_aux,104,hottest,2019-W30,1419.8,0.0,0
+clamped_ppo_shield_aux_seed104,clamped_ppo_shield_aux,104,stormiest,2019-W51,1740.11,0.0,0
+clamped_ppo_shield_aux_seed104,clamped_ppo_shield_aux,104,highest_exceedance,2019-W49,3791.76,0.0,0
+clamped_ppo_shield_aux_seed105,clamped_ppo_shield_aux,105,lowest_pv,2019-W48,2243.2,0.0,0
+clamped_ppo_shield_aux_seed105,clamped_ppo_shield_aux,105,highest_price,2019-W45,2171.86,0.0,0
+clamped_ppo_shield_aux_seed105,clamped_ppo_shield_aux,105,hottest,2019-W30,1404.74,0.0,0
+clamped_ppo_shield_aux_seed105,clamped_ppo_shield_aux,105,stormiest,2019-W51,1766.93,0.0,0
+clamped_ppo_shield_aux_seed105,clamped_ppo_shield_aux,105,highest_exceedance,2019-W49,3786.32,0.0,0
 clamped_mb_ppo_shielded_seed101,clamped_mb,101,lowest_pv,2019-W48,2254.63,0.0,0
 clamped_mb_ppo_shielded_seed101,clamped_mb,101,highest_price,2019-W45,2178.57,0.0,0
 clamped_mb_ppo_shielded_seed101,clamped_mb,101,hottest,2019-W30,1414.25,0.0,0

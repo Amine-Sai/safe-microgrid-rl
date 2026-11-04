@@ -58,6 +58,9 @@ def load_baselines() -> Dict[str, Dict[str, Any]]:
     if not os.path.exists(path):
         return out
 
+    per_seed = load_per_seed_table()
+    all_seed_rows = [r for rows in per_seed.values() for r in rows]
+
     with open(path, encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -74,6 +77,19 @@ def load_baselines() -> Dict[str, Dict[str, Any]]:
             unserv = float(row.get("unserved_penalty_eur") or 0.0)
             tp = float(row.get("battery_throughput_mwh") or 0.0)
             soc = float(row.get("active_soc_pct") or 0.0)
+            feasible = str(row.get("feasible", "")).lower() == "true"
+
+            if row.get("violation_hours") not in (None, ""):
+                viol_hrs = float(row["violation_hours"])
+            elif feasible or exc <= 1e-4:
+                viol_hrs = 0.0
+            else:
+                matching_vh = [
+                    r["violation_hours"]
+                    for r in all_seed_rows
+                    if round(r["exceedance_kw"], 4) == round(exc, 4)
+                ]
+                viol_hrs = statistics.fmean(matching_vh) if matching_vh else 0.0
 
             # Inactive battery baselines (Grid-Only, Shield + Idle) have 0 active throughput and 0% active cycling
             if tp < 0.01:
@@ -82,7 +98,8 @@ def load_baselines() -> Dict[str, Dict[str, Any]]:
             out[name] = {
                 "cost_eur": cost,
                 "exceedance_kw": exc,
-                "feasible": str(row.get("feasible", "")).lower() == "true",
+                "violation_hours": viol_hrs,
+                "feasible": feasible,
                 "energy_purchase_eur": purch,
                 "battery_wear_eur": wear,
                 "unserved_penalty_eur": unserv,
@@ -189,6 +206,10 @@ def extract_metric_row(
     if per_seed_table is None:
         per_seed_table = load_per_seed_table()
 
+    # Normalize baseline aliases
+    if key == "LP' Oracle":
+        key = "LP'"
+
     # 1. Reference baselines directly from loaded baselines table
     if cat in ("Baseline", "Shield Control") or key in baselines:
         b = baselines.get(key, {})
@@ -211,6 +232,8 @@ def extract_metric_row(
     prefix_map = {
         "PPO-Aux-Shield": "clamped_ppo_shield_aux",
         "PPO-Diff-Shield": "clamped_ppo_diff_shield",
+        "PPO-Aux-Shield [Minibatch]": "clamped_ppo_shield_aux",
+        "PPO-Diff-Shield [Minibatch]": "clamped_ppo_diff_shield",
         "clamped_ppo_shield_aux": "clamped_ppo_shield_aux",
         "clamped_ppo_diff_shield": "clamped_ppo_diff_shield",
     }
@@ -242,16 +265,37 @@ def extract_metric_row(
 
     # 3. RL Families from all_families or per_seed_table
     rl_prefix_map = {
+        "s3_ppo": ("unclamped", "PPO", "s3_ppo"),
         "unclamped_ppo": ("unclamped", "PPO", "s3_ppo"),
+        "PPO [Unclamped]": ("unclamped", "PPO", "s3_ppo"),
         "clamped_ppo": ("clamped", "PPO", "clamped_ppo"),
+        "PPO [Clamped Full-Batch]": ("clamped", "PPO", "clamped_ppo"),
         "clamped_mb_ppo": ("clamped_mb", "PPO", "clamped_mb_ppo"),
+        "PPO [Clamped Minibatch]": ("clamped_mb", "PPO", "clamped_mb_ppo"),
+        "s3_ppo_lag": ("unclamped", "PPO-Lagrangian", "s3_ppo_lag"),
+        "unclamped_ppo_lagrangian": ("unclamped", "PPO-Lagrangian", "s3_ppo_lag"),
+        "PPO-Lagrangian [Unclamped]": ("unclamped", "PPO-Lagrangian", "s3_ppo_lag"),
         "clamped_mb_ppo_lagrangian": ("clamped_mb", "PPO-Lagrangian", "clamped_mb_ppo_lagrangian"),
+        "PPO-Lagrangian [Clamped Minibatch]": ("clamped_mb", "PPO-Lagrangian", "clamped_mb_ppo_lagrangian"),
         "clamped_ppo_lagrangian": ("clamped", "PPO-Lagrangian", "clamped_ppo_lagrangian"),
+        "PPO-Lagrangian [Clamped Full-Batch]": ("clamped", "PPO-Lagrangian", "clamped_ppo_lagrangian"),
+        "s3_ppo_res": ("unclamped", "PPO-Residual", "s3_ppo_res"),
+        "unclamped_ppo_residual": ("unclamped", "PPO-Residual", "s3_ppo_res"),
+        "PPO-Residual [Unclamped]": ("unclamped", "PPO-Residual", "s3_ppo_res"),
         "clamped_ppo_residual": ("clamped", "PPO-Residual", "clamped_ppo_residual"),
+        "PPO-Residual [Clamped Full-Batch]": ("clamped", "PPO-Residual", "clamped_ppo_residual"),
         "clamped_mb_ppo_residual": ("clamped_mb", "PPO-Residual", "clamped_mb_ppo_residual"),
+        "PPO-Residual [Clamped Minibatch]": ("clamped_mb", "PPO-Residual", "clamped_mb_ppo_residual"),
         "clamped_ppo_shielded": ("clamped", "Shielded PPO", "clamped_ppo_shielded"),
+        "Shielded PPO [Clamped Full-Batch]": ("clamped", "Shielded PPO", "clamped_ppo_shielded"),
         "clamped_mb_ppo_shielded": ("clamped_mb", "Shielded PPO", "clamped_mb_ppo_shielded"),
+        "Shielded PPO [Clamped Minibatch]": ("clamped_mb", "Shielded PPO", "clamped_mb_ppo_shielded"),
+        "s3_sh_ppo": ("unclamped", "Shielded PPO", "s3_sh_ppo"),
         "unclamped_ppo_shielded": ("unclamped", "Shielded PPO", "s3_sh_ppo"),
+        "Shielded PPO (Clamped)": ("clamped", "Shielded PPO", "clamped_ppo_shielded"),
+        "Shielded PPO (Clamped MB)": ("clamped_mb", "Shielded PPO", "clamped_mb_ppo_shielded"),
+        "PPO-Aux-Shield [Minibatch]": ("clamped_mb", "PPO-Aux-Shield", "clamped_ppo_shield_aux"),
+        "PPO-Diff-Shield [Minibatch]": ("clamped_mb", "PPO-Diff-Shield", "clamped_ppo_diff_shield"),
     }
 
     fam, m_label, run_pfx = rl_prefix_map.get(key, ("clamped_mb", "PPO", key))
@@ -310,3 +354,72 @@ def extract_metric_row(
         return m_purch, m_wear, m_unserv, m_tot, s_tot, m_exc, s_exc, m_tp, s_tp, m_wear, s_wear, m_soc, s_soc
 
     return 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+
+
+def extract_violation_hours(
+    key: Optional[str],
+    cat: str = "",
+    all_families: Optional[Dict[str, Any]] = None,
+    baselines: Optional[Dict[str, Any]] = None,
+    per_seed_table: Optional[Dict[str, List[Dict[str, float]]]] = None,
+) -> Tuple[float, float]:
+    """Extract (mean_violation_hours, sd_violation_hours) across runs/tables with zero hardcoded numbers."""
+    if baselines is None:
+        baselines = load_baselines()
+    if per_seed_table is None:
+        per_seed_table = load_per_seed_table()
+
+    # Normalize baseline aliases
+    if key == "LP' Oracle":
+        key = "LP'"
+
+    if cat in ("Baseline", "Shield Control") or key in baselines:
+        b = baselines.get(key, {})
+        return float(b.get("violation_hours", 0.0)), 0.0
+
+    prefix_map = {
+        "PPO-Aux-Shield": "clamped_ppo_shield_aux",
+        "PPO-Diff-Shield": "clamped_ppo_diff_shield",
+        "PPO-Aux-Shield [Minibatch]": "clamped_ppo_shield_aux",
+        "PPO-Diff-Shield [Minibatch]": "clamped_ppo_diff_shield",
+        "clamped_ppo_shield_aux": "clamped_ppo_shield_aux",
+        "clamped_ppo_diff_shield": "clamped_ppo_diff_shield",
+        "unclamped_ppo": "s3_ppo",
+        "s3_ppo": "s3_ppo",
+        "PPO [Unclamped]": "s3_ppo",
+        "clamped_ppo": "clamped_ppo",
+        "PPO [Clamped Full-Batch]": "clamped_ppo",
+        "clamped_mb_ppo": "clamped_mb_ppo",
+        "PPO [Clamped Minibatch]": "clamped_mb_ppo",
+        "unclamped_ppo_lagrangian": "s3_ppo_lag",
+        "s3_ppo_lag": "s3_ppo_lag",
+        "PPO-Lagrangian [Unclamped]": "s3_ppo_lag",
+        "clamped_ppo_lagrangian": "clamped_ppo_lagrangian",
+        "PPO-Lagrangian [Clamped Full-Batch]": "clamped_ppo_lagrangian",
+        "clamped_mb_ppo_lagrangian": "clamped_mb_ppo_lagrangian",
+        "PPO-Lagrangian [Clamped Minibatch]": "clamped_mb_ppo_lagrangian",
+        "unclamped_ppo_residual": "s3_ppo_res",
+        "s3_ppo_res": "s3_ppo_res",
+        "PPO-Residual [Unclamped]": "s3_ppo_res",
+        "clamped_ppo_residual": "clamped_ppo_residual",
+        "PPO-Residual [Clamped Full-Batch]": "clamped_ppo_residual",
+        "clamped_mb_ppo_residual": "clamped_mb_ppo_residual",
+        "PPO-Residual [Clamped Minibatch]": "clamped_mb_ppo_residual",
+        "clamped_ppo_shielded": "clamped_ppo_shielded",
+        "Shielded PPO [Clamped Full-Batch]": "clamped_ppo_shielded",
+        "clamped_mb_ppo_shielded": "clamped_mb_ppo_shielded",
+        "Shielded PPO [Clamped Minibatch]": "clamped_mb_ppo_shielded",
+        "unclamped_ppo_shielded": "s3_sh_ppo",
+        "s3_sh_ppo": "s3_sh_ppo",
+        "Shielded PPO (Clamped)": "clamped_ppo_shielded",
+        "Shielded PPO (Clamped MB)": "clamped_mb_ppo_shielded",
+    }
+    target_prefix = prefix_map.get(key, key)
+    if target_prefix and target_prefix in per_seed_table:
+        rows = per_seed_table[target_prefix]
+        vhs = [float(r.get("violation_hours", 0.0)) for r in rows]
+        m_vh = statistics.fmean(vhs) if vhs else 0.0
+        s_vh = statistics.stdev(vhs) if len(vhs) > 1 else 0.0
+        return m_vh, s_vh
+
+    return 0.0, 0.0

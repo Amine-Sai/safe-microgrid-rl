@@ -27,3 +27,9 @@ dist/
 kaggle/
 tools/kaggle/
 *kaggle*
+
+# Knowledge graph outputs
+graphify-out/
+
+# Symlinks created by report generators
+results/figures/plain_vs_lagrangian

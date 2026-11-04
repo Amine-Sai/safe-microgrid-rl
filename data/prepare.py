@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -693,6 +694,20 @@ def save_splits(
         csv_path = os.path.join(PROCESSED_DIR, f"{name}.csv")
         save_df.to_csv(csv_path)
 
+    processed_sha256 = {}
+    for filename in [
+        "train.parquet",
+        "val.parquet",
+        "test.parquet",
+        "train.csv",
+        "val.csv",
+        "test.csv",
+    ]:
+        filepath = os.path.join(PROCESSED_DIR, filename)
+        if os.path.exists(filepath):
+            with open(filepath, "rb") as f:
+                processed_sha256[filename] = hashlib.sha256(f.read()).hexdigest()
+
     zone_shares = {
         zone_name: float(zone_cfg["share"])
         for zone_name, zone_cfg in prep_cfg["zones"].items()
@@ -706,6 +721,7 @@ def save_splits(
         "zone_profiles": prep_cfg["zones"],
         "events_config": prep_cfg["events"],
         "grid_import_cap": grid_import_cap,
+        "processed_sha256": processed_sha256,
     }
     for name, split in splits.items():
         report["splits"][name] = {
