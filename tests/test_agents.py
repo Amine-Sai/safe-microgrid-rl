@@ -173,6 +173,7 @@ def test_ppo_diff_safety_layer(project_constants):
 
     # 1. High net load: PV=0, zone loads sum to 450 kW -> P_net = 450 kW > P_cap (368.15 kW)
     s_high = th.zeros((1, DEFAULT_STATE_DIM))
+    s_high[0, 0] = 0.50  # Battery SoC = 0.50
     s_high[0, 1] = 0.0  # PV
     zone_loads = th.tensor([100.0, 100.0, 100.0, 50.0, 100.0])
     s_high[0, 2:7] = zone_loads
@@ -198,20 +199,25 @@ def test_ppo_diff_safety_layer(project_constants):
 
     # 2. Already safe state & action: PV=100 kW, loads=100 kW -> P_net = 0 kW
     s_low = th.zeros((1, DEFAULT_STATE_DIM))
+    s_low[0, 0] = 0.50  # Battery SoC = 0.50
     s_low[0, 1] = 100.0
     s_low[0, 2:7] = th.tensor([20.0, 20.0, 20.0, 20.0, 20.0])
     a_safe = th.tensor([[0.5]])
     a_safe_proj = layer(s_low, a_safe)
     assert th.allclose(a_safe_proj, a_safe), "Safe action should remain untouched"
 
-    # 3. Gradient flow through PPODiffSafetyLayerAgent into policy network parameters
+    # 3. Gradient flow through PPODiffSafetyLayerAgent into policy network parameters under ACTIVE constraint (g > 0)
     agent = PPODiffSafetyLayerAgent(state_dim=DEFAULT_STATE_DIM, action_dim=1, p_max=p_max, p_cap=p_cap)
     s_batch = th.randn((8, DEFAULT_STATE_DIM))
-    # Ensure state values have non-zero PV and load
-    s_batch[:, 1] = 20.0
-    s_batch[:, 2:7] = 60.0  # P_net = 280 kW
+    # Ensure state values have active constraint: P_net = 450 kW > p_cap = 368.15 kW (g > 0)
+    s_batch[:, 0] = 0.50  # Battery SoC = 0.50
+    s_batch[:, 1] = 0.0   # PV = 0.0 kW
+    s_batch[:, 2:7] = 90.0  # Zone loads sum to 450 kW -> P_net = 450 kW > p_cap
 
     projected_actions = agent.policy.forward(s_batch)
+    g_val = agent.safety_layer.constraint_val(s_batch, projected_actions)
+    assert th.all(g_val <= 1e-4), "Projected actions must satisfy constraint"
+
     loss = (projected_actions - (-1.0)).pow(2).mean()
 
     agent.policy_optimizer.zero_grad()
@@ -224,10 +230,150 @@ def test_ppo_diff_safety_layer(project_constants):
             if p.grad.abs().sum() > 0:
                 grads_found = True
 
-    assert grads_found, "Gradients failed to flow back into policy parameters through DifferentiableSafetyLayer"
+    assert grads_found, "Gradients failed to flow back into policy parameters when constraint is ACTIVE (g > 0)"
 
     # 4. SafePolicyNetwork attachment and checkpoint restoration
     from agents.safety_layer import SafePolicyNetwork
-    from agents.ppo import PPOAgent
     assert isinstance(agent.policy, SafePolicyNetwork)
     assert agent.policy.safety_layer is agent.safety_layer
+
+
+def test_diff_safety_layer_soc_bounds(project_constants):
+    """Prove requirement (b): hard SoC min/max bound enforcement inside DifferentiableSafetyLayer."""
+    p_max = 250.0
+    p_cap = project_constants.get("grid_import_cap_kw", 368.15)
+    layer = DifferentiableSafetyLayer(p_max=p_max, p_cap=p_cap)
+
+    # 1. Empty battery at soc_min (0.10): discharge command must be clamped to >= 0.0
+    s_empty = th.zeros((1, DEFAULT_STATE_DIM))
+    s_empty[0, 0] = layer.soc_min  # 0.10
+    s_empty[0, 1] = 100.0
+    s_empty[0, 2:7] = 20.0  # P_net = 0 kW (no grid cap pressure)
+    a_dis = th.tensor([[-0.8]])
+    a_proj_empty = layer(s_empty, a_dis)
+    assert np.isclose(a_proj_empty.item(), 0.0, atol=1e-5), (
+        f"At soc_min, battery cannot discharge; expected 0.0, got {a_proj_empty.item()}"
+    )
+
+    # 2. Full battery at soc_max (0.90): charging command must be clamped to <= 0.0
+    s_full = th.zeros((1, DEFAULT_STATE_DIM))
+    s_full[0, 0] = layer.soc_max  # 0.90
+    s_full[0, 1] = 100.0
+    s_full[0, 2:7] = 20.0  # P_net = 0 kW
+    a_ch = th.tensor([[0.8]])
+    a_proj_full = layer(s_full, a_ch)
+    assert np.isclose(a_proj_full.item(), 0.0, atol=1e-5), (
+        f"At soc_max, battery cannot charge; expected 0.0, got {a_proj_full.item()}"
+    )
+
+    # 3. Intermediate SoC: check exact analytical bound clamping
+    # At soc = 0.20, delta_soc = 0.10, energy = 50 kWh, max dis power = 50 * 0.95 / 1.0 = 47.5 kW
+    # a0_min = -47.5 / 250 = -0.19
+    s_inter = th.zeros((1, DEFAULT_STATE_DIM))
+    s_inter[0, 0] = 0.20
+    s_inter[0, 1] = 50.0
+    s_inter[0, 2:7] = 10.0  # P_net = 0 kW
+    a_excess_dis = th.tensor([[-0.9]])
+    a_proj_inter = layer(s_inter, a_excess_dis)
+    expected_min = -(0.20 - layer.soc_min) * layer.capacity_kwh * (layer.eta_discharge / layer.dt_hours) / layer.p_max
+    assert np.isclose(a_proj_inter.item(), expected_min, atol=1e-4), (
+        f"Expected clamping at {expected_min}, got {a_proj_inter.item()}"
+    )
+
+
+def test_diff_safety_layer_multidim_qp(project_constants):
+    """Prove requirement (c): multi-dimensional (action_dim=6) joint KKT QP projection
+    with analytical non-zero Jacobian across battery + shedding actions."""
+    p_max = 250.0
+    p_cap = project_constants.get("grid_import_cap_kw", 368.15)
+    layer = DifferentiableSafetyLayer(p_max=p_max, p_cap=p_cap)
+
+    # High net load state: PV=0, zone loads = [90, 90, 90, 90, 90] kW -> P_net = 450 kW > P_cap
+    s = th.zeros((1, DEFAULT_STATE_DIM))
+    s[0, 0] = 0.50  # Battery SoC = 0.50
+    s[0, 1] = 0.0   # PV = 0.0 kW
+    s[0, 2:7] = 90.0  # 5 zones of 90 kW each
+
+    # 6D action: battery charging (+0.2 = +50 kW), low shedding (-0.5 = 25% shed)
+    a = th.tensor([[0.2, -0.5, -0.5, -0.5, -0.5, -0.5]], requires_grad=True)
+
+    g_before = layer.constraint_val(s, a)
+    assert g_before.item() > 0.0, f"Initial action must violate constraint, got g={g_before.item()}"
+
+    # Project via joint KKT QP
+    a_proj = layer(s, a)
+
+    # 1. Constraint satisfaction
+    g_after = layer.constraint_val(s, a_proj)
+    assert g_after.item() <= 1e-4, f"Projected action must satisfy constraint g <= 0, got g={g_after.item()}"
+
+    # 2. Joint cooperation: battery charging decreased and load shedding increased
+    assert a_proj[0, 0].item() < a[0, 0].item(), "Battery command must decrease (charge less or discharge)"
+    for z in range(1, 6):
+        assert a_proj[0, z].item() >= a[0, z].item(), f"Zone {z} shedding command must increase"
+
+    # 3. Analytical non-zero Jacobian across battery AND shedding actions
+    def qp_func(act_vec):
+        return layer(s, act_vec.unsqueeze(0)).squeeze(0)
+
+    a_1d = th.tensor([0.2, -0.5, -0.5, -0.5, -0.5, -0.5])
+    J = th.autograd.functional.jacobian(qp_func, a_1d)
+
+    assert J.shape == (6, 6)
+    rank = th.linalg.matrix_rank(J)
+    assert rank.item() >= 5, f"Jacobian rank must be at least m-1=5, got {rank.item()}"
+    assert th.all(J.abs() > 0.0), f"All elements in analytical QP Jacobian must be non-zero, got min={J.abs().min()}"
+
+
+def test_safe_policy_network_log_prob_consistency(project_constants):
+    """Prove SafePolicyNetwork maintains exact Gaussian log_prob consistency and avoids double-projection bias."""
+    p_max = 250.0
+    p_cap = project_constants.get("grid_import_cap_kw", 368.15)
+    agent = PPODiffSafetyLayerAgent(
+        state_dim=DEFAULT_STATE_DIM,
+        action_dim=1,
+        p_max=p_max,
+        p_cap=p_cap,
+        store_raw_action=True,
+    )
+
+    s = np.zeros(DEFAULT_STATE_DIM, dtype=np.float32)
+    s[0] = 0.50
+    s[1] = 0.0
+    s[2:7] = 90.0  # P_net = 450 kW > p_cap
+
+    # 1. SafePolicyNetwork distribution uses unprojected raw mean for Gaussian log_prob
+    agent.obs_normalizer.update(s[None, :])
+    s_tensor = agent.to_tensor(agent.obs_normalizer.normalize(s[None, :]))
+    raw_mu = agent.policy.forward_raw(s_tensor)
+    proj_mu = agent.policy.forward(s_tensor)
+    dist = agent.policy.distribution(s_tensor)
+
+    assert th.allclose(dist.loc, raw_mu), "Policy distribution mean must equal raw unprojected mean"
+    assert not th.allclose(raw_mu, proj_mu), "When constraint is active, raw_mu and proj_mu must differ"
+
+    # 2. Select action returns projected safe action while buffering raw action
+    action, logp, value, _ = agent.select_action(s, evaluate=False)
+    assert agent.last_raw_action is not None
+    # Action executed in env is safe
+    s_norm = agent.to_tensor(agent.obs_normalizer.normalize(s[None, :]))
+    a_th = th.as_tensor(action[None, :], dtype=th.float32)
+    g_val = agent.safety_layer.constraint_val(s_norm, a_th)
+    assert g_val.item() <= 1e-4, f"Action returned by select_action must be safe, got g={g_val.item()}"
+
+    # 3. Store transition stores raw action and matches initial log_prob
+    agent.store_transition(
+        state=s,
+        action=action,
+        reward=-1.0,
+        cost=0.0,
+        value=value,
+        cost_value=0.0,
+        log_prob=logp,
+        terminated=False,
+        truncated=False,
+    )
+    assert np.allclose(agent.buffer.actions[0], agent.last_raw_action), "Stored action must be raw action"
+    batch = agent.finish_path(last_value=value)
+    assert batch is not None
+
