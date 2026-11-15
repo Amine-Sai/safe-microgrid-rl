@@ -13,6 +13,7 @@ checkpoints/
 .DS_Store
 
 # Private communication, notes and scratch
+PLAN.md
 NOTES.md
 notes.md
 [Nn]ote*
