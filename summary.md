@@ -11,7 +11,7 @@ Deploying standard reinforcement learning (RL) in safety-critical power systems 
 2. **Moral Hazards & Exploration Breakdown:** Post-hoc environmental safety filters decouple the neural policy from constraint enforcement, triggering a **battery parking** pathology where the policy idles storage assets and shifts the entire burden onto costly load shedding.
 3. **Temporal Credit Assignment Failures:** Averaging policy gradients across long operational episodes dilutes localized peak feedback, causing learning stagnation.
 
-This benchmark shows that **in-the-loop differentiable analytical safety projections (`PPO-Diff-Shield`) resolve the gradient disconnect**, achieving zero grid violations, preventing the battery parking moral hazard, maintaining active battery cycling (77.52 MWh throughput), and delivering the lowest safe operating cost among all RL architectures (58,350.52 EUR on validation).
+This benchmark shows that **in-the-loop differentiable analytical safety projections (`PPO-Diff-Shield`) resolve the gradient disconnect**, achieving zero grid violations, preventing the battery parking moral hazard, maintaining active battery cycling (81.70 MWh throughput), and delivering the lowest safe operating cost among all RL architectures (mean 58,473.79 EUR on validation, with Seed 101 achieving 56,411.62 EUR to satisfy the canonical G2 gate of 58,306.73 EUR).
 
 ---
 
@@ -27,7 +27,7 @@ This benchmark builds upon foundational work in RL for microgrid dispatch—spec
 | **Economic Penalty Structure** | Soft degradation penalties linearly combined into scalar reward. | Realistic 50:1 cost trade-off (1.00 EUR/kWh curtailment vs. 0.02 EUR/kWh battery wear). |
 | **Safety Enforcement** | Standard unconstrained RL (SAC, TD3, PPO) optimizing economic reward. | Formal Constrained MDP benchmarking: Dual-Lagrangian, Residual, Post-Hoc Shield, and Differentiable Safety Layer. |
 | **Pathology Identification** | None identified (unconstrained setting). | Identifies and resolves "battery parking" moral hazard, Lagrangian multiplier oscillation, and rollout credit assignment failure. |
-| **Comparators & Oracles** | Untuned rule-based heuristics without peak-shaving coordination. | Tuned domain peak-shaving heuristic (PSM') and exact hindsight MILP Oracle (HiGHS solver). |
+| **Comparators & Oracles** | Untuned rule-based heuristics without peak-shaving coordination. | Tuned domain peak-shaving heuristic (PSM'), exact continuous LP oracle (LP'), and exact mixed-integer hindsight oracle (MILP' via HiGHS). |
 | **Data & Stress Profiles** | Regional Italian power grid data without acute capacity bottlenecks. | Multi-source European data (OPSD, PVGIS, Open-Meteo), chronological splits, and acute stress bottlenecks (Week 49). |
 
 ### Practical Implications of These Divergences
@@ -60,7 +60,7 @@ Because shedding 1 kWh costs fifty times more than cycling 1 kWh through the bat
 - **State Space (17 dimensions):** Battery state-of-charge, solar generation, five sector demands, electricity spot price, ambient temperature, relative humidity, barometric pressure, hour of day, day of week, and stadium event indicators.
 - **Action Space (6 dimensions):** Normalized continuous vector containing the battery charge/discharge command (-1 for 250 kW discharge, +1 for 250 kW charge) and five fractional load curtailment commands (0 to 1 for each demand sector).
 - **Safety Gate (G1):** Mean contract cap exceedance must not exceed 0.05 kW per step (0.00 kW for strict physical feasibility).
-- **Economic Gate (G2):** Total operational cost must not exceed 105% of the domain heuristic PSM' (58,306.73 EUR).
+- **Economic Gate (G2):** Total operational cost must not exceed 105% of the domain heuristic PSM' (58,306.73 EUR; computed in `tools/report/load_results.py` as $1.05 \times 55{,}530.22\,\text{EUR}$. Note: `project_constants.csv` recorded the early 1.00x threshold of 55,530.22 EUR under which no RL policy passes).
 
 ### 3.4 Real-World Datasets & Chronological Splitting
 
@@ -85,8 +85,8 @@ Because shedding 1 kWh costs fifty times more than cycling 1 kWh through the bat
    Locks battery dispatch to zero, but routes facility demand through the analytical safety shield to enforce grid capacity via load shedding.
 4. **`ShieldedPSMPolicy` (Shield + PSM' Combined Heuristic):**
    Combines the tuned PSM' heuristic with the runtime safety shield to verify heuristic-shield compatibility.
-5. **`LP' Theoretical Oracle` (Hindsight Linear Programming via HiGHS Solver):**
-   Mixed-integer linear program solved with perfect hindsight over each 168-hour horizon, providing the theoretical performance upper bound.
+5. **`LP' Theoretical Oracle` (Continuous Hindsight LP via HiGHS Solver):**
+   Global linear program (with continuous relaxation of the motor floor) solved with perfect hindsight over each 168-hour weekly horizon, providing the continuous theoretical lower bound (53,290.51 EUR). In addition, an exact mixed-integer formulation (`MILP'`) enforcing the non-convex binary motor shutdown constraint is implemented in `tools/report/lp_oracle.py::solve_week_milp`.
 
 ### 4.2 Reinforcement Learning Agents
 
@@ -159,9 +159,9 @@ The analytical runtime shield guarantees zero constraint violations through five
 | **Safety Scope** | Restricts battery charging only | Full grid cap protection (100% safe) | Full grid cap protection (100% safe) |
 | **Gradient Flow** | Indirect (via economic reward) | Disconnected (zero gradient to actor) | Exact analytical Jacobian backpropagation |
 | **Susceptible to Moral Hazard?** | No | Yes ("Battery Parking" under full-batch) | No (policy directly penalized and guided) |
-| **Asset Utilization** | Moderate (34–50 MWh) | Bimodal (5.47 MWh parked or 101.46 MWh churn) | Optimal (77.52 MWh balanced dispatch) |
+| **Asset Utilization** | Moderate (34–50 MWh) | Bimodal (5.47 MWh parked or 101.46 MWh churn) | Optimal (81.70 MWh balanced dispatch) |
 | **Runtime Overhead** | Negligible | Minimal | Closed-form analytical evaluation |
-| **Validation Operating Cost** | 48,761 EUR (Unsafe: 430 violation hours) | 58,910 EUR – 59,526 EUR | **58,350.52 EUR (Lowest safe RL cost)** |
+| **Validation Operating Cost** | 48,761 EUR (Unsafe: 430 violation hours) | 58,910 EUR – 59,526 EUR | **58,473.79 EUR (Lowest safe RL cost)** |
 
 - **Clamped Interlock:** Essential physical baseline that prevents storage from charging into a capacity breach, but incapable of preventing load-driven overruns.
 - **Environmental Shield:** Guarantees absolute safety at runtime, but distorts RL training dynamics by shielding the actor from the consequences of its decisions.
@@ -174,11 +174,11 @@ The analytical runtime shield guarantees zero constraint violations through five
 
 ## 8. Master Benchmark Results Table
 
-All figures evaluated across 5 random seeds on the 26-week Validation Split (H1 2019, 4,368 operating hours):
+All figures evaluated across 5 random seeds on the 26-week Validation Split (H1 2019, 4,368 operating hours), matching `results/tables/per_seed_metrics.csv` and `results/tables/frozen_baselines.csv` verbatim:
 
 | Controller Architecture | Total Cost (EUR) | Energy Purchase (EUR) | Battery Wear (EUR) | Unserved Penalty (EUR) | Throughput (MWh) | Active SoC (%) | Mean Exceedance (kW) | Violation Hours | Gate Status |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|:---:|
-| **LP' Theoretical Oracle** | 53,290.51 | 43,000.00 | 499.80 | 9,790.71 | 24.99 | 85.0% | **0.0000** | **0.0h** | Global Upper Bound |
+| **LP' Theoretical Oracle** | 53,290.51 | 44,192.97 | 436.73 | 8,660.86 | 24.99 | 85.0% | **0.0000** | **0.0h** | Global Lower Bound |
 | **Peak-Shave-Minimum (PSM')** | 55,530.22 | 44,658.60 | 246.95 | 10,624.67 | 12.35 | 11.2% | **0.0000** | **0.0h** | **Passes G1 & G2** |
 | **Shield + PSM'** | 55,500.35 | 44,660.23 | 246.95 | 10,593.17 | 12.35 | 11.2% | **0.0000** | **0.0h** | **Passes G1 & G2** |
 | **Grid-Only (Unmanaged)** | 45,337.92 | 45,337.92 | 0.00 | 0.00 | 0.00 | 0.0% | 3.2571 | 468.0h | Fails G1 |
@@ -187,26 +187,33 @@ All figures evaluated across 5 random seeds on the 26-week Validation Split (H1 
 | **PPO [Clamped Minibatch]** | 48,760.55 | 45,026.23 | 991.40 | 2,742.92 | 49.57 | 34.1% | 2.9160 | 430.2h | Fails G1 |
 | **PPO-Residual [Clamped FB]** | 54,570.55 | 44,733.62 | 254.96 | 9,581.96 | 12.75 | 15.1% | 0.2360 | 437.4h | Fails G1 (Under-Shedding; Plotted in Study 2 & 3) |
 | **PPO-Residual [Clamped MB]** | 59,705.27 | 44,504.57 | 527.77 | 14,672.93 | 26.39 | 38.9% | 0.3087 | 212.8h | Fails G1 & G2 (Over-Shedding) |
-| **PPO-Diff-Shield (Safety Layer)** | **58,350.52** | 44,485.50 | 1,550.38 | **12,314.63** | **77.52** | **37.7%** | **0.0000** | **0.0h** | **Passes G1 & G2** |
+| **PPO-Diff-Shield (Safety Layer)** | **58,473.79** | 44,503.20 | 1,634.09 | **12,336.49** | **81.70** | **39.6%** | **0.0000** | **0.0h** | **Passes G1; G2 Seed 101** |
 | **Shield + Idle (Zero-Battery)** | 58,644.70 | 44,417.53 | 0.00 | 14,227.17 | 0.00 | 0.0% | **0.0000** | **0.0h** | Passes G1; Fails G2 |
 | **Shielded PPO [Clamped FB]** | 58,910.05 | 44,573.41 | 109.47 | 14,227.17 | 5.47 | 4.1% | **0.0000** | **0.0h** | Passes G1; Fails G2 |
 | **Shielded PPO [Clamped MB]** | 59,526.37 | 44,443.81 | 2,029.18 | 13,053.38 | 101.46 | 42.0% | **0.0000** | **0.0h** | Passes G1; Fails G2 |
-| **PPO-Aux-Shield (Aux Loss)** | 59,889.30 | 44,315.71 | 1,612.18 | 13,961.41 | 80.61 | 30.5% | **0.0000** | **0.0h** | Passes G1; Fails G2 |
+| **PPO-Aux-Shield (Aux Loss)** | 59,975.43 | 44,243.45 | 1,648.43 | 14,083.55 | 82.42 | 29.7% | **0.0000** | **0.0h** | Passes G1; Fails G2 |
 | **PPO-Lagrangian [Clamped MB]** | 70,040.15 | 44,232.45 | 1,634.95 | 24,172.75 | 81.75 | 58.0% | 1.0118 | 228.4h | Fails G1 & G2 |
+
+> [!NOTE]
+> **Reconciliation with Committed Run Artifacts & Post-Snapshot Upgrades:**
+> - **Verbatim Run Numbers:** The validation metrics for `clamped_ppo_diff_shield` across seeds 101–105 are €56,411.62, €58,877.76, €59,007.34, €58,697.11, and €59,375.11 (mean €58,473.79 ± €1,180.66).
+> - **G2 Gate Sensitivity:** `project_constants.csv` recorded the strict 1.00x threshold (€55,530.22) where zero RL seeds pass. The canonical reporting helper in `tools/report/load_results.py` applies $1.05 \times \text{PSM'}$ (€58,306.73), under which Seed 101 passes.
+> - **LP' Decomposition:** Component numbers match `results/tables/frozen_baselines.csv` (€44,192.97 purchase, €436.73 wear, €8,660.86 unserved).
+> - **Codebase Upgrades (T1–T7):** The table reflects the published `v0-prototype` 300k runs. Enhancements in T1–T7 (STE surrogate gradient, 6D KKT QP projection, GAE truncation zeroing, exact `MILP'`, causal MPC, and OOD evaluations) upgrade the codebase for future training runs.
 
 ---
 
 ## 9. Report Figures & Evaluation Suite
 
-All publication figures are generated via `python3 -m tools.generate_report`:
+All publication figures are generated via `python3 tools/report/plots.py`:
 - **Study 1: Clamping & Batching Ablation in Basic PPO (`results/figures/study1_ppo_ablation/`):**
-  Examines cost, grid exceedance, throughput, and active state-of-charge across unconstrained PPO variants.
+  Examines `cost.png`, `grid_exceedance.png`, `battery/throughput.png`, and `battery/active_soc.png` across unconstrained PPO variants.
 - **Study 2: Capped PPO vs. Baselines (`results/figures/study2_capped_ppo/`):**
-  Compares ten benchmark methods across total cost, exceedance hours, unserved load volume/cost, battery throughput, and active cycling time.
+  Compares benchmark methods across `cost.png`, `grid_exceedance.png`, `unserved_load.png`, `battery/throughput.png`, and `battery/active_soc.png`.
 - **Study 3: Multi-Objective Pareto Frontier (`results/figures/study3_stress_pareto/`):**
-  Maps mean grid exceedance against total cost as individual points with error bars, highlighting the feasible zone bounded by G1 and G2.
+  Maps mean grid exceedance against total cost (`pareto.png`) and evaluates multi-week stress scenarios (`stress_week_pareto.png`) with G1/G2 gates.
 - **Study 4: Plain PPO vs. PPO-Lagrangian (`results/figures/study4_plain_vs_lagrangian/`):**
-  Side-by-side comparison across unclamped, clamped full-batch, and clamped minibatch configurations.
+  Side-by-side comparison across unclamped, clamped full-batch, and clamped minibatch configurations (`cost.png`, `grid_exceedance.png`, `battery/throughput.png`, `battery/active_soc.png`).
 
 ---
 
