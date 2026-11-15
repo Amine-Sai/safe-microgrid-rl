@@ -595,5 +595,217 @@ def test_cap_shield_exact_feasibility_across_mappings():
                 obs, _ = shield.reset(seed=step)
 
 
+def test_forecast_causal_noisy_prices_exact_and_non_negative(tmp_path):
+    """Causal noisy forecast keeps spot prices exact while adding sqrt(lead/H) >=0 noise to renewables/load."""
+    import pandas as pd
+
+    # Create dataset with positive PV, wind, and load across a 24h daytime window
+    n = 100
+    ts = pd.date_range("2019-06-01", periods=n, freq="h")
+    zones = {"residential": 0.35, "commercial": 0.25, "stadium": 0.10, "street": 0.05, "industrial": 0.25}
+    load = np.full(n, 400.0, dtype=np.float32)
+    d = {
+        "load_kw": load,
+        "price_eur_mwh": np.linspace(20.0, 120.0, n, dtype=np.float32),
+        "irradiance_wm2": np.full(n, 600.0, dtype=np.float32),
+        "wind_kw": np.full(n, 100.0, dtype=np.float32),
+        "temperature_c": np.full(n, 20.0, dtype=np.float32),
+        "humidity_pct": np.full(n, 50.0, dtype=np.float32),
+        "pressure_msl_hpa": np.full(n, 1013.0, dtype=np.float32),
+        "stadium_event": np.zeros(n, dtype=bool),
+    }
+    for z, s in zones.items():
+        d[f"load_{z}_kw"] = load * s
+    pd.DataFrame(d, index=ts).to_parquet(tmp_path / "train.parquet")
+
+    horizon = 9
+    env_oracle = make_env(
+        data_path=str(tmp_path),
+        forecast_horizon_hours=horizon,
+        forecast_mode="oracle",
+        episode_length_hours=48,
+    )
+    env_noisy = make_env(
+        data_path=str(tmp_path),
+        forecast_horizon_hours=horizon,
+        forecast_mode="causal_noisy",
+        episode_length_hours=48,
+    )
+
+    obs_o, _ = env_oracle.reset(seed=42, options={"start_idx": 10})
+    obs_n, _ = env_noisy.reset(seed=42, options={"start_idx": 10})
+
+    # Base features and future spot prices (obs[20:23]) must remain exact
+    assert np.allclose(obs_n[:17], obs_o[:17])
+    assert np.allclose(obs_n[20:23], obs_o[20:23])
+
+    oracle_h = env_oracle.get_horizon_data(idx=10, horizon=horizon)
+    samples_pv, samples_wind, samples_load = [], [], []
+    for _ in range(400):
+        h_data = env_noisy.get_horizon_data(idx=10, horizon=horizon)
+        assert np.allclose(h_data["price_eur_mwh"], oracle_h["price_eur_mwh"])
+        assert np.all(h_data["pv_kw"] >= 0.0)
+        assert np.all(h_data["wind_kw"] >= 0.0)
+        assert np.all(h_data["zone_loads_kw"] >= 0.0)
+        assert np.all(h_data["net_load_kw"] >= 0.0)
+        samples_pv.append(h_data["pv_kw"])
+        samples_wind.append(h_data["wind_kw"])
+        samples_load.append(h_data["zone_loads_kw"])
+
+    pv_arr = np.stack(samples_pv, axis=0)
+    wind_arr = np.stack(samples_wind, axis=0)
+    load_arr = np.stack(samples_load, axis=0)
+
+    # Forecasts are perturbed (not identical to oracle) and near-unbiased around oracle
+    assert not np.allclose(pv_arr[0], oracle_h["pv_kw"])
+    assert not np.allclose(wind_arr[0], oracle_h["wind_kw"])
+    assert not np.allclose(load_arr[0], oracle_h["zone_loads_kw"])
+    assert np.allclose(pv_arr.mean(axis=0), oracle_h["pv_kw"], rtol=0.05)
+    assert np.allclose(wind_arr.mean(axis=0), oracle_h["wind_kw"], rtol=0.05)
+    assert np.allclose(load_arr.mean(axis=0), oracle_h["zone_loads_kw"], rtol=0.03)
+
+    # Std at final lead (lead=9) is ~3x std at lead=1: sqrt(9/9) / sqrt(1/9) = 3.0
+    std_ratio_wind = wind_arr.std(axis=0)[-1] / wind_arr.std(axis=0)[0]
+    assert 2.2 < std_ratio_wind < 3.8
+
+
+def test_forecast_persistence_repeats_current_and_keeps_prices_exact():
+    """Persistence forecast repeats current PV, wind, and zone loads while preserving exact prices."""
+    horizon = 6
+    env_oracle = make_env(forecast_horizon_hours=horizon, forecast_mode="oracle")
+    env_pers = make_env(forecast_horizon_hours=horizon, forecast_mode="persistence")
+
+    idx = 20
+    obs_o, _ = env_oracle.reset(seed=42, options={"start_idx": idx})
+    obs_p, _ = env_pers.reset(seed=42, options={"start_idx": idx})
+
+    # Spot prices in obs[20:23] stay exact
+    assert np.allclose(obs_p[:17], obs_o[:17])
+    assert np.allclose(obs_p[20:23], obs_o[20:23])
+
+    curr_net = max(0.0, float(env_pers._load_kw[idx] - env_pers._pv_kw_series[idx]))
+    assert np.allclose(obs_p[17:20], curr_net, atol=1e-4)
+
+    h_pers = env_pers.get_horizon_data(idx=idx, horizon=horizon)
+    h_orac = env_oracle.get_horizon_data(idx=idx, horizon=horizon)
+    assert np.allclose(h_pers["price_eur_mwh"], h_orac["price_eur_mwh"])
+    for t in range(horizon):
+        assert np.isclose(h_pers["pv_kw"][t], env_pers._pv_kw_series[idx])
+        assert np.allclose(h_pers["zone_loads_kw"][t], env_pers._zone_loads[idx])
+
+
+def test_weekly_peak_demand_charge_telescoping_equality():
+    """Telescoping incremental peak charge sums to rate * max_t(grid_import_kw) and resets cleanly."""
+    rate = 2.3333
+    env_dc = make_env(demand_charge_eur_per_kw_week=rate, grid_import_cap_kw=10000.0)
+    env_base = make_env(demand_charge_eur_per_kw_week=0.0, grid_import_cap_kw=10000.0)
+
+    env_dc.reset(seed=42, options={"start_idx": 0})
+    env_base.reset(seed=42, options={"start_idx": 0})
+
+    no_shed_idle = np.array([0.0, -1.0, -1.0, -1.0, -1.0, -1.0], dtype=np.float32)
+    total_dc = 0.0
+    max_import = 0.0
+    prev_peak = 0.0
+    for _ in range(env_dc.episode_length):
+        _, r_dc, _, trunc, info_dc = env_dc.step(no_shed_idle)
+        _, r_base, _, _, info_base = env_base.step(no_shed_idle)
+        max_import = max(max_import, info_dc["grid_import_kw"])
+        assert info_dc["week_peak_grid_kw"] >= prev_peak
+        assert np.isclose(info_dc["week_peak_grid_kw"], max_import)
+        assert np.isclose(r_base - r_dc, info_dc["cost_demand_charge_eur"], atol=1e-6)
+        total_dc += info_dc["cost_demand_charge_eur"]
+        prev_peak = info_dc["week_peak_grid_kw"]
+    assert trunc is True
+    assert total_dc == pytest.approx(rate * max_import, rel=1e-6, abs=1e-6)
+
+    # Next episode must reset running peak back to 0.0 before first step
+    env_dc.reset(seed=42, options={"start_idx": 0})
+    assert env_dc._week_peak_grid_kw == 0.0
+
+
+def test_zone_voll_weighting_and_validation():
+    """Per-zone VoLL weights unserved energy by zone (list or dict) and validates schema."""
+    from env.smartgrid_env import ZONE_NAMES
+
+    voll_list = [1.0, 2.0, 3.0, 0.5, 5.0]
+    voll_dict = dict(zip(ZONE_NAMES, voll_list))
+
+    env_list = make_env(zone_voll_eur_kwh=voll_list, grid_import_cap_kw=10000.0)
+    env_dict = make_env(zone_voll_eur_kwh=voll_dict, grid_import_cap_kw=10000.0)
+    env_uniform = make_env(zone_voll_eur_kwh=None, cost_unserved_eur_kwh=1.0, grid_import_cap_kw=10000.0)
+
+    assert np.allclose(env_uniform.get_zone_voll(), np.ones(5))
+    assert np.allclose(env_list.get_zone_voll(), voll_list)
+    assert np.allclose(env_dict.get_zone_voll(), voll_list)
+
+    env_list.reset(seed=42, options={"start_idx": 0})
+    env_dict.reset(seed=42, options={"start_idx": 0})
+
+    # Shed all zones 100% on step 0
+    full_shed = np.array([0.0, 1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32)
+    _, r_l, _, _, info_l = env_list.step(full_shed)
+    _, r_d, _, _, info_d = env_dict.step(full_shed)
+
+    expected_unserved = float(np.dot(env_list._zone_loads[0], voll_list)) * env_list.dt_hours
+    assert info_l["unserved_cost"] == pytest.approx(expected_unserved, rel=1e-5)
+    assert info_d["unserved_cost"] == pytest.approx(expected_unserved, rel=1e-5)
+    assert r_l == pytest.approx(r_d, abs=1e-6)
+
+    with pytest.raises(ValueError, match="length 5"):
+        make_env(zone_voll_eur_kwh=[1.0, 2.0, 3.0])
+    with pytest.raises(ValueError, match="keys"):
+        make_env(zone_voll_eur_kwh={"residential": 1.0, "commercial": 2.0})
+    with pytest.raises(ValueError, match="finite and >= 0"):
+        make_env(zone_voll_eur_kwh=[1.0, -0.5, 1.0, 1.0, 1.0])
+
+
+def test_industrial_trip_switching_penalty():
+    """Switching/restart penalty triggers only on non-tripped -> tripped transitions."""
+    penalty = 250.0
+    env = make_env(industrial_trip_penalty_eur=penalty, grid_import_cap_kw=10000.0)
+    env.reset(seed=42, options={"start_idx": 0})
+
+    # Continuous partial shed (action[5]=0.0 -> s_raw=0.5 <= 0.90 -> ind_shed <= 0.30): no trip
+    act_partial = np.array([0.0, -1.0, -1.0, -1.0, -1.0, 0.0], dtype=np.float32)
+    _, _, _, _, info0 = env.step(act_partial)
+    assert info0["cost_industrial_trip_eur"] == 0.0
+    assert info0["industrial_tripped"] is False
+
+    # Trip industrial motor (action[5]=1.0 -> shed_ind=1.0 > 0.90): incurs penalty once
+    act_trip = np.array([0.0, -1.0, -1.0, -1.0, -1.0, 1.0], dtype=np.float32)
+    _, r1, _, _, info1 = env.step(act_trip)
+    assert info1["cost_industrial_trip_eur"] == pytest.approx(penalty)
+    assert info1["industrial_tripped"] is True
+    expected_r1 = -(
+        info1["energy_cost"]
+        + info1["unserved_cost"]
+        + info1["battery_wear_cost"]
+        + info1["cost_demand_charge_eur"]
+        + penalty
+    )
+    assert r1 == pytest.approx(expected_r1, abs=1e-6)
+
+    # Stay tripped: no additional switching penalty
+    _, _, _, _, info2 = env.step(act_trip)
+    assert info2["cost_industrial_trip_eur"] == 0.0
+    assert info2["industrial_tripped"] is True
+
+    # Recover to non-tripped (action[5]=-1.0 -> shed_ind=0.0): no penalty
+    act_recover = np.array([0.0, -1.0, -1.0, -1.0, -1.0, -1.0], dtype=np.float32)
+    _, _, _, _, info3 = env.step(act_recover)
+    assert info3["cost_industrial_trip_eur"] == 0.0
+    assert info3["industrial_tripped"] is False
+
+    # Re-trip from non-tripped state: incurs penalty again
+    _, _, _, _, info4 = env.step(act_trip)
+    assert info4["cost_industrial_trip_eur"] == pytest.approx(penalty)
+    assert info4["industrial_tripped"] is True
+
+    # Episode reset clears tripped state
+    env.reset(seed=42, options={"start_idx": 0})
+    assert env._industrial_tripped is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-q", "-x"])

@@ -40,6 +40,7 @@ NUM_ZONES: int = len(ZONE_NAMES)
 BASE_OBS_DIM: int = 17
 FORECAST_FEATURE_DIM: int = 6
 ACTION_DIM: int = 1 + NUM_ZONES  # 1 battery command + 5 zone shedding actions
+FORECAST_MODES: Tuple[str, ...] = ("oracle", "causal_noisy", "persistence")
 
 
 def default_config() -> Dict[str, Any]:
@@ -76,6 +77,13 @@ def default_config() -> Dict[str, Any]:
         "action_saturation_threshold": 0.99,
         "soc_pinned_tolerance": 0.005,
         "forecast_horizon_hours": 0,
+        "forecast_mode": "oracle",
+        "forecast_noise_rel_pv": 0.15,
+        "forecast_noise_rel_wind": 0.20,
+        "forecast_noise_rel_load": 0.08,
+        "demand_charge_eur_per_kw_week": 0.0,
+        "zone_voll_eur_kwh": None,
+        "industrial_trip_penalty_eur": 0.0,
     }
 
 
@@ -456,11 +464,22 @@ class SmartGridEnv(gym.Env):
         # Shed-action mapping ("linear" or "relu"/"deadzone")
         self.shed_mapping: str = str(cfg.get("shed_mapping", "linear"))
 
-        # Lookahead forecast horizon
-        self.forecast_horizon_hours: int = int(cfg.get("forecast_horizon_hours", 0))
+        # Lookahead forecast horizon & causal forecast noise parameters
+        self.forecast_horizon_hours: int = int(cfg["forecast_horizon_hours"])
         self.forecast_features_dim: int = (
             FORECAST_FEATURE_DIM if self.forecast_horizon_hours > 0 else 0
         )
+        self.forecast_mode: str = str(cfg["forecast_mode"]).strip().lower()
+        self.forecast_noise_rel_pv: float = float(cfg["forecast_noise_rel_pv"])
+        self.forecast_noise_rel_wind: float = float(cfg["forecast_noise_rel_wind"])
+        self.forecast_noise_rel_load: float = float(cfg["forecast_noise_rel_load"])
+
+        # Regime 2 C&I demand-charge, per-zone VoLL, and industrial trip switching penalty
+        self.demand_charge_eur_per_kw_week: float = float(cfg["demand_charge_eur_per_kw_week"])
+        self.zone_voll_eur_kwh: Optional[np.ndarray] = self._parse_zone_voll(
+            cfg["zone_voll_eur_kwh"]
+        )
+        self.industrial_trip_penalty_eur: float = float(cfg["industrial_trip_penalty_eur"])
 
         # Validate configuration schema
         self._validate_config()
@@ -484,7 +503,44 @@ class SmartGridEnv(gym.Env):
         self._step_idx: int = 0
         self._start_idx: int = 0
         self._soc: float = self.bat_soc_init
-        self._rng: np.random.RandomState = np.random.RandomState(cfg.get("seed", 42))
+        self._week_peak_grid_kw: float = 0.0
+        self._industrial_tripped: bool = False
+        seed_val = cfg["seed"]
+        self._rng: np.random.RandomState = np.random.RandomState(seed_val)
+        super().reset(seed=int(seed_val) if seed_val is not None else None)
+
+    def _parse_zone_voll(self, raw_voll: Any) -> Optional[np.ndarray]:
+        """Parse and validate optional per-zone VoLL weights matching ZONE_NAMES."""
+        if raw_voll is None:
+            return None
+        if isinstance(raw_voll, dict):
+            if set(raw_voll.keys()) != set(self.zone_names):
+                raise ValueError(
+                    f"zone_voll_eur_kwh dict keys must match {self.zone_names}, "
+                    f"got {sorted(raw_voll.keys())}"
+                )
+            arr = np.array([float(raw_voll[z]) for z in self.zone_names], dtype=np.float64)
+        elif isinstance(raw_voll, (str, bytes)) or not hasattr(raw_voll, "__len__"):
+            raise ValueError(
+                f"zone_voll_eur_kwh must be None, a {self.n_zones}-element sequence, "
+                f"or a dict keyed by {self.zone_names}, got {type(raw_voll).__name__}"
+            )
+        else:
+            arr = np.asarray(raw_voll, dtype=np.float64)
+            if arr.ndim != 1 or len(arr) != self.n_zones:
+                raise ValueError(
+                    f"zone_voll_eur_kwh must have length {self.n_zones} matching {self.zone_names}, "
+                    f"got shape {arr.shape}"
+                )
+        if not np.all(np.isfinite(arr)) or np.any(arr < 0.0):
+            raise ValueError(f"zone_voll_eur_kwh values must be finite and >= 0, got {arr.tolist()}")
+        return arr
+
+    def get_zone_voll(self) -> np.ndarray:
+        """Return 5-element per-zone Value of Lost Load (EUR/kWh) matching ZONE_NAMES."""
+        if self.zone_voll_eur_kwh is not None:
+            return self.zone_voll_eur_kwh.copy()
+        return np.full(self.n_zones, self.cost_unserved_eur_kwh, dtype=np.float64)
 
     def _validate_config(self) -> None:
         """Validate environment configuration parameters."""
@@ -515,6 +571,19 @@ class SmartGridEnv(gym.Env):
             raise ValueError(
                 f"Unsupported shed_mapping '{self.shed_mapping}'. Expected 'linear', 'relu', or 'deadzone'."
             )
+        if self.forecast_mode not in FORECAST_MODES:
+            raise ValueError(
+                f"Unsupported forecast_mode '{self.forecast_mode}'. Expected one of {FORECAST_MODES}."
+            )
+        for name, val in (
+            ("forecast_noise_rel_pv", self.forecast_noise_rel_pv),
+            ("forecast_noise_rel_wind", self.forecast_noise_rel_wind),
+            ("forecast_noise_rel_load", self.forecast_noise_rel_load),
+            ("demand_charge_eur_per_kw_week", self.demand_charge_eur_per_kw_week),
+            ("industrial_trip_penalty_eur", self.industrial_trip_penalty_eur),
+        ):
+            if val < 0.0 or not np.isfinite(val):
+                raise ValueError(f"{name} must be finite and non-negative, got {val}")
 
     # =========================================================================
     # === Data Ingestion & Observation Building ===============================
@@ -569,14 +638,23 @@ class SmartGridEnv(gym.Env):
         if len(self._event_active) > 1:
             self._event_in_next_hour[:-1] = self._event_active[1:]
 
-        # Precompute PV and net load series for fast step lookups
+        # Precompute PV, optional wind, and net load series for fast step lookups
         self._pv_scale: np.float32 = np.float32(
             self.pv_area_m2 * self.pv_efficiency * self.pv_performance_ratio / 1000.0
         )
         self._pv_kw_series: np.ndarray = self._irradiance * self._pv_scale
-        self._net_load_kw_series: np.ndarray = np.maximum(
-            0.0, self._load_kw - self._pv_kw_series
-        )
+        if "wind_kw" in df.columns:
+            self._wind_kw_series: np.ndarray = np.maximum(
+                0.0, df["wind_kw"].values.astype(np.float32)
+            )
+            self._net_load_kw_series: np.ndarray = np.maximum(
+                0.0, self._load_kw - self._pv_kw_series - self._wind_kw_series
+            )
+        else:
+            self._wind_kw_series = np.zeros(len(df), dtype=np.float32)
+            self._net_load_kw_series = np.maximum(
+                0.0, self._load_kw - self._pv_kw_series
+            )
 
         self._n_timesteps: int = len(df)
 
@@ -591,6 +669,102 @@ class SmartGridEnv(gym.Env):
     def _compute_pv_kw(self, idx: int) -> float:
         """Compute solar photovoltaic generation in kW for timestep index."""
         return float(self._pv_kw_series[idx])
+
+    def _apply_causal_noise(
+        self,
+        values: np.ndarray,
+        rel_std: float,
+        lead_scale: np.ndarray,
+    ) -> np.ndarray:
+        """Apply zero-mean relative Gaussian noise scaled by lead_scale, clipped >= 0."""
+        if rel_std <= 0.0:
+            return np.maximum(0.0, values).astype(np.float32)
+        sigma = rel_std * np.abs(values) * lead_scale
+        noise = self.np_random.normal(0.0, sigma)
+        return np.maximum(0.0, values + noise).astype(np.float32)
+
+    def get_horizon_data(
+        self,
+        idx: Optional[int] = None,
+        horizon: Optional[int] = None,
+        forecast_mode: Optional[str] = None,
+    ) -> Dict[str, np.ndarray]:
+        """Return lookahead PV, wind, zone demand, net load, and exact price forecasts.
+
+        Future spot prices remain exact (D-1 day-ahead market clearing). Depending on
+        ``forecast_mode``, future PV, wind, and zone demand forecasts are:
+        - ``"oracle"``: exact future series.
+        - ``"persistence"``: current step ``idx`` values repeated across the horizon.
+        - ``"causal_noisy"``: future series perturbed by zero-mean Gaussian noise via
+          ``self.np_random`` with relative std scaled by ``sqrt(lead_h / horizon)``,
+          clipped non-negative.
+        """
+        n = self._n_timesteps
+        curr_idx = int(self._start_idx + self._step_idx) if idx is None else int(idx)
+        curr_idx = max(0, min(curr_idx, n - 1))
+
+        h = self.forecast_horizon_hours if horizon is None else int(horizon)
+        if h <= 0:
+            return {
+                "pv_kw": np.zeros(0, dtype=np.float32),
+                "wind_kw": np.zeros(0, dtype=np.float32),
+                "zone_loads_kw": np.zeros((0, self.n_zones), dtype=np.float32),
+                "load_kw": np.zeros(0, dtype=np.float32),
+                "net_load_kw": np.zeros(0, dtype=np.float32),
+                "price_eur_mwh": np.zeros(0, dtype=np.float32),
+            }
+
+        mode = self.forecast_mode if forecast_mode is None else str(forecast_mode).strip().lower()
+        if mode not in FORECAST_MODES:
+            raise ValueError(
+                f"Unsupported forecast_mode '{mode}'. Expected one of {FORECAST_MODES}."
+            )
+
+        # Lookahead window [curr_idx + 1, curr_idx + 1 + h] clamped to dataset boundaries
+        start = min(curr_idx + 1, n - 1)
+        end = min(curr_idx + 1 + h, n)
+        if start >= end:
+            start = max(0, n - 1)
+            end = n
+        length = end - start
+
+        price_slice = self._price[start:end].astype(np.float32).copy()
+
+        if mode == "oracle":
+            pv_slice = self._pv_kw_series[start:end].astype(np.float32).copy()
+            wind_slice = self._wind_kw_series[start:end].astype(np.float32).copy()
+            zone_slice = self._zone_loads[start:end].astype(np.float32).copy()
+            load_slice = self._load_kw[start:end].astype(np.float32).copy()
+            net_slice = self._net_load_kw_series[start:end].astype(np.float32).copy()
+        elif mode == "persistence":
+            pv_slice = np.full(length, self._pv_kw_series[curr_idx], dtype=np.float32)
+            wind_slice = np.full(length, self._wind_kw_series[curr_idx], dtype=np.float32)
+            zone_slice = np.tile(self._zone_loads[curr_idx], (length, 1)).astype(np.float32)
+            load_slice = zone_slice.sum(axis=1).astype(np.float32)
+            net_slice = np.maximum(0.0, load_slice - pv_slice - wind_slice).astype(np.float32)
+        else:  # "causal_noisy"
+            lead_h = np.arange(1, length + 1, dtype=np.float64)
+            lead_scale = np.sqrt(lead_h / float(h))
+            pv_slice = self._apply_causal_noise(
+                self._pv_kw_series[start:end], self.forecast_noise_rel_pv, lead_scale
+            )
+            wind_slice = self._apply_causal_noise(
+                self._wind_kw_series[start:end], self.forecast_noise_rel_wind, lead_scale
+            )
+            zone_slice = self._apply_causal_noise(
+                self._zone_loads[start:end], self.forecast_noise_rel_load, lead_scale[:, None]
+            )
+            load_slice = zone_slice.sum(axis=1).astype(np.float32)
+            net_slice = np.maximum(0.0, load_slice - pv_slice - wind_slice).astype(np.float32)
+
+        return {
+            "pv_kw": pv_slice,
+            "wind_kw": wind_slice,
+            "zone_loads_kw": zone_slice,
+            "load_kw": load_slice,
+            "net_load_kw": net_slice,
+            "price_eur_mwh": price_slice,
+        }
 
     def _get_obs(self, idx: int) -> np.ndarray:
         """Construct observation vector for timestep index.
@@ -637,23 +811,15 @@ class SmartGridEnv(gym.Env):
         if self.forecast_horizon_hours <= 0:
             return np.array(base_obs, dtype=np.float32)
 
-        # Lookahead window [idx + 1, idx + 1 + H] clamped to dataset boundaries
-        horizon = self.forecast_horizon_hours
-        n = self._n_timesteps
-        start = min(idx + 1, n - 1)
-        end = min(idx + 1 + horizon, n)
-        if start >= end:
-            start = max(0, n - 1)
-            end = n
-
-        net_slice = self._net_load_kw_series[start:end]
-        price_slice = self._price[start:end]
+        horizon_data = self.get_horizon_data(idx=idx, horizon=self.forecast_horizon_hours)
+        net_slice = horizon_data["net_load_kw"]
+        price_slice = horizon_data["price_eur_mwh"]
 
         forecast_obs = [
-            float(self._net_load_kw_series[start]),
+            float(net_slice[0]),
             float(np.max(net_slice)),
             float(np.mean(net_slice)),
-            float(self._price[start]),
+            float(price_slice[0]),
             float(np.min(price_slice)),
             float(np.max(price_slice)),
         ]
@@ -678,6 +844,7 @@ class SmartGridEnv(gym.Env):
         Returns:
             Tuple of (initial_observation, info_dict_with_data_idx).
         """
+        super().reset(seed=seed)
         if seed is not None:
             self._rng = np.random.RandomState(seed)
         max_start = self._n_timesteps - self.episode_length
@@ -691,6 +858,8 @@ class SmartGridEnv(gym.Env):
             self._start_idx = int(self._rng.randint(0, max_start))
         self._step_idx = 0
         self._soc = self.bat_soc_init
+        self._week_peak_grid_kw = 0.0
+        self._industrial_tripped = False
         obs = self._get_obs(self._start_idx)
         return obs, {"data_idx": self._start_idx}
 
@@ -706,7 +875,7 @@ class SmartGridEnv(gym.Env):
         Returns:
             Tuple of (obs, reward, terminated, truncated, info):
                 - obs: Current observation vector (17-dim base / 23-dim forecast).
-                - reward: Step economic reward (negative sum of energy, unserved, wear costs).
+                - reward: Step economic reward (negative sum of operational & Regime 2 costs).
                 - terminated: Always False (episodes terminate by horizon truncation).
                 - truncated: True when episode_length steps have completed.
                 - info: Detailed step telemetry, physical breakdown, and constraint metrics.
@@ -756,12 +925,35 @@ class SmartGridEnv(gym.Env):
         pv_curtailed_kw = max(0.0, -net_load)
 
         # --- 6. Economic step cost & reward formulation ---
-        # C_t = lambda_grid * P_import * dt + c_wear * |P_bat| * dt + c_unserved * P_unserved * dt
+        # C_t = lambda_grid * P_import * dt + c_wear * |P_bat| * dt + sum_z(voll_z * P_uns_z) * dt
+        #       + c_demand * max(0, P_import - P_peak_prev) + c_trip * I_trip_transition
         price_per_kwh = max(0.0, self._price[data_idx]) / 1000.0  # Clip negative spot prices
         energy_cost = grid_import_kw * self.dt_hours * price_per_kwh
-        unserved_cost = total_unserved * self.dt_hours * self.cost_unserved_eur_kwh
+        if self.zone_voll_eur_kwh is None:
+            unserved_cost = total_unserved * self.dt_hours * self.cost_unserved_eur_kwh
+        else:
+            unserved_cost = (
+                float(np.dot(unserved.astype(np.float64), self.zone_voll_eur_kwh)) * self.dt_hours
+            )
         battery_wear = abs(bat_power_kw) * self.dt_hours * self.cost_wear_eur_kwh
-        reward = -(energy_cost + unserved_cost + battery_wear)
+
+        prev_peak = self._week_peak_grid_kw
+        peak_increment_kw = max(0.0, grid_import_kw - prev_peak)
+        if peak_increment_kw > 0.0:
+            self._week_peak_grid_kw = float(grid_import_kw)
+        demand_charge_cost = self.demand_charge_eur_per_kw_week * peak_increment_kw
+
+        ind_tripped_now = bool(shed_fractions[4] > self.industrial_shutdown_threshold)
+        trip_penalty = (
+            self.industrial_trip_penalty_eur
+            if (ind_tripped_now and not self._industrial_tripped)
+            else 0.0
+        )
+        self._industrial_tripped = ind_tripped_now
+
+        reward = -(
+            energy_cost + unserved_cost + battery_wear + demand_charge_cost + trip_penalty
+        )
 
         # --- 7. Safety constraint metrics ---
         # g_t = max(0, P_grid,import - P_cap)
@@ -796,6 +988,10 @@ class SmartGridEnv(gym.Env):
             "energy_cost": float(energy_cost),
             "unserved_cost": float(unserved_cost),
             "battery_wear_cost": float(battery_wear),
+            "cost_demand_charge_eur": float(demand_charge_cost),
+            "week_peak_grid_kw": float(self._week_peak_grid_kw),
+            "cost_industrial_trip_eur": float(trip_penalty),
+            "industrial_tripped": bool(self._industrial_tripped),
             "price_eur_mwh": float(self._price[data_idx]),
             "shed_fractions": shed_fractions.tolist(),
             "data_idx": int(data_idx),
