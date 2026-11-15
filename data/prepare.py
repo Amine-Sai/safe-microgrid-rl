@@ -3,7 +3,7 @@ import hashlib
 import json
 import os
 import sys
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -525,22 +525,37 @@ def split_dataset(df: pd.DataFrame, prep_cfg: dict) -> dict:
     return splits
 
 
+def compute_pv_scale(prep_cfg: Optional[dict] = None) -> float:
+    """Compute PV generation scale (kW per W/m2) using env_default_config() as canonical truth."""
+    cfg = env_default_config()
+    prep = prep_cfg or {}
+    area = float(prep.get("pv_area_m2", cfg["pv_area_m2"]))
+    eff = float(prep.get("pv_efficiency", cfg["pv_efficiency"]))
+    pr = float(prep.get("pv_performance_ratio", cfg["pv_performance_ratio"]))
+    return area * eff * pr / 1000.0
+
+
 def find_stress_weeks(
     splits: dict,
-    grid_import_cap: float = 368.15,
+    grid_import_cap: Union[float, dict, None] = 368.15,
     prep_cfg: Optional[dict] = None,
 ) -> dict:
     """Identify stress weeks in each split based on irradiance, price, weather, and grid cap exceedance."""
     print("\n[STRESS] Identifying stress weeks...")
 
-    pv_scale = 1500.0 * 0.18 * 0.85 / 1000.0
-    if prep_cfg is not None:
-        pv_scale = (
-            float(prep_cfg.get("pv_area_m2", 1500.0))
-            * float(prep_cfg.get("pv_efficiency", 0.18))
-            * float(prep_cfg.get("pv_performance_ratio", 0.85))
-            / 1000.0
-        )
+    if grid_import_cap is None:
+        cap_kw = 368.15
+    elif isinstance(grid_import_cap, dict):
+        if "value_kw" in grid_import_cap:
+            cap_kw = float(grid_import_cap["value_kw"])
+        elif "grid_import_cap_kw" in grid_import_cap:
+            cap_kw = float(grid_import_cap["grid_import_cap_kw"])
+        else:
+            raise KeyError("grid_import_cap dict must contain 'value_kw' or 'grid_import_cap_kw'")
+    else:
+        cap_kw = float(grid_import_cap)
+
+    pv_scale = compute_pv_scale(prep_cfg)
 
     stress_results = {}
     for name, split in splits.items():
@@ -553,7 +568,7 @@ def find_stress_weeks(
 
         pv_kw = split_copy["irradiance_wm2"] * pv_scale
         net_load = np.maximum(0.0, split_copy["load_kw"] - pv_kw)
-        split_copy["cap_exceedance_kw"] = np.maximum(0.0, net_load - grid_import_cap)
+        split_copy["cap_exceedance_kw"] = np.maximum(0.0, net_load - cap_kw)
 
         weekly = split_copy.groupby("week_label").agg(
             {
@@ -635,15 +650,13 @@ def _grid_only_import(split: pd.DataFrame, pv_scale: float) -> np.ndarray:
     return np.clip(split["load_kw"].to_numpy() - pv_kw, 0.0, None)
 
 
-def compute_grid_import_cap(splits: dict, quantile: float) -> dict:
+def compute_grid_import_cap(
+    splits: dict,
+    quantile: float,
+    prep_cfg: Optional[dict] = None,
+) -> dict:
     """Derive the grid import cap from the training split's grid-only import."""
-    pv_cfg = env_default_config()
-    pv_scale = (
-        pv_cfg["pv_area_m2"]
-        * pv_cfg["pv_efficiency"]
-        * pv_cfg["pv_performance_ratio"]
-        / 1000.0
-    )
+    pv_scale = compute_pv_scale(prep_cfg)
 
     profile = {
         "train": _grid_only_import(splits["train"], pv_scale),
@@ -803,7 +816,7 @@ def main():
 
     print("\n[8/8] Splitting dataset and computing cap...")
     splits = split_dataset(df, prep_cfg)
-    grid_import_cap = compute_grid_import_cap(splits, cap_quantile)
+    grid_import_cap = compute_grid_import_cap(splits, cap_quantile, prep_cfg)
     stress = find_stress_weeks(splits, grid_import_cap, prep_cfg)
     report_split_statistics(splits)
 
