@@ -489,5 +489,111 @@ def test_pct_to_action_parametric_industrial_and_mapping():
     assert np.allclose(act_relu[1:], -1.0)
 
 
+def test_cap_shield_non_linear_shed_mappings():
+    """Verify CapShield inversion under non-linear shed_mapping ('relu' and 'deadzone')."""
+    from env.cap_shield import CapShield, shed_actions_for
+    from env.smartgrid_env import shed_action_to_fractions
+
+    # 1. Standalone inversion test
+    obs = np.array([0.5, 0.0, 100.0, 100.0, 100.0, 100.0, 100.0], dtype=np.float32)
+    excess_kw = 50.0  # Street zone sheds first (demand 100 kW, shed 50 kW = 50%)
+    for mapping in ("relu", "deadzone"):
+        actions = shed_actions_for(excess_kw, obs, shed_mapping=mapping)
+        assert actions[3] > 0.0, f"Expected positive action under {mapping}, got {actions[3]}"
+        sf = shed_action_to_fractions(actions, shed_mapping=mapping)
+        assert np.isclose(sf[3], 0.5, atol=1e-5), f"Expected 50% street shed under {mapping}, got {sf[3]}"
+        assert np.all(sf[:3] == 0.0)
+        assert sf[4] == 0.0
+
+    # 2. Environment integration test with low cap to force continuous shedding
+    for mapping in ("relu", "deadzone"):
+        env = make_env(seed=42, grid_import_cap_kw=200.0, shed_mapping=mapping, charge_clamp=True)
+        shield = CapShield(env)
+        obs, _ = shield.reset(seed=42)
+        for _ in range(48):
+            b_act = np.array([0.8], dtype=np.float32)  # Request positive charging
+            full_act = shield.compose_action(b_act, obs)
+            obs, _, _, _, info = shield.step_with_obs(b_act, obs)
+            assert info["grid_exceedance_kw"] <= env.violation_tolerance_kw
+            assert info["is_violation"] is False
+            if info["total_unserved_kw"] > 0:
+                assert np.any(full_act[1:] > 0.0)
+                assert info["battery_power_kw"] <= 0.0
+
+
+def test_cap_shield_prevents_post_industrial_trip_battery_recharge():
+    """Verify CapShield blocks battery charging when industrial motor trips >0.90 threshold."""
+    from env.cap_shield import CapShield
+
+    # Cap = 60 kW. Demand: res=10, com=10, stad=10, street=10, ind=100. Total = 140 kW.
+    # Excess = 80 kW. Non-industrial sheds 40 kW.
+    # Remaining excess = 40 kW > 30 kW continuous limit -> industrial trips 100% (100 kW shed).
+    env = make_env(seed=42, grid_import_cap_kw=60.0, charge_clamp=True)
+    shield = CapShield(env)
+    obs_trip = np.array([0.5, 0.0, 10.0, 10.0, 10.0, 10.0, 100.0] + [0.0] * 10, dtype=np.float32)
+
+    # Agent commands full battery charging: +1.0
+    cmd_charge = np.array([1.0], dtype=np.float32)
+    full_act = shield.compose_action(cmd_charge, obs_trip)
+
+    # 1. Industrial action must be 1.0 (tripped 100%)
+    assert np.isclose(full_act[5], 1.0, atol=1e-5), f"Expected industrial trip action 1.0, got {full_act[5]}"
+
+    # 2. Battery command must be re-clamped to <= 0.0 to prevent recharging into blackout capacity
+    assert full_act[0] <= 0.0, f"Expected battery command <= 0.0, got {full_act[0]}"
+
+    # 3. In step_with_obs, terminal battery power must be <= 0.0 and zero violations
+    _, _, _, _, info = shield.step_with_obs(cmd_charge, obs_trip)
+    assert info["battery_power_kw"] <= 0.0
+    assert info["shed_fractions"][4] == 1.0
+    assert info["grid_exceedance_kw"] <= env.violation_tolerance_kw
+    assert info["is_violation"] is False
+
+
+def test_cap_shield_industrial_boundary_safe_linear_vs_trip():
+    """Verify Bug 3: safe continuous rounding near 0.90 threshold avoids unwanted industrial trip."""
+    from env.cap_shield import shed_actions_for
+    from env.smartgrid_env import shed_action_to_fractions
+
+    # Non-industrial demand = 0, industrial demand = 100 kW (max continuous shed = 30 kW).
+    obs = np.array([0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 100.0], dtype=np.float32)
+
+    for mapping in ("linear", "relu", "deadzone"):
+        # 1. Excess within continuous limit (25 kW) must NOT trip
+        act_partial = shed_actions_for(25.0, obs, shed_mapping=mapping)
+        sf_partial = shed_action_to_fractions(act_partial, shed_mapping=mapping)
+        assert sf_partial[4] < 0.90, f"{mapping}: unexpected trip for 25 kW shed: sf={sf_partial[4]}"
+        assert sf_partial[4] * 100.0 >= 25.0 - 1e-6, f"{mapping}: under-shed for 25 kW: sf={sf_partial[4]}"
+
+        # 2. Excess above continuous limit (35 kW > 30 kW) must trip to 100%
+        act_trip = shed_actions_for(35.0, obs, shed_mapping=mapping)
+        sf_trip = shed_action_to_fractions(act_trip, shed_mapping=mapping)
+        assert np.isclose(sf_trip[4], 1.0, atol=1e-5), f"{mapping}: expected 1.0 trip for 35 kW shed: sf={sf_trip[4]}"
+        assert act_trip[4] == 1.0
+
+
+def test_cap_shield_exact_feasibility_across_mappings():
+    """Verify exact <= violation_tolerance_kw feasibility across random states under all mappings."""
+    from env.cap_shield import CapShield
+
+    rng = np.random.RandomState(42)
+    for mapping in ("linear", "relu", "deadzone"):
+        env = make_env(seed=42, grid_import_cap_kw=250.0, shed_mapping=mapping, charge_clamp=True)
+        shield = CapShield(env)
+        obs, _ = shield.reset(seed=42)
+        for step in range(100):
+            b_act = rng.uniform(-1.0, 1.0, size=(1,)).astype(np.float32)
+            obs, _, _, trunc, info = shield.step_with_obs(b_act, obs)
+            exc = info["grid_exceedance_kw"]
+            assert exc <= env.violation_tolerance_kw, f"{mapping} step {step}: exc={exc}"
+            assert info["is_violation"] is False
+            if info["total_unserved_kw"] > 0:
+                assert info["battery_power_kw"] <= 0.0, (
+                    f"{mapping} step {step}: battery charged ({info['battery_power_kw']} kW) while shedding"
+                )
+            if trunc:
+                obs, _ = shield.reset(seed=step)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-q", "-x"])

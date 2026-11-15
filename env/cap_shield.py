@@ -20,7 +20,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import gymnasium as gym
 import numpy as np
 
-from env.smartgrid_env import battery_power_kw
+from env.smartgrid_env import (
+    NUM_ZONES,
+    battery_power_kw,
+    default_config,
+    shed_action_to_fractions,
+)
 
 # Priority shedding order based on Value of Lost Load (VoLL) and zone criticality:
 # 1. Street lighting: municipal lighting (lowest economic penalty)
@@ -73,6 +78,7 @@ def shed_actions_for(
     obs: np.ndarray,
     motor_min_fraction: float = 0.70,
     industrial_shutdown_threshold: float = 0.90,
+    shed_mapping: str = "linear",
 ) -> np.ndarray:
     r"""Compute analytical minimum-excess zone load shedding actions under the priority hierarchy.
 
@@ -88,68 +94,85 @@ def shed_actions_for(
       $$\text{remaining\_excess} \leftarrow \text{remaining\_excess} - \Delta L_z$$
     - For the industrial zone ($z = \text{industrial}$):
       Due to the piecewise operational constraint (motor must run $\ge f_{\text{min}}$ or shut down),
-      partial shedding is capped at $L_{\text{ind, max-linear}} = (1 - f_{\text{min}}) L_{\text{ind}}$.
-      * If $\text{remaining\_excess} \le L_{\text{ind, max-linear}}$:
+      continuous partial shedding is bounded by the safe continuous capacity without triggering
+      shutdown ($\le \tau_{\text{shutdown}}$):
+      * If $\text{remaining\_excess} \le L_{\text{ind, safe-max-linear}}$:
         $$\Delta L_{\text{ind}} = \text{remaining\_excess}$$
         $$\text{remaining\_excess} \leftarrow 0$$
       * Else:
         The motor cannot run at an intermediate forbidden load fraction, so it is completely shut down:
         $$\Delta L_{\text{ind}} = L_{\text{ind}}$$
-        $$\text{remaining\_excess} \leftarrow \text{remaining\_excess} - L_{\text{ind}}$$
+        $$\text{remaining\_excess} \leftarrow \max(0, \text{remaining\_excess} - L_{\text{ind}})$$
 
     Action Space Inversion & Float32 Precision Protection:
-    Under the default linear mapping $s = \frac{a + 1}{2} \iff a = 2s - 1$.
-    To prevent numerical float32 truncation under-shedding (where $2s - 1$ in 32-bit float
-    evaluates to a fraction $s - \epsilon$, causing a micro-violation of $10^{-7}$ kW),
-    the calculated continuous action is nudged upward by 1 ULP (Unit in the Last Place)
-    via `np.nextafter(a, 1.0)`.
+    Under linear mapping $s = \frac{a + 1}{2} \iff a = 2s - 1$.
+    Under ReLU / deadzone mapping $s = \max(0, a) \iff a = s$ for $s > 0$ and $a = -1$ for $s = 0$.
+    To prevent numerical float32 truncation under-shedding, the calculated continuous action is
+    nudged upward by 1 ULP (Unit in the Last Place) via `np.nextafter(a, 1.0)`.
 
     Args:
         excess_kw: Required reduction in power import in kW.
         obs: Current environment observation vector (zones located at indices 2..6).
         motor_min_fraction: Minimum continuous operational load fraction for industrial motors.
         industrial_shutdown_threshold: Action threshold in [0, 1] triggering full industrial shutdown.
+        shed_mapping: Action mapping regime ("linear", "relu", or "deadzone").
 
     Returns:
         np.ndarray of shape (5,) with continuous shedding actions in [-1.0, 1.0].
     """
-    if obs.shape[0] < 7:
+    obs_arr = np.asarray(obs, dtype=np.float32).ravel()
+    if obs_arr.shape[0] < 7:
         raise ValueError(
-            f"Observation vector has shape {obs.shape}, but must have at least 7 features "
+            f"Observation vector has shape {obs_arr.shape}, but must have at least 7 features "
             "to extract zone loads at indices 2..6."
         )
 
-    zone_shed_kw = np.zeros(5, dtype=np.float64)
+    zone_shed_kw = np.zeros(NUM_ZONES, dtype=np.float64)
     remaining_excess_kw = max(0.0, float(excess_kw))
     max_linear_industrial_shed_fraction = 1.0 - motor_min_fraction
+    mapping = str(shed_mapping).strip().lower()
+
+    if mapping in ("relu", "deadzone"):
+        max_linear_action = np.float32(industrial_shutdown_threshold)
+    else:
+        max_linear_action = np.float32(2.0 * industrial_shutdown_threshold - 1.0)
+
+    # Actual maximum continuous shed fraction without triggering industrial shutdown
+    safe_max_linear_shed_fraction = float(
+        shed_action_to_fractions(
+            [max_linear_action],
+            shed_mapping=mapping,
+            motor_min_pct=motor_min_fraction,
+            industrial_shutdown_threshold=industrial_shutdown_threshold,
+            industrial_zone_idx=0,
+        )[0]
+    )
 
     for entry in SHED_ORDER:
         if remaining_excess_kw <= 0.0:
             break
-        zone_demand_kw = max(0.0, float(obs[entry["obs_idx"]]))
+        zone_demand_kw = max(0.0, float(obs_arr[entry["obs_idx"]]))
         if zone_demand_kw <= 0.0:
             continue
         zone_index = entry["obs_idx"] - 2  # zone position 0..4 == shed dim 0..4
 
         if entry["industrial"]:
-            # Partial cover within the linear motor band, otherwise fully off
-            max_linear_kw = max_linear_industrial_shed_fraction * zone_demand_kw
-            if remaining_excess_kw <= max_linear_kw:
+            max_safe_linear_kw = safe_max_linear_shed_fraction * zone_demand_kw
+            if remaining_excess_kw <= max_safe_linear_kw:
                 zone_shed_kw[zone_index] = remaining_excess_kw
                 remaining_excess_kw = 0.0
             else:
                 zone_shed_kw[zone_index] = zone_demand_kw
-                remaining_excess_kw -= zone_demand_kw
+                remaining_excess_kw = max(0.0, remaining_excess_kw - zone_demand_kw)
         else:
             allocated_shed_kw = min(remaining_excess_kw, zone_demand_kw)
             zone_shed_kw[zone_index] = allocated_shed_kw
             remaining_excess_kw -= allocated_shed_kw
 
-    # Linear mapping s = (a + 1)/2 -> a = 2s - 1 with 1-ULP margin for float32 precision
-    zone_shed_actions = np.full(5, -1.0, dtype=np.float32)
+    zone_shed_actions = np.full(NUM_ZONES, -1.0, dtype=np.float32)
     for entry in SHED_ORDER:
         zone_index = entry["obs_idx"] - 2
-        zone_demand_kw = max(0.0, float(obs[entry["obs_idx"]]))
+        zone_demand_kw = max(0.0, float(obs_arr[entry["obs_idx"]]))
         allocated_shed_kw = zone_shed_kw[zone_index]
         if allocated_shed_kw <= 0.0 or zone_demand_kw <= 0.0:
             continue
@@ -163,14 +186,20 @@ def shed_actions_for(
                     (allocated_shed_kw / (max_linear_industrial_shed_fraction * zone_demand_kw))
                     * industrial_shutdown_threshold
                 )
-                raw_action_f32 = np.float32(2.0 * linear_s - 1.0)
+                if mapping in ("relu", "deadzone"):
+                    raw_action_f32 = np.float32(linear_s)
+                else:
+                    raw_action_f32 = np.float32(2.0 * linear_s - 1.0)
                 nudged_action = np.nextafter(raw_action_f32, np.float32(1.0))
-                max_linear_action = float(2.0 * industrial_shutdown_threshold - 1.0)
                 zone_shed_actions[action_dim_idx] = float(
                     np.clip(nudged_action, -1.0, max_linear_action)
                 )
         else:
-            raw_action_f32 = np.float32(2.0 * (allocated_shed_kw / zone_demand_kw) - 1.0)
+            frac = allocated_shed_kw / zone_demand_kw
+            if mapping in ("relu", "deadzone"):
+                raw_action_f32 = np.float32(frac)
+            else:
+                raw_action_f32 = np.float32(2.0 * frac - 1.0)
             nudged_action = np.nextafter(raw_action_f32, np.float32(1.0))
             zone_shed_actions[action_dim_idx] = float(np.clip(nudged_action, -1.0, 1.0))
 
@@ -241,44 +270,73 @@ class CapShield:
             6-dimensional action vector in [-1.0, 1.0] ready for `SmartGridEnv.step`.
         """
         battery_command = float(np.asarray(battery_command_1d, dtype=np.float32).ravel()[0])
-        soc = float(obs[0])
-        pv_kw = float(obs[1])
-        total_demand_kw = float(sum(float(obs[i]) for i in (2, 3, 4, 5, 6)))
+        obs_arr = np.asarray(obs, dtype=np.float32).ravel()
+        soc = float(obs_arr[0])
+        pv_kw = float(obs_arr[1])
+        zone_demands = np.array([max(0.0, float(obs_arr[i])) for i in range(2, 7)], dtype=np.float64)
+        total_demand_kw = float(np.sum(zone_demands))
 
         clamp_enabled = getattr(self.env, "charge_clamp", True)
         motor_min_pct = getattr(self.env, "motor_min_pct", 0.70)
         ind_off_thresh = getattr(self.env, "industrial_shutdown_threshold", 0.90)
+        shed_mapping = getattr(self.env, "shed_mapping", "linear")
+        violation_tol = getattr(self.env, "violation_tolerance_kw", 1e-4)
 
-        if not clamp_enabled:
-            batt_kw = predict_battery_kw(battery_command, soc, self.env)
-            predicted_import_kw = max(0.0, total_demand_kw - pv_kw + batt_kw)
-            excess_kw = predicted_import_kw - self.cap_kw
-            shed_actions = shed_actions_for(
-                excess_kw,
-                obs,
-                motor_min_fraction=motor_min_pct,
-                industrial_shutdown_threshold=ind_off_thresh,
-            )
-            full_action = np.concatenate(
-                [[np.clip(battery_command, -1.0, 1.0)], shed_actions]
-            ).astype(np.float32)
-            return full_action
-
-        # Pre-clamp battery power against un-shed demand
+        # 1. Pre-clamp battery power against un-shed demand
         batt_kw = battery_power_kw(
-            battery_command, soc, total_demand_kw, pv_kw, self.env, clamp=True
+            battery_command, soc, total_demand_kw, pv_kw, self.env, clamp=clamp_enabled
         )
         predicted_import_kw = max(0.0, total_demand_kw - pv_kw + batt_kw)
         excess_kw = predicted_import_kw - self.cap_kw
 
+        # 2. Compute analytical load shedding actions
         shed_actions = shed_actions_for(
             excess_kw,
-            obs,
+            obs_arr,
             motor_min_fraction=motor_min_pct,
             industrial_shutdown_threshold=ind_off_thresh,
+            shed_mapping=shed_mapping,
         )
+
+        # 3. Round-trip check: evaluate actual physical shedding fractions
+        shed_fractions = shed_action_to_fractions(
+            shed_actions,
+            shed_mapping=shed_mapping,
+            motor_min_pct=motor_min_pct,
+            industrial_shutdown_threshold=ind_off_thresh,
+            industrial_zone_idx=4,
+        )
+        post_shed_served_kw = float(np.sum(zone_demands * (1.0 - shed_fractions)))
+        total_shed_kw = float(np.sum(zone_demands * shed_fractions))
+
+        # 4. Prevent post-shed / post-industrial-trip battery charging:
+        # If any load was shed, block positive battery charging to prevent the battery
+        # from recharging into capacity freed by shedding or industrial blackout.
+        safe_battery_command = float(np.clip(battery_command, -1.0, 1.0))
+        if total_shed_kw > 1e-6 and safe_battery_command > 0.0:
+            safe_battery_command = 0.0
+
+        # 5. Round-trip feasibility check with post-shed served load and safe battery command
+        post_batt_kw = battery_power_kw(
+            safe_battery_command, soc, post_shed_served_kw, pv_kw, self.env, clamp=clamp_enabled
+        )
+        post_import_kw = max(0.0, post_shed_served_kw + post_batt_kw - pv_kw)
+        residual_exceedance_kw = post_import_kw - self.cap_kw
+
+        if residual_exceedance_kw > violation_tol:
+            additional_shed_actions = shed_actions_for(
+                residual_exceedance_kw,
+                obs_arr,
+                motor_min_fraction=motor_min_pct,
+                industrial_shutdown_threshold=ind_off_thresh,
+                shed_mapping=shed_mapping,
+            )
+            shed_actions = np.maximum(shed_actions, additional_shed_actions)
+            if safe_battery_command > 0.0:
+                safe_battery_command = 0.0
+
         full_action = np.concatenate(
-            [[np.clip(battery_command, -1.0, 1.0)], shed_actions]
+            [[safe_battery_command], shed_actions]
         ).astype(np.float32)
         return full_action
 
