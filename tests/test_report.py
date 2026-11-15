@@ -1,13 +1,17 @@
-"""Tests for dynamic results loading in tools/report/load_results.py."""
+"""Tests for dynamic results loading and plotting helpers."""
 
+import os
 import pytest
 from tools.report.load_results import (
+    DEFAULT_G2_COST_MULTIPLIER,
+    compute_g2_cost_gate,
     load_project_constants,
     load_baselines,
     load_per_seed_table,
     load_test_stress_weeks_data,
     extract_metric_row,
 )
+from tools.report.plots import fig_w49_dispatch_trajectory
 
 
 def test_project_constants_loaded_dynamically():
@@ -18,6 +22,25 @@ def test_project_constants_loaded_dynamically():
     assert constants["g1_exceedance_kw"] > 0.0
     assert constants["g2_cost_eur"] > 40000.0
     assert constants["contract_cap_kw"] > 300.0
+    assert constants["g2_cost_eur"] == compute_g2_cost_gate()
+    assert constants["g2_cost_multiplier"] == DEFAULT_G2_COST_MULTIPLIER
+
+
+def test_canonical_g2_gate_computation():
+    # PSM' Val cost is 55,530.22 EUR -> 1.05x multiplier gives 58,306.73 EUR
+    psm_val = 55530.22
+    expected_g2 = round(1.05 * psm_val, 2)
+    assert expected_g2 == 58306.73
+    assert compute_g2_cost_gate(psm_val, multiplier=1.05) == 58306.73
+    assert compute_g2_cost_gate() == 58306.73
+
+
+def test_fig_w49_dispatch_trajectory_generation(tmp_path):
+    out_dir = str(tmp_path)
+    fig_w49_dispatch_trajectory(out_dir)
+    trajectory_png = os.path.join(out_dir, "w49_dispatch_trajectory.png")
+    assert os.path.exists(trajectory_png)
+    assert os.path.getsize(trajectory_png) > 1000
 
 
 def test_frozen_baselines_loaded_dynamically():

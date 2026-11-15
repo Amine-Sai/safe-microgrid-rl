@@ -132,66 +132,10 @@ plt.rcParams.update({
 })
 
 
-def load_baselines() -> dict:
-    return _load_baselines()
-
-
-def load_runs(family: str) -> dict:
-    out = {}
-    family_dir = os.path.join(RUNS, family)
-    if not os.path.isdir(family_dir):
-        return out
-    for run_name in sorted(os.listdir(family_dir)):
-        run_path = os.path.join(family_dir, run_name)
-        if not os.path.isdir(run_path):
-            continue
-        for fname in sorted(os.listdir(run_path)):
-            if not fname.endswith(".json") or fname.endswith("_grid.json"):
-                continue
-            with io.open(os.path.join(run_path, fname), encoding="utf-8") as f:
-                run_data = json.load(f)
-                label = run_data.get("method") or run_name
-                out.setdefault(label, []).append(run_data)
-    return out
-
-
-def load_safety_runs() -> dict:
-    runs = {}
-    for key, _name, _cat, folder, prefix, _col, _mk, _ls in SAFETY_CONFIG:
-        if folder is None:
-            continue
-        runs[key] = []
-        agent_dir = os.path.join(RUNS, folder)
-        if not os.path.isdir(agent_dir):
-            continue
-        for fname in sorted(os.listdir(agent_dir)):
-            if not fname.endswith(".json") or fname.endswith("_grid.json"):
-                continue
-            if fname.startswith(prefix):
-                with io.open(os.path.join(agent_dir, fname), encoding="utf-8") as f:
-                    runs[key].append(json.load(f))
-    return runs
-
-
-def _extract_metric_row(key, cat, all_families, baselines, safety_runs):
-    return extract_metric_row(
-        key=key,
-        cat=cat,
-        all_families=all_families,
-        baselines=baselines,
-        safety_runs=safety_runs,
-        per_seed_table=PER_SEED_TABLE,
-    )
-
-
-def _extract_violation_hours(key, cat, all_families, baselines):
-    return extract_violation_hours(
-        key=key,
-        cat=cat,
-        all_families=all_families,
-        baselines=baselines,
-        per_seed_table=PER_SEED_TABLE,
-    )
+# Canonical data access delegates (reuse load_results.py directly)
+load_baselines = _load_baselines
+_extract_metric_row = extract_metric_row
+_extract_violation_hours = extract_violation_hours
 
 
 # ===========================================================================
@@ -1521,7 +1465,9 @@ def fig_w49_dispatch_trajectory(out_dir: str = None):
 
         w49_start_idx = 3360
         ep_len = 168
-        env = SmartGridEnv(load_config_with_base())
+        cfg = load_config_with_base("configs/config.yaml")
+        cfg.update({"split": "test", "charge_clamp": True})
+        env = SmartGridEnv(cfg)
         hours = np.arange(ep_len)
 
         # Baseline trajectories
@@ -1536,7 +1482,7 @@ def fig_w49_dispatch_trajectory(out_dir: str = None):
 
         obs, _ = env.reset(options={"start_idx": w49_start_idx})
         hist_psm = {"grid_import": [], "soc": []}
-        pol_psm = PeakShaveMinPolicy(env.unwrapped)
+        pol_psm = PeakShaveMinPolicy({"cap_kw": env.grid_import_cap_kw})
         for _ in range(ep_len):
             act = pol_psm.get_action(obs)
             obs, _, _, _, info = env.step(act)

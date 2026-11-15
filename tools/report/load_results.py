@@ -21,6 +21,37 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TABLES = os.path.join(ROOT, "results", "tables")
 RUNS = os.path.join(ROOT, "results", "runs")
 
+# Canonical G2 cost multiplier: 1.05x PSM' Val cost (58,306.73 EUR)
+DEFAULT_G2_COST_MULTIPLIER: float = 1.05
+
+
+def compute_g2_cost_gate(
+    psm_cost_eur: Optional[float] = None,
+    multiplier: float = DEFAULT_G2_COST_MULTIPLIER,
+) -> float:
+    """Compute canonical G2 cost gate threshold in EUR.
+
+    G2 represents the maximum allowable cost for a safe RL policy to beat or
+    remain competitive with PSM'. By benchmark specification (and project notes),
+    the canonical G2 gate is set to 1.05 * PSM' Val cost (58,306.73 EUR), providing
+    a 5% margin over the tuned heuristic comparator.
+
+    Args:
+        psm_cost_eur: Optional PSM' validation cost. If None, resolved dynamically
+            from frozen_baselines.csv (or 55,530.22 EUR fallback).
+        multiplier: Cost threshold multiplier (default: 1.05).
+
+    Returns:
+        Canonical G2 cost gate in EUR.
+    """
+    if psm_cost_eur is None:
+        baselines = load_baselines()
+        if "PSM'" in baselines and baselines["PSM'"].get("cost_eur"):
+            psm_cost_eur = float(baselines["PSM'"]["cost_eur"])
+        else:
+            psm_cost_eur = 55530.22
+    return round(float(multiplier) * float(psm_cost_eur), 2)
+
 
 def load_project_constants() -> Dict[str, float]:
     """Load evaluation gates and physical constants from results/tables/project_constants.csv."""
@@ -36,7 +67,7 @@ def load_project_constants() -> Dict[str, float]:
                     continue
 
     exceedance_gate_kw = constants.get("d_main_kw_per_step", 0.05)
-    cost_gate_eur = constants.get("g2_cost_eur", 58306.73)
+    cost_gate_eur = compute_g2_cost_gate(multiplier=DEFAULT_G2_COST_MULTIPLIER)
     cap_kw = constants.get("grid_import_cap_kw", 368.15)
     wear_cost_per_kwh = constants.get("w_wear_eur_kwh", 0.02)
     wear_cost_per_mwh = wear_cost_per_kwh * 1000.0
@@ -44,6 +75,7 @@ def load_project_constants() -> Dict[str, float]:
     return {
         "g1_exceedance_kw": exceedance_gate_kw,
         "g2_cost_eur": cost_gate_eur,
+        "g2_cost_multiplier": DEFAULT_G2_COST_MULTIPLIER,
         "contract_cap_kw": cap_kw,
         "wear_cost_per_mwh": wear_cost_per_mwh,
         "lp_prime_val_eur": constants.get("lp_prime_val_eur", 53290.51),
