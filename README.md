@@ -10,11 +10,12 @@ Real-time microgrid energy management requires balancing electricity acquisition
 
 This repository provides an empirical benchmark evaluating continuous-action safe reinforcement learning paradigms on an urban microgrid with a 500 kWh / 250 kW battery energy storage system (BESS), 250 kW peak rooftop photovoltaic (PV) generation, and five heterogeneous demand zones. Under a contractual grid-import limit of $P_{\text{cap}} = 368.15\,\text{kW}$ (the 90th percentile of unmanaged net facility demand), we evaluate unconstrained Proximal Policy Optimization (PPO), dual-Lagrangian PPO, residual policy learning, post-hoc environmental safety shielding, and in-the-loop differentiable safety layers against a tuned domain heuristic (Peak-Shave-Minimum, PSM'), an exact continuous linear programming hindsight oracle (LP'), and an exact mixed-integer hindsight oracle (MILP' via HiGHS). Evaluations span 104 weeks of training (2017–2018), 26 weeks of validation (H1 2019, 4,368 h), and 24 weeks of locked out-of-sample testing (H2 2019, 4,032 h) across 5 independent random seeds.
 
-The empirical analysis establishes four core quantitative conclusions:
-1. **Unconstrained and dual-Lagrangian PPO fail to maintain grid feasibility**, incurring between 225 and 468 violation hours per semester with up to 3.26 kW mean exceedance. In full-batch updates, Lagrangian optimization experiences credit assignment collapse (zero load shedding despite multiplier ascent to $\lambda \to 5.3$); in minibatch updates, dual multiplier overshoot induces excessive defensive over-shedding (€24,173 in unserved energy penalties; €70,040 total cost) while still permitting 1.01 kW mean exceedance.
-2. **Residual policy learning passes soft mean-magnitude constraint thresholds via an empirical loophole**, distributing low-magnitude overruns across 437 operating hours (10.0% of the semester) rather than preserving feasibility, while under-shedding critically during acute demand surges.
-3. **Post-hoc environmental shielding induces an acute "battery parking" moral hazard under full-batch policy gradients**: downstream safety overrides absorb constraint handling, causing the policy network to park the battery at its maximum state-of-charge ceiling (4.1% active cycling time, 5.47 MWh throughput), incurring €14,227.17 in unserved load penalties and matching a zero-battery control baseline to the cent.
-4. **In-the-loop differentiable safety projections resolve the gradient disconnect**, achieving the lowest safe operating cost among all RL methods (€58,473.79 ± €1,180.66 on validation, satisfying the canonical $G_2 \le 1.05 \times \text{PSM'}$ economic gate on Seed 101 at €56,411.62), activating battery throughput (81.70 MWh, 39.6% active cycling), and reducing unserved load penalties to €12,336.49 while guaranteeing zero constraint violations.
+The empirical analysis establishes five core quantitative conclusions:
+1. **Unconstrained and dual-Lagrangian PPO fail to maintain grid feasibility**, incurring between 238 and 475 violation hours per semester with up to 3.35 kW mean exceedance. In full-batch updates, Lagrangian optimization experiences credit assignment collapse (zero load shedding despite multiplier ascent to $\lambda \to 5.3$); in minibatch updates (`clamped_mb_ppo_lagrangian`), dual multiplier overshoot induces excessive defensive over-shedding (€19,078.03 in unserved energy penalties; €64,380.18 total cost) while still permitting 1.12 kW mean exceedance across 238.2 hours.
+2. **Residual policy learning passes soft mean-magnitude thresholds via an empirical loophole** or leaks peaks, distributing low-magnitude overruns across 232.0–382.6 operating hours per semester (5.3%–8.8% of the semester) while under-shedding critically during acute demand surges.
+3. **Post-hoc environmental shielding induces an acute "battery parking" moral hazard under full-batch policy gradients**: downstream safety overrides absorb constraint handling, causing the policy network to park the battery near its state-of-charge ceiling (3.97% active cycling time, 6.05 MWh throughput), incurring €14,192.95 in unserved load penalties and nearly matching a zero-battery control baseline (€58,644.70 vs. €58,885.36).
+4. **In-the-loop differentiable safety projections resolve the gradient disconnect**, and fixing the active-manifold zero-gradient bug (Straight-Through Estimator surrogate in T3) plus PPO truncation/bootstrap handling (T2) directly improved `clamped_ppo_diff_shield` Validation cost from **€58,473.79 ± €1,180.66** (`v0-prototype`) to **€56,273.79 ± €1,344.69 (`final`) / €55,665.01 ± €1,216.06 (`best`)** with **0.00% violations**. Mean performance passes the canonical $G_2 \le 1.05 \times \text{PSM'}$ gate (€58,306.73), 4/5 `final` seeds and 5/5 `best` seeds pass $G_2$, Seed 101 reaches **€54,766.30** (beating `PSM'` at €55,530.22), and execution takes **0.78 ms P50** (~4.5× faster than causal LP-MPC at 3.52 ms).
+5. **Generalization to C&I tariffs (Regime 2) and OOD contingencies (2019-W04):** Under weekly peak demand charges, heterogeneous zone VoLL, and industrial trip penalties, `ci_ppo_diff_shield` (€69,743.43 ± €642.45, 0.00% violations) outperforms both `PSM'` (€70,370.73) and `ci_ppo_shielded` (€70,581.07). Under 2019-W04 OOD contingencies (`forecast_noise`, `bess_derate`, `grid_cap_reduction`), `clamped_ppo_diff_shield` maintains **0.00% violations** across all perturbations and achieves lower cost (€8,000.03, $\text{CVaR}_{0.95}$ €120.42) than both `MPCPolicy(causal_noisy)` (€10,136.42, 8.33% viol) and `PSM'` (€8,110.55, 11.31% viol) under forecast noise.
 
 ---
 
@@ -234,15 +235,15 @@ To investigate constraint enforcement in continuous action spaces ($\mathcal{A} 
      b) **Hard SoC Envelopes:** Analytical projection boundaries directly enforcing $\text{SoC} \in [\text{SoC}_{\text{min}}, \text{SoC}_{\text{max}}] = [0.10, 0.90]$.
      c) **Joint 6-D KKT QP Projection:** Formulates the full 6-dimensional Quadratic Program over battery dispatch and 5-zone load shedding with exact KKT dual multipliers and full-rank Jacobian backpropagation.
      d) **Distribution Consistency:** `SafePolicyNetwork` evaluates action log-probabilities using raw outputs (`forward_raw`), eliminating double-projection distortions.
-   - *Provenance Note:* The committed CSVs and JSON runs in `results/` record the historical `v0-prototype` 300k runs; retraining under the upgraded T1–T7 codebase represents designated future work.
+   - *Provenance Note:* All 80 post-fix Regime 1 & Regime 2 runs (`clamped_*`, `clamped_mb_*`, `clamped_ppo_diff_shield`, `clamped_ppo_shield_aux`, `causal23_*`, `ci_*`) were executed and evaluated on Validation (`results/tables/per_seed_metrics.csv`, `runs.csv`, `regime_benchmarks_val.csv`). Only the legacy unclamped `s3_*` runs (20 runs) and the locked one-shot Test tables (`results/tables/test_evaluation.csv`, `test_stress_weeks.csv`, `results/runs/test_lock.json`) retain the historical `v0-prototype` snapshot.
 
-6. **Post-Snapshot Codebase Upgrades (Tasks T1–T7):**
-   Beyond the T3 safety layer overhaul, tasks T1–T7 introduced structural upgrades across the repository:
+6. **Post-Snapshot Codebase & Benchmark Upgrades (Tasks T1–T13):**
+   Beyond the T3 safety layer overhaul, tasks T1–T13 introduced structural upgrades and new experimental regimes across the repository:
    - **T1 (`env/cap_shield.py`):** Inverted relu/deadzone shed mappings, re-clamped positive battery charging to 0 on any shedding event to block post-blackout recharging, and safely guarded the 0.90 SoC ceiling against unintended trips.
    - **T2 (`agents/ppo.py`, `experiments/train_core.py`):** Reused denormalized value and cost-value estimates for bootstrap returns, and properly zeroed GAE advantages across episode truncations.
    - **T5 (`tools/report/lp_oracle.py`, `load_results.py`):** Added exact Mixed-Integer Linear Programming (`solve_week_milp`, `MILP'`) enforcing the non-convex binary motor shutdown constraint, and centralized the canonical 1.05x G2 gate helper (58,306.73 EUR).
-   - **T6 (`agents/mpc.py`):** Implemented causal receding-horizon `MPCPolicy` supporting both LP and MILP formulations under perfect and persistence forecasts with per-step solver latency tracking.
-   - **T7 (`tools/report/evaluate_test_split.py`):** Added $\text{CVaR}_{0.95}$ tail-risk metrics, max consecutive breach hours, per-step solve latency tracking, and 4 non-destructive out-of-distribution (OOD) stress contingencies (`forecast_noise`, `pv_inverter_trip`, `bess_derate`, `grid_cap_reduction`).
+   - **T6 & T9–T10 (`env/smartgrid_env.py`, `agents/mpc.py`, `tools/report/lp_oracle.py`):** Added Regime 1 asymmetric causal forecasts (`oracle` / `causal_noisy` / `persistence` with exact D-1 day-ahead prices), Regime 2 C&I tariffs (telescoping weekly peak demand charge, heterogeneous zone VoLL, industrial trip switching penalty), and full Regime 2 parity in `MPCPolicy` and `LP'`/`MILP'`.
+   - **T7 & T11–T13 (`configs/config.yaml`, `tools/report/evaluate_test_split.py`, `eval_regimes_val.py`):** Added $\text{CVaR}_{0.95}$ tail-risk metrics, per-step latency tracking, 4 OOD contingencies, 80 post-fix 300k-step RL runs (`T12`), and unified Regime 1 / Regime 2 / 2019-W04 OOD Validation benchmarking (`T13`).
 
 ---
 
@@ -267,7 +268,7 @@ A documented distribution shift exists between the Validation and Test splits:
 
 Standard meteorological stress criteria—lowest solar irradiance (W48), highest electricity price (W45), highest temperature (W30), and lowest barometric pressure (W51)—fail to bind the microgrid capacity constraint. On each of these four weather weeks, total net site demand remains strictly below 368.15 kW, meaning even the unmanaged Grid-Only baseline incurs exactly 0.00 kW exceedance and 0 violation hours.
 
-Isolating true capacity stress requires evaluating controllers on the **cap-binding peak-exceedance week: Week 49 (2019-W49, December 2–8, 2019)**:
+Isolating true capacity stress requires evaluating controllers on the **cap-binding peak-exceedance week: Week 49 (2019-W49, December 2–8, 2019)** from the locked `v0-prototype` Test snapshot (`results/tables/test_stress_weeks.csv`):
 - **Net Demand Surge:** Peak site demand reaches **426.32 kW**, producing an acute **58.17 kW overrun** above $P_{\text{cap}}$ across 66 operating hours.
 - **Controller Performance Breakdown on W49 (168 Operating Hours):**
 
@@ -305,9 +306,9 @@ We evaluate three systematic PPO formulations across 5 independent random seeds 
 
 | PPO Formulation | Total Cost (€) | Grid Purchases (€) | Battery Wear (€) | Unserved Penalty (€) | Throughput (MWh) | Active SoC (%) | Mean Exceedance (kW) | Violation Hours | Violation Rate (%) |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| **`PPO [Full-Batch]`** | 45,517.31 ± 198 | 45,390.94 | 126.37 | 0.00 | 6.32 | 21.4% | 3.24 | 466.0h | 10.7% |
-| **`PPO [Mini-Batch]`** | 45,513.38 ± 192 | 45,406.63 | 106.75 | 0.00 | 5.34 | 7.0% | 3.35 | 475.4h | 10.9% |
-| **`PPO [Clamped Minibatch]` (★ Best PPO)** | **48,760.55 ± 1083** | 45,026.23 | **991.40** | **2,742.92** | **49.57** | **34.1%** | **2.92** | **430.2h** | **9.8%** |
+| **`PPO [Full-Batch]` (`clamped_ppo`, T12)** | 45,415.58 ± 177 | 45,312.51 | 103.07 | 0.00 | 5.15 | 3.8% | 3.2420 | 465.8h | 10.66% |
+| **`PPO [Unclamped]` (`s3_ppo`, `v0-prototype`)** | 45,513.38 ± 192 | 45,406.63 | 106.75 | 0.00 | 5.34 | 7.0% | 3.3497 | 475.4h | 10.88% |
+| **`PPO [Clamped Minibatch]` (`clamped_mb_ppo`, ★ Best PPO, T12)** | **47,354.23 ± 378** | 45,308.74 | **506.46** | **1,539.02** | **25.32** | **16.8%** | **3.0970** | **450.4h** | **10.31%** |
 
 ![PPO Ablation Cost Comparison](results/figures/study1_ppo_ablation/cost.png)
 
@@ -319,7 +320,7 @@ We evaluate three systematic PPO formulations across 5 independent random seeds 
 
 #### Why `clamped_mb_ppo` is the Best-Performing Unconstrained PPO Baseline
 
-1. **Escaping the Passive "Battery Parking" Trap:** In full-batch updates (`clamped_ppo` and `unclamped_ppo`), sparse reward signals averaged over 168-hour weekly trajectories dilute gradient feedback. The policy network collapses into a near-zero dispatch saddle point, cycling storage for only 5.3–6.3 MWh over the entire semester (7.0% to 21.4% active SoC) and executing zero load shedding. Switching to minibatch optimization (`clamped_mb_ppo`) provides frequent, localized stochastic gradient steps, increasing battery throughput eightfold to **49.57 MWh** (34.1% active cycling) and actively deploying stored energy to shave net demand peaks.
+1. **Escaping the Passive "Battery Parking" Trap:** In full-batch updates (`clamped_ppo` and `s3_ppo`), sparse reward signals averaged over 168-hour weekly trajectories dilute gradient feedback. The policy network collapses into a near-zero dispatch saddle point, cycling storage for only 5.15–5.34 MWh over the entire semester (3.8% to 7.0% active SoC) and executing zero load shedding. Switching to minibatch optimization (`clamped_mb_ppo`) provides frequent, localized stochastic gradient steps, increasing battery throughput nearly fivefold to **25.32 MWh** (16.8% active cycling) and actively deploying stored energy to shave net demand peaks.
 2. **Representative Baseline Selection:** Consequently, `clamped_mb_ppo` represents the optimal unconstrained learning policy, escaping algorithmic stagnation while maintaining true unconstrained behavior, and serves as the benchmark comparator in Phase 2.
 ---
 
@@ -330,32 +331,35 @@ In Phase 2, the best unconstrained PPO baseline (`PPO [Clamped Minibatch]`) is c
 - **Unconstrained Representative:** `PPO [Clamped Minibatch]`.
 - **Safe RL Architectures:** `PPO-Lagrangian [Clamped MB]`, `PPO-Residual [Clamped Full-Batch]`, `Shielded PPO [Clamped Full-Batch]`, `Shielded PPO [Clamped Minibatch]`, `PPO-Aux-Shield` (auxiliary shield loss), and `PPO-Diff-Shield` (differentiable safety layer).
 
-#### 1. Economical Angle: Total Expenditure & Cost Composition
+#### 1. Economical Angle: Total Expenditure & Cost Composition (Regime 1 Val, Post-Fix T12 Runs)
 
-The economic objective evaluates total operational expenditure alongside its three physical constituents: energy purchase from the transmission grid, cell wear degradation (€20/MWh), and customer curtailment penalties (VoLL = €1,000/MWh):
+The economic objective evaluates total operational expenditure alongside its three physical constituents: energy purchase from the transmission grid, cell wear degradation (€20/MWh), and customer curtailment penalties (VoLL = €1,000/MWh). Table values match `results/tables/per_seed_metrics.csv` and `results/tables/frozen_baselines.csv`:
 
 | Controller Architecture | Total Cost (€) | Grid Energy Purchase (€) | Battery Degradation Wear (€) | Unserved Load Penalty (€) | Economic Feasibility ($G_2 \le 58,307$ €) |
 |---|---:|---:|---:|---:|:---:|
-| **LP' Theoretical Oracle** | *53,290.51* | *44,192.97* | *436.73* | *8,660.86* | Theoretical Bound |
+| **LP' / MILP' Theoretical Oracle** | *53,290.51* | *44,192.97* | *436.73* | *8,660.86* | Theoretical Bound |
 | **Peak-Shave-Minimum (PSM')** | *55,530.22* | *44,658.60* | *246.95* | *10,624.67* | **Passed** |
 | **Shield + PSM'** | *55,500.35* | *44,660.23* | *246.95* | *10,593.17* | **Passed** |
 | **Grid-Only (Unmanaged Baseline)** | *45,337.92* | *45,337.92* | *0.00* | *0.00* | Invalid (Safety Violations) |
-| **PPO [Clamped Minibatch] (Best PPO)**| 48,760.55 ± 1083 | 45,026.23 | 991.40 | 2,742.92 | Invalid (Safety Violations) |
-| **PPO-Residual [Clamped Full-Batch]**| 54,570.55 ± 1085 | 44,733.62 | 254.96 | 9,581.96 | Invalid (Safety Violations) |
-| **PPO-Diff-Shield (Diff. Safety Layer)**| **58,473.79 ± 1179** | 44,503.20 | 1,634.09 | **12,336.49** | **Passed on Seed 101** |
-| **Shield + Idle (Zero-Battery Control)**| *58,644.70* | *44,417.53* | *0.00* | *14,227.17* | Marginal |
-| **Shielded PPO [Clamped Full-Batch]** | 58,910.05 ± 11 | 44,573.41 | 109.47 | 14,227.17 | Exceeds Gate by 1.0% |
-| **Shielded PPO [Clamped Minibatch]**  | 59,526.37 ± 894 | 44,443.81 | 2,029.18 | 13,053.38 | Exceeds Gate by 2.1% |
-| **PPO-Aux-Shield (Aux. Shield Loss)**| 59,975.43 ± 431 | 44,243.45 | 1,648.43 | 14,083.55 | Exceeds Gate by 2.9% |
-| **PPO-Lagrangian [Clamped Minibatch]**| 70,040.15 ± 8326 | 44,232.45 | 1,634.95 | 24,172.75 | Exceeds Gate by 20.1% |
+| **PPO [Clamped Minibatch] (`clamped_mb_ppo`)** | 47,354.23 ± 378 | 45,308.74 | 506.46 | 1,539.02 | Invalid (Safety Violations) |
+| **PPO-Residual [Clamped FB] (`clamped_ppo_residual`)** | 53,690.69 ± 1,521 | 44,820.66 | 280.33 | 8,589.71 | Invalid (Safety Violations) |
+| **PPO-Diff-Shield (`clamped_ppo_diff_shield`, `best` ckpt)** | **55,665.01 ± 1,216** | 44,560.99 | 942.24 | **10,161.78** | **Passed (Mean + 5/5 Seeds; 4/5 < PSM')** |
+| **PPO-Diff-Shield (`clamped_ppo_diff_shield`, `final` ckpt)** | **56,273.79 ± 1,345** | 44,461.46 | 1,203.34 | **10,608.98** | **Passed (Mean + 4/5 Seeds; Seed 101 < PSM')** |
+| **PPO-Residual [Clamped MB] (`clamped_mb_ppo_residual`)** | 57,711.61 ± 1,370 | 44,600.46 | 451.02 | 12,660.13 | Invalid (Safety Violations) |
+| **Shield + Idle (Zero-Battery Control)** | *58,644.70* | *44,417.53* | *0.00* | *14,227.17* | Exceeds Gate by 0.6% |
+| **Shielded PPO [Clamped FB] (`clamped_ppo_shielded`)** | 58,885.36 ± 45 | 44,571.36 | 121.04 | 14,192.95 | Exceeds Gate by 1.0% |
+| **Shielded PPO [Clamped MB] (`clamped_mb_ppo_shielded`)** | 58,987.41 ± 711 | 44,544.10 | 1,160.01 | 13,283.30 | Exceeds Gate by 1.2% |
+| **PPO-Aux-Shield (`clamped_ppo_shield_aux`)** | 59,481.95 ± 329 | 44,300.20 | 1,275.06 | 13,906.70 | Exceeds Gate by 2.0% |
+| **PPO-Lagrangian [Clamped MB] (`clamped_mb_ppo_lagrangian`)** | 64,380.18 ± 5,271 | 44,276.07 | 1,026.08 | 19,078.03 | Exceeds Gate by 10.4% |
 
 ![Economic Cost Breakdown — Capped Benchmark](results/figures/study2_capped_ppo/cost.png)
 
 ![Unserved Load Breakdown — Capped Benchmark](results/figures/study2_capped_ppo/unserved_load.png)
 
-**Key Economic Findings:**
-- **The 50:1 Asymmetry Dictates Cost:** Load curtailment at €1,000/MWh dominates total expenditure whenever safety constraints bind. PPO-Diff-Shield achieves the lowest safe cost among all RL methods (mean €58,473.79 ± €1,179.26) by curbing unserved load penalties to €12,336.49 (€716.89 lower than Minibatch Shielded PPO and €1,890.68 lower than Full-Batch Shielded PPO). Seed 101 achieves €56,411.62, satisfying the canonical $G_2 \le 1.05 \times \text{PSM'}$ economic gate (€58,306.73 as defined in `tools/report/load_results.py`). Note that against the early 1.00x PSM' gate in `project_constants.csv` (€55,530.22), zero RL seeds pass; the canonical 1.05x gate provides an engineering tolerance for safe learning.
-- **Lagrangian Economic Breakdown:** In minibatch Lagrangian optimization, multiplier instability triggers excessive defensive over-shedding (€24,172.75 in unserved penalties), inflating total operating costs to €70,040.15 while still failing safety.
+**Key Economic Findings (Direct Empirical Proof of T1–T3 Fixes):**
+- **T2 + T3 Fixes Unlock G2 Gate Compliance:** In `v0-prototype` (before fixing `DifferentiableSafetyLayer`'s zero active gradient and PPO truncation/bootstrap bugs), `clamped_ppo_diff_shield` averaged **€58,473.79 ± €1,180.66** on Validation (failing the canonical $1.05 \times \text{PSM'}$ G2 gate of €58,306.73 on mean, with only Seed 101 passing at €56,411.62). After the T1–T3 fixes (`T12` runs), `clamped_ppo_diff_shield` drops by **€2,200/semester** to **€56,273.79 ± €1,344.69 (`final`)** and **€55,665.01 ± €1,216.06 (`best`)**, comfortably passing the G2 gate (€58,306.73) on mean (`final` and `best`), 4/5 `final` seeds (€54,766.30, €56,179.43, €55,964.00, €55,999.11; Seed 105 is €58,460.09 `final` / €57,799.05 `best`), and 5/5 `best` seeds. Remarkably, Seed 101 (`final`: **€54,766.30**) and 4/5 `best` checkpoints (Seeds 101–104: €54,766.30 to €55,417.22) outperform even the strict 1.00× `PSM'` heuristic (**€55,530.22**).
+- **The 50:1 Asymmetry Dictates Cost:** `clamped_ppo_diff_shield` cuts unserved load penalties from €12,336.49 (`v0-prototype`) down to **€10,608.98 (`final`) / €10,161.78 (`best`)**, beating `PSM'` (€10,624.67) and saving €2,674.32–€3,583.97 compared to post-hoc `Shielded PPO` variants.
+- **Lagrangian Economic Breakdown:** In minibatch Lagrangian optimization, multiplier instability triggers excessive defensive over-shedding (€19,078.03 in unserved penalties), inflating total operating costs to €64,380.18 while still failing safety.
 
 #### 2. Battery Dynamics & Asset Utilization Angle
 
@@ -363,18 +367,18 @@ Storage asset utilization quantifies total throughput dispatched, active cycling
 
 | Controller Architecture | Battery Energy Throughput (MWh) | Active Unpinned SoC Time (%) | Battery Wear Degradation (€) | Operating Regime / Asset Diagnosis |
 |---|---:|---:|---:|---|
-| **LP' Theoretical Oracle** | 24.99 | 85.0% | 436.73 | Global Multi-Day Arbitrage Bound |
+| **LP' Theoretical Oracle** (`frozen_baselines.csv` / `regime_benchmarks_val.csv`) | 24.99 / 21.84 | 85.0% / 38.0% | 436.73 | Global Multi-Day Arbitrage Bound |
 | **Peak-Shave-Minimum (PSM')** | 12.35 | 11.2% | 246.95 | Targeted Peak Shaving |
 | **Shield + PSM'** | 12.35 | 11.2% | 246.95 | Targeted Peak Shaving |
 | **Grid-Only (Unmanaged Baseline)** | 0.00 | 0.0% | 0.00 | Complete Inaction |
 | **Shield + Idle (Zero-Battery Control)**| 0.00 | 0.0% | 0.00 | Zero Battery Utilization |
-| **PPO [Clamped Minibatch] (Best PPO)**| 49.57 | 34.1% | 991.40 | Active Unconstrained Arbitrage |
-| **Shielded PPO [Clamped Full-Batch]** | 5.47 | 4.1% | 109.47 | **"Battery Parking" Moral Hazard** |
-| **PPO-Residual [Clamped Full-Batch]** | 12.75 | 15.1% | 254.96 | Anchored Base Perturbation |
-| **PPO-Diff-Shield (Diff. Safety Layer)**| **81.70** | **39.6%** | **1,634.09** | **Optimal Coordinated Safe Dispatch** |
-| **PPO-Aux-Shield (Aux. Shield Loss)** | 82.42 | 29.7% | 1,648.43 | Active Learning with Shield Signal |
-| **PPO-Lagrangian [Clamped Minibatch]**| 81.75 | 58.0% | 1,634.95 | Multiplier Churn with Over-Shedding |
-| **Shielded PPO [Clamped Minibatch]**  | 101.46 | 42.0% | 2,029.18 | **"High Churn" / High Wear** |
+| **PPO [Clamped Minibatch] (`clamped_mb_ppo`)** | 25.32 | 16.8% | 506.46 | Active Unconstrained Arbitrage |
+| **Shielded PPO [Clamped Full-Batch]** | 6.05 | 4.0% | 121.04 | **"Battery Parking" Moral Hazard** |
+| **PPO-Residual [Clamped Full-Batch]** | 14.02 | 16.5% | 280.33 | Anchored Base Perturbation |
+| **PPO-Diff-Shield (`final` / `best`)** | **60.17 / 47.11** | **31.2% / 32.7%** | **1,203.34 / 942.24** | **Optimal Coordinated Safe Dispatch** |
+| **PPO-Aux-Shield (Aux. Shield Loss)** | 63.75 | 24.4% | 1,275.06 | Active Learning with Shield Signal |
+| **PPO-Lagrangian [Clamped Minibatch]** | 51.30 | 39.6% | 1,026.08 | Multiplier Churn with Over-Shedding |
+| **Shielded PPO [Clamped Minibatch]** | 58.00 | 29.2% | 1,160.01 | Active Cycling with Higher Unserved Cost |
 
 ![Battery Energy Throughput — Capped Benchmark](results/figures/study2_capped_ppo/battery/throughput.png)
 
@@ -383,31 +387,110 @@ Storage asset utilization quantifies total throughput dispatched, active cycling
 ![Validation Pareto Frontier — Cost vs Exceedance](results/figures/study3_stress_pareto/pareto.png)
 
 **Key Asset Utilization Findings:**
-- **The "Battery Parking" Pathology:** Under full-batch policy gradients (`clamped_ppo_shielded`), downstream safety shielding absorbs constraint enforcement. The actor network learns that idling the battery saves wear costs (€0.02/kWh) while the shield curtails load, parking the battery at its ceiling for 95.9% of the time (4.1% active SoC, 5.47 MWh throughput) and matching the zero-battery `Shield + Idle` baseline to the cent (€14,227.17 unserved penalty).
-- **High Churn vs. Differentiable Stability:** Minibatch shielded PPO restores battery activity (101.46 MWh), but suffers from high churn and chattering wear (€2,029.18). PPO-Diff-Shield achieves the balanced dispatch frontier (81.70 MWh, 39.6% active SoC), delivering maximum peak shaving per kWh cycled without chattering wear.
+- **The "Battery Parking" Pathology:** Under full-batch policy gradients (`clamped_ppo_shielded`), downstream safety shielding absorbs constraint enforcement. The actor network learns that idling the battery saves wear costs (€0.02/kWh) while the shield curtails load, parking the battery at its ceiling for 96.0% of the time (4.0% active SoC, 6.05 MWh throughput) and incurring €14,192.95 in unserved penalties.
+- **Targeted Differentiable Dispatch:** Post-fix `clamped_ppo_diff_shield` reduces excess battery churn compared to `v0-prototype` (from 81.70 MWh down to 60.17 MWh `final` / 47.11 MWh `best`) while shifting cycling into high-value peak-shaving windows, cutting unserved penalties by €1,727.51 (`final`) to €2,174.71 (`best`).
 
 #### 3. Reliability & Safety Angle: Feasibility & Constraint Enforcement
 
-Safety evaluates compliance with the contractual import threshold ($P_{\text{cap}} = 368.15\text{ kW}$), comparing mean exceedance, violation hours, and curtailment rates across both validation (H1 2019) and locked test (H2 2019) splits:
+Safety evaluates compliance with the contractual import threshold ($P_{\text{cap}} = 368.15\text{ kW}$), comparing mean exceedance, violation hours, and curtailment rates on post-fix Validation (H1 2019, 4,368h) alongside the locked `v0-prototype` Test violation hours (H2 2019, 4,032h):
 
-| Controller Architecture | Unserved Energy (%) | Curtailment Penalty (€) | Val Violation Hours (4,368h) | Test Violation Hours (4,032h) | Mean Exceedance (kW) | Strict Feasible? |
+| Controller Architecture | Unserved Energy (%, Val) | Curtailment Penalty (€, Val) | Val Violation Hours (4,368h, T12) | Locked Test Viol. Hours (`v0-prototype`, 4,032h) | Mean Exceedance (kW, Val) | Strict Feasible? |
 |---|---:|---:|---:|---:|---:|:---:|
-| **LP' Theoretical Oracle** | 0.67% | 8,660.86 | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | Theoretical Benchmark |
+| **LP' / MILP' Theoretical Oracle** | 0.67% | 8,660.86 | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | Theoretical Benchmark |
 | **Peak-Shave-Minimum (PSM')** | 0.83% | 10,624.67 | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | **Strict Feasible** |
 | **Shield + PSM'** | 0.83% | 10,593.17 | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | **Strict Feasible** |
 | **Shield + Idle (Zero-Battery)** | 1.11% | 14,227.17 | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | **Strict Feasible** |
-| **PPO-Diff-Shield (Safety Layer)** | **0.96%** | **12,336.49** | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | **Strict Feasible (Best Safe RL)** |
-| **Shielded PPO [Clamped Full-Batch]** | 1.11% | 14,227.17 | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | **Strict Feasible (Parked)** |
-| **Shielded PPO [Clamped Minibatch]**  | 1.02% | 13,053.38 | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | **Strict Feasible** |
-| **PPO-Aux-Shield (Aux. Shield Loss)** | 1.10% | 14,083.55 | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | **Strict Feasible** |
-| **PPO-Residual [Clamped Full-Batch]** | 0.75% | 9,581.96 | 437.4h (10.0%) | 134.8h (3.3%) | 0.2360 | Fails (Soft Loophole) |
-| **PPO-Lagrangian [Clamped Minibatch]**| 1.88% | 24,172.75 | 228.4h (5.2%) | 58.5h (1.5%) | 1.0118 | Fails Feasibility |
-| **PPO [Clamped Minibatch] (Best PPO)**| 0.21% | 2,742.92 | 430.2h (9.8%) | 152.4h (3.8%) | 2.9160 | Fails Safety |
+| **PPO-Diff-Shield (`final` / `best`)** | **0.83% / 0.79%** | **10,608.98 / 10,161.78** | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | **Strict Feasible (Best Safe RL)** |
+| **Shielded PPO [Clamped Full-Batch]** | 1.10% | 14,192.95 | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | **Strict Feasible (Parked)** |
+| **Shielded PPO [Clamped Minibatch]** | 1.03% | 13,283.30 | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | **Strict Feasible** |
+| **PPO-Aux-Shield (Aux. Shield Loss)** | 1.08% | 13,906.70 | **0.0h (0.0%)** | **0.0h (0.0%)** | **0.0000** | **Strict Feasible** |
+| **PPO-Residual [Clamped FB]** | 0.67% | 8,589.71 | 382.6h (8.8%) | 134.8h (3.3%) | 0.5884 | Fails Safety |
+| **PPO-Residual [Clamped MB]** | 0.99% | 12,660.13 | 232.0h (5.3%) | 66.4h (1.6%) | 0.3997 | Fails Safety |
+| **PPO-Lagrangian [Clamped MB]** | 1.49% | 19,078.03 | 238.2h (5.5%) | 58.5h (1.5%) | 1.1167 | Fails Feasibility |
+| **PPO [Clamped Minibatch] (Best PPO)** | 0.12% | 1,539.02 | 450.4h (10.3%) | 132.2h (3.3%) | 3.0970 | Fails Safety |
 | **Grid-Only (Unmanaged Baseline)** | 0.00% | 0.00 | 468.0h (10.7%) | 153.0h (3.8%) | 3.2571 | Fails Safety |
 
 ![Grid Exceedance Across Benchmark Methods](results/figures/study2_capped_ppo/grid_exceedance.png)
 
 ![Stress Week Pareto Frontier](results/figures/study3_stress_pareto/stress_week_pareto.png)
+
+---
+
+### Regime 1: Causal Forecast & Control Baselines (`results/tables/regime_benchmarks_val.csv`)
+
+To place post-fix safe RL against realistic causal receding-horizon optimization (as well as hindsight oracles), [`tools/report/eval_regimes_val.py`](tools/report/eval_regimes_val.py) benchmarks `LP'`, `MILP'`, 24-hour `MPCPolicy` across `perfect`, `causal_noisy` (exact D-1 spot prices; $\sqrt{h/H}$-scaled clipped non-negative Gaussian noise on PV 15%, wind 20%, load 8%), and `persistence` forecasts, alongside 17-D `clamped_ppo_diff_shield` and 23-D causal-forecast `causal23_ppo_diff_shield` (6h `causal_noisy` lookahead) on the 26-week Validation Split:
+
+| Controller / Forecast Mode | Val Cost (€) | Mean Exc (kW) | Viol. Rate (%) | $\text{CVaR}_{0.95}$ Cost (€) | Throughput (MWh) | Active SoC (%) | Latency P50 / P99 (ms) | Notes |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| **`LP'` (Perfect Foresight, 168h)** | *53,290.51* | 0.0000 | 0.00% | — | 21.84 | 37.98% | — | Continuous hindsight bound |
+| **`MILP'` (Exact Motor Floor, 168h)** | *53,290.51* | 0.0000 | 0.00% | — | 21.84 | 37.96% | — | Exact binary industrial constraint |
+| **`MPCPolicy(perfect, H=24)`** | 53,404.83 | 0.0000 | 0.00% | 63.55 | 19.17 | 29.99% | 3.47 / 4.96 | Non-causal 24h oracle forecast |
+| **`MPCPolicy(causal_noisy, H=24)`** | 53,514.28 | 0.0000 | 0.00% | 63.90 | 19.78 | 33.63% | 3.52 / 5.62 | Causal noisy 24h forecast |
+| **`PSM'` (Domain Heuristic)** | 55,530.22 | 0.0000 | 0.00% | 68.49 | 12.35 | 11.20% | 0.03 / 0.05 | Myopic priority rules |
+| **`clamped_ppo_diff_shield` (`best`)** | **55,665.01 ± 1,216** | **0.0000** | **0.00%** | **66.73** | 47.11 | 32.66% | **0.77 / 1.40** | 4/5 seeds < `PSM'`; Seed 101 **€54,766.30** |
+| **`causal23_ppo_diff_shield` (`best`)** | **55,767.48 ± 1,201** | **0.0000** | **0.00%** | **66.67** | 56.17 | 32.08% | **0.78 / 0.89** | Seed 105 **€54,332.91** (< `PSM'`) |
+| **`clamped_ppo_diff_shield` (`final`)** | **56,273.79 ± 1,345** | **0.0000** | **0.00%** | **67.90** | 60.17 | 31.24% | **0.78 / 1.34** | ~4.5× faster than LP-MPC |
+| **`causal23_ppo_diff_shield` (`final`)** | 57,055.49 ± 1,621 | 0.0000 | 0.00% | 69.01 | 71.82 | 32.22% | 0.79 / 1.10 | Seed 102 €55,642.19 |
+| **`MPCPolicy(persistence, H=24)`** | 58,134.64 | 0.0000 | 0.00% | 73.98 | 4.83 | 97.21% | 3.35 / 5.64 | Naive persistence hurts MPC |
+| **`Grid-Only` (Unmanaged)** | 45,337.92 | 3.2571 | 10.71% | 29.20 | 0.00 | 100.00% | 0.002 / 0.004 | 468 violation hours |
+
+*(Additional 23-D causal configs in `results/tables/per_seed_metrics.csv`: `causal23_ppo_shielded` achieves €59,155.29 ± €565.27 with 0.00% violations, and `causal23_ppo_residual` incurs €58,570.21 ± €1,716.94 with 4.34% violations / 189.6h.)*
+
+**Takeaway:** While receding-horizon `MPCPolicy(causal_noisy, H=24)` achieves €53,514.28 when forecasts are well-calibrated, its performance degrades sharply under naive `persistence` forecasts (€58,134.64). Model-free `clamped_ppo_diff_shield` requires **no multi-step forecast model**, executes at **0.78 ms P50 (~4.5× faster than LP-MPC at 3.52 ms)**, beats `MPCPolicy(persistence, H=24)` by €1,860–€2,470, and matches or beats `PSM'` on best checkpoints (Seed 101 `€54,766.30`, `causal23` Seed 105 `€54,332.91`).
+
+---
+
+### Regime 2: C&I Demand-Charge & Zone-VoLL Ablation (`results/tables/regime_benchmarks_val.csv`)
+
+To evaluate controllers beyond uniform curtailment penalties, Regime 2 (`ci_*` in [`configs/config.yaml`](configs/config.yaml)) introduces realistic commercial & industrial (C&I) tariff structures over the 26-week Validation Split:
+- **Weekly Peak Demand Charge:** `2.333333 EUR/kW-week` (prorated from `~10 EUR/kW-month`) charged via telescoping weekly peak increments (`cost_demand_charge_eur`).
+- **Heterogeneous Zone VoLL (`EUR/kWh`):** `industrial: 3.0`, `residential: 1.5`, `commercial: 1.2`, `stadium: 0.4`, `street: 0.2`.
+- **Industrial Trip Switching Penalty:** `50.0 EUR` incurred whenever industrial curtailment crosses the 30% motor-shutdown threshold from a non-tripped state.
+- **Causal Noisy Forecasts:** `state_dim: 23`, `forecast_horizon_hours: 6`, `forecast_mode: causal_noisy`.
+
+| Controller (Regime 2 Val, 26 Weeks) | Total Cost (€) | Energy (€) | Wear (€) | Unserved (€) | Demand Charge (€) | Trip (€) | Mean Exc (kW) | Viol. Rate (%) | Latency P50 (ms) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **`LP'` (Hindsight Bound)** | *64,513.29* | 44,192.08 | 1,252.28 | 1,957.80 | 17,111.13 | 0.00 | 0.0000 | 0.00% | — |
+| **`MILP'` (Exact Motor Floor)** | *64,513.29* | 44,192.08 | 1,252.28 | 1,957.80 | 17,111.13 | 0.00 | 0.0000 | 0.00% | — |
+| **`MPCPolicy(causal_noisy, H=24)`** | 65,250.30 | 44,138.11 | 1,574.31 | 2,454.95 | 17,082.94 | 0.00 | 0.0000 | 0.00% | 3.93 |
+| **`MPCPolicy(perfect, H=24)`** | 65,472.28 | 44,079.45 | 1,710.26 | 2,852.75 | 16,829.82 | 0.00 | 0.0000 | 0.00% | 3.80 |
+| **`Grid-Only` (Unmanaged)** | *66,095.86* | 45,337.92 | 0.00 | 0.00 | 20,757.94 | 0.00 | 3.2571 | 10.71% | 0.002 |
+| **`ci_ppo_diff_shield` (1-D + `CapShield`)** | **69,743.43 ± 642** | 44,342.10 | 436.44 | 4,856.84 | 20,108.05 | 0.00 | **0.0000** | **0.00%** | **0.88** |
+| **`PSM'` (Domain Heuristic)** | 70,370.73 | 44,658.60 | 246.95 | 3,960.34 | 21,504.84 | 0.00 | 0.0000 | 0.00% | 0.03 |
+| **`ci_ppo_shielded` (Post-Hoc Shield)** | 70,581.07 ± 606 | 44,437.42 | 654.80 | 4,894.68 | 20,594.16 | 0.00 | **0.0000** | **0.00%** | 0.17 |
+| **`ci_ppo_diff_6d` (6-D QP, No `CapShield`)** | 81,822.34 ± 2,162 | 44,219.05 | 292.28 | 17,372.78 | 19,938.23 | 0.00 | 0.3654 | 8.80% | 1.17 |
+
+**Key Regime 2 Insights:**
+- **`ci_ppo_diff_shield` Beats Both `PSM'` and `ci_ppo_shielded`:** Under C&I tariffs, `ci_ppo_diff_shield` achieves **€69,743.43 ± €642.45** with **0.00% violations** and **€0.00 industrial trip penalties**, outperforming `PSM'` (€70,370.73, primarily by shaving €1,396.79 off peak demand charges: €20,108.05 vs. €21,504.84) and `ci_ppo_shielded` (€70,581.07 ± €605.99).
+- **Honest Ablation (`ci_ppo_diff_6d`) — Why Post-QP `CapShield` Guard Remains Essential:** Running the 6-D continuous KKT QP projection (`ci_ppo_diff_6d`) *without* the outer `CapShield` wrapper degrades cost to **€81,822.34 ± €2,161.72** and leaks **8.80% violations (384.4h, 0.3654 kW mean exc, 17.68 kW max hourly exc)**. Because the continuous QP relaxes the non-convex industrial motor threshold ($u_{\text{ind}} \in \{0\} \cup [0.70, 1.00]$) and `SmartGridEnv` snaps disallowed intermediate industrial commands back to feasible boundaries, a continuous 6-D QP alone cannot guarantee discrete motor feasibility—confirming that co-designing the differentiable safety layer with a discrete-aware post-QP `CapShield` guard is indispensable.
+
+---
+
+### 2019-W04 OOD Contingency & Tail-Risk Suite (`results/tables/regime_benchmarks_val.csv`)
+
+To test robustness beyond nominal Validation profiles, [`tools/report/eval_regimes_val.py`](tools/report/eval_regimes_val.py) evaluates `PSM'`, `MPCPolicy(causal_noisy, H=24)`, and `clamped_ppo_diff_shield` (Seed 101, `final`) on the representative cap-binding Validation week **2019-W04** across four non-destructive out-of-distribution (OOD) contingencies (`evaluate_ood_stress_suite`):
+
+| Contingency (2019-W04, 168h) | Controller | Cost (€) | $\text{CVaR}_{0.95}$ Cost (€) | Mean / Max Exc (kW) | Viol. Rate (%) / Hours | Shield Rate | Latency P50 / P99 (ms) |
+|---|---|---:|---:|---:|---:|---:|---:|
+| **`nominal`** | `PSM'` | 8,115.88 | 120.46 | 0.0000 / 0.00 | 0.00% (0h) | 0.000 | 0.03 / 0.05 |
+| **`nominal`** | `MPCPolicy(causal_noisy, H=24)` | **7,875.50** | 120.32 | 0.0000 / 0.00 | 0.00% (0h) | 0.000 | 4.36 / 8.00 |
+| **`nominal`** | `clamped_ppo_diff_shield` (Seed 101) | 7,941.53 | 120.42 | 0.0000 / 0.00 | **0.00% (0h)** | 0.548 | **0.81 / 1.85** |
+| **`pv_inverter_trip`** | `PSM'` | 8,872.52 | 121.39 | 0.0000 / 0.00 | 0.00% (0h) | 0.000 | 0.03 / 0.05 |
+| **`pv_inverter_trip`** | `MPCPolicy(causal_noisy, H=24)` | **8,729.30** | 121.35 | 0.0000 / 0.00 | 0.00% (0h) | 0.000 | 3.99 / 5.71 |
+| **`pv_inverter_trip`** | `clamped_ppo_diff_shield` (Seed 101) | 8,795.88 | 121.35 | 0.0000 / 0.00 | **0.00% (0h)** | 0.589 | **0.81 / 1.80** |
+| **`bess_derate`** | `PSM'` | 7,941.62 | 120.46 | 1.1932 / 36.62 | 11.90% (20h) | 0.000 | 0.03 / 0.06 |
+| **`bess_derate`** | `MPCPolicy(causal_noisy, H=24)` | **7,888.08** | 120.32 | 0.0000 / 0.00 | 0.00% (0h) | 0.000 | 3.80 / 5.62 |
+| **`bess_derate`** | `clamped_ppo_diff_shield` (Seed 101) | 8,019.17 | 120.32 | 0.0000 / 0.00 | **0.00% (0h)** | 0.625 | **0.79 / 1.82** |
+| **`grid_cap_reduction`** | `PSM'` | 8,115.09 | 120.46 | 62.7137 / 73.58 | 99.40% (167h) | 0.000 | 0.03 / 0.06 |
+| **`grid_cap_reduction`** | `MPCPolicy(causal_noisy, H=24)` | **17,941.08** | 186.62 | 0.0000 / 0.00 | 0.00% (0h) | 0.000 | 3.85 / 5.99 |
+| **`grid_cap_reduction`** | `clamped_ppo_diff_shield` (Seed 101) | 17,944.61 | 186.62 | 0.0000 / 0.00 | **0.00% (0h)** | 0.994 | **0.81 / 1.99** |
+| **`forecast_noise`** | `PSM'` | 8,110.55 | 120.49 | 0.3298 / 8.24 | 11.31% (19h) | 0.000 | 0.03 / 0.05 |
+| **`forecast_noise`** | `MPCPolicy(causal_noisy, H=24)` | 10,136.42 | 157.29 | 0.1495 / 8.29 | 8.33% (14h) | 0.000 | 3.84 / 5.56 |
+| **`forecast_noise`** | `clamped_ppo_diff_shield` (Seed 101) | **8,000.03** | **120.42** | **0.0000 / 0.00** | **0.00% (0h)** | 0.554 | **0.80 / 1.81** |
+
+**Key OOD Findings:**
+- **Zero-Violation Safety Across All Contingencies:** `PSM'` lacks runtime safety adaptation, suffering **11.90% violations** under `bess_derate`, **99.40% violations** (167/168 hours, 73.58 kW max exceedance) under `grid_cap_reduction`, and **11.31% violations** under `forecast_noise`. Meanwhile, `clamped_ppo_diff_shield` maintains **0.00% violations (0h, 0.0000 kW max exceedance)** across all 4 contingencies.
+- **Safe RL Beats Causal MPC Under `forecast_noise`:** Under elevated forecast uncertainty (`forecast_noise`), `MPCPolicy(causal_noisy, H=24)` incurs **8.33% violations (14h, 8.29 kW max exc)** and its cost spikes to **€10,136.42** ($\text{CVaR}_{0.95}$ €157.29). By contrast, `clamped_ppo_diff_shield` achieves **€8,000.03** ($\text{CVaR}_{0.95}$ **€120.42**) with **0.00% violations**—beating both `MPCPolicy` (-€2,136.39) and `PSM'` (-€110.52) while running ~4.8× faster (`0.80 ms` vs. `3.84 ms` P50).
 
 ---
 
@@ -425,7 +508,10 @@ Cross-study comparison across unclamped, clamped full-batch, and clamped minibat
 
 ---
 
-### Locked One-Shot Out-of-Sample Test Evaluation
+### Locked One-Shot Out-of-Sample Test Evaluation (`v0-prototype` Snapshot)
+
+> [!IMPORTANT]
+> **Test Lock Hygiene (`test_lock.json` Untouched):** `results/tables/test_evaluation.csv`, `results/tables/test_stress_weeks.csv`, and `results/runs/test_lock.json` remain the **locked one-shot `v0-prototype` Test snapshot**. To preserve strict out-of-sample evaluation integrity, the Test split was **deliberately NOT unlocked or re-evaluated** after the T1–T13 fixes and new training runs. All post-fix empirical gains are established strictly on the Validation split above.
 
 Evaluated across the 24-week sealed Test Split (H2 2019, 4,032 operating hours):
 
@@ -467,12 +553,12 @@ Adhering to the two-stage evaluation framework, the methodological breakdown exa
 
 #### 2. Clamped Full-Batch PPO (`clamped_ppo`)
 - **Strengths:** Eliminates charging-induced violations by construction via the automated physical charging interlock ($`P_{\text{ch}}^{\text{allowed}} \le \max(0, P_{\text{cap}} - P_{\text{net\_served}})`$).
-- **Failures:** Still incurs 466.0 violation hours and 3.24 kW mean exceedance, while battery throughput remains parked at only 6.32 MWh (21.4% active SoC).
+- **Failures:** Still incurs 465.8 violation hours and 3.24 kW mean exceedance, while battery throughput remains parked at only 5.15 MWh (3.8% active SoC).
 - **Root Cause:** While the charging interlock guarantees charging cannot cause violations, capacity emergencies from uncontrollable facility demand require active load curtailment or battery discharge. Under full-batch updates, policy gradients averaged over 168 hours fail to associate localized peak surges with shedding actions. The policy executes zero load shedding and leaves the battery essentially idle.
 
 #### 3. Clamped Minibatch PPO (`clamped_mb_ppo` — Representative Best PPO)
-- **Strengths:** Escapes the full-batch saddle point, increasing battery throughput eightfold to **49.57 MWh** (34.1% active cycling) and actively shaving demand peaks.
-- **Failures:** Still leaks 430.2 violation hours and 2.92 kW mean exceedance because it lacks an explicit safety enforcement mechanism.
+- **Strengths:** Escapes the full-batch saddle point, increasing battery throughput nearly fivefold to **25.32 MWh** (16.8% active cycling) and actively shaving demand peaks.
+- **Failures:** Still leaks 450.4 violation hours and 3.10 kW mean exceedance because it lacks an explicit safety enforcement mechanism.
 - **Root Cause:** Minibatching (`batch_size=64`, 5 value epochs) provides frequent localized gradient signals that enable the policy to discover profitable peak-shaving storage actions. However, because unserved load penalties are fifty times more costly than grid purchases, the policy deliberately accepts capacity violations during extreme surges. It is the best-performing unconstrained PPO baseline.
 
 ---
@@ -481,28 +567,28 @@ Adhering to the two-stage evaluation framework, the methodological breakdown exa
 
 #### 5. Dual-Lagrangian PPO (`clamped_mb_ppo_lagrangian`)
 - **Strengths:** Directly formalizes the constrained MDP using adaptive dual multipliers ($\lambda$).
-- **Failures:** Operating costs explode to €70,040.15 with €24,172.75 in unserved load penalties, yet it still permits 1.01 kW mean exceedance across 228.4 violation hours.
+- **Failures:** Operating costs inflate to €64,380.18 with €19,078.03 in unserved load penalties, yet it still permits 1.12 kW mean exceedance across 238.2 violation hours.
 - **Root Cause:** Primal-dual gradient dynamics suffer from severe oscillatory lag. During quiet operating periods, $\lambda$ decays; when an acute peak occurs, the policy incurs violations, forcing $\lambda$ to overshoot rapidly. The policy overcompensates by aggressively shedding load across non-critical hours, yet still leaks violations during sudden spikes before the dual multiplier can adapt.
 
 #### 6. Residual Policy Learning (`clamped_ppo_residual`)
-- **Strengths:** Achieves low nominal costs (€54,570.55 on Val, €37,633.81 on Test) by perturbing the high-performing PSM' heuristic baseline.
-- **Failures:** Fails strict feasibility, incurring 437.4 violation hours on Val and 134.8h on Test. Critically under-sheds load during acute stress surges (Week 49).
-- **Root Cause:** Exploitation of the soft $G_1$ gate loophole. Spreading minor exceedances across hundreds of operating hours keeps the average exceedance below $d = 0.05\text{ kW/step}$, creating the illusion of compliance while violating physical distribution limits.
+- **Strengths:** Achieves low nominal costs (€53,690.69 on Val; €37,633.81 on locked `v0-prototype` Test) by perturbing the high-performing PSM' heuristic baseline.
+- **Failures:** Fails strict feasibility, incurring 382.6 violation hours on Val and 134.8h on locked `v0-prototype` Test. Critically under-sheds load during acute stress surges (Week 49).
+- **Root Cause:** Exploitation of the soft $G_1$ gate loophole or peak leakage. Spreading minor exceedances across hundreds of operating hours keeps the average exceedance relatively small while still violating physical distribution limits.
 
 #### 7. Post-Hoc Environmental Shielding (Shielded PPO — Full-Batch vs. Minibatch)
 - **Strengths:** Deterministically guarantees strict zero violations (0h violations, 0.0000 kW exceedance) across all operating hours and random seeds.
 - **Failures:** 
-  - Under full-batch PPO (`clamped_ppo_shielded`), it collapses into the **"battery parking" moral hazard**: throughput falls to 5.47 MWh (4.1% active SoC), incurring €14,227.17 in unserved penalties and matching the zero-battery `Shield + Idle` baseline to the cent.
-  - Under minibatch PPO (`clamped_mb_ppo_shielded`), asset utilization is restored (101.46 MWh), but storage experiences **high churn and chattering wear** (€2,029.18).
+  - Under full-batch PPO (`clamped_ppo_shielded`), it collapses into the **"battery parking" moral hazard**: throughput falls to 6.05 MWh (4.0% active SoC), incurring €14,192.95 in unserved penalties and nearly matching the zero-battery `Shield + Idle` baseline (€58,885.36 vs. €58,644.70).
+  - Under minibatch PPO (`clamped_mb_ppo_shielded`), asset utilization is restored (58.00 MWh), yet unserved load penalties remain high (€13,283.30, €58,987.41 total cost).
 - **Root Cause:** The gradient disconnect between the unshielded policy network and the external runtime safety shield. Because the external filter resolves violations downstream via load shedding, the policy receives zero gradient penalty for idling during peaks, shifting the burden onto customer curtailment.
 
 #### 8. In-the-Loop Safe RL (Differentiable Safety Layer — `PPO-Diff-Shield` & `PPO-Aux-Shield`)
 - **Strengths:**
-  - **Lowest Safe Operating Cost:** Achieves **€58,473.79 ± €1,179.26** on Validation, outperforming all other safe RL methods and passing the canonical $G_2 \le 1.05 \times \text{PSM'}$ economic gate on Seed 101 (€56,411.62 < €58,306.73).
-  - **Strict Feasibility:** Guarantees 0h violations and 0.0000 kW exceedance across all splits and seeds.
-  - **Resolves the Moral Hazard:** Activates battery throughput (**81.70 MWh**, 39.6% active SoC) and slashes unserved load curtailment penalties to **€12,336.49** (€716.89 lower than Minibatch Shielded PPO and €1,890.68 lower than Full-Batch Shielded PPO).
-  - **Auxiliary Shield Loss (`PPO-Aux-Shield`):** Provides a strong model-free alternative (€59,975.43, 82.42 MWh throughput) by penalizing the divergence between actor actions and shielded projections.
-- **Root Cause of Success:** Embedding an analytical closed-form Euclidean projection directly into the PyTorch computational graph provides non-zero Jacobian gradients $\frac{\partial \tilde{a}}{\partial a}$ back to the policy actor during backpropagation. The policy network directly experiences constraint boundaries in its loss function, learning coordinated peak-shaving without passive parking or high churn. (See section above regarding historical 1-D projection vs. T3 STE surrogate gradient & 6-D KKT QP projection upgrades).
+  - **Lowest Safe Operating Cost & G2 Gate Pass:** After T1–T3 fixes, `clamped_ppo_diff_shield` improves from **€58,473.79 ± €1,180.66** (`v0-prototype`) to **€56,273.79 ± €1,344.69 (`final`)** and **€55,665.01 ± €1,216.06 (`best`)** on Validation—passing the canonical $G_2 \le 1.05 \times \text{PSM'}$ gate (€58,306.73) on mean, 4/5 `final` seeds, and 5/5 `best` seeds, with Seed 101 reaching **€54,766.30** (< `PSM'` €55,530.22).
+  - **Strict Feasibility:** Guarantees 0h violations and 0.0000 kW exceedance across all splits, seeds, and 2019-W04 OOD contingencies.
+  - **Resolves the Moral Hazard:** Activates targeted battery throughput (**60.17 MWh `final` / 47.11 MWh `best`**, 31.2%–32.7% active SoC) and slashes unserved load curtailment penalties to **€10,608.98 (`final`) / €10,161.78 (`best`)**, beating `PSM'` (€10,624.67).
+  - **Auxiliary Shield Loss (`PPO-Aux-Shield`):** Provides a model-free alternative (€59,481.95, 63.75 MWh throughput) by penalizing the divergence between actor actions and shielded projections.
+- **Root Cause of Success:** Embedding an analytical closed-form Euclidean projection with the T3 Straight-Through Estimator (STE) surrogate gradient directly into the PyTorch computational graph restores non-zero Jacobian gradients $\frac{\partial \tilde{a}}{\partial a}$ back to the policy actor during active constraint violations. The policy network directly experiences constraint boundaries in its loss function, learning coordinated peak-shaving without passive parking or high churn. Meanwhile, the Regime 2 `ci_ppo_diff_6d` ablation (€81,822.34, 8.80% viol) demonstrates why co-designing the differentiable layer with a discrete-aware `CapShield` guard remains essential under non-convex motor shutdown constraints.
 
 #### 9. Classical Heuristics & Mathematical Programming Oracles
 - **Peak-Shave-Minimum (PSM'):** Achieves €55,530.22 on Val and €37,674.27 on Test with 0h violations. Its domain-engineered priority queues explicitly exploit the 50:1 cost asymmetry by exhausting storage discharge before shedding customer load, remaining exceptionally hard to beat causally.
@@ -519,19 +605,12 @@ Adhering to the two-stage evaluation framework, the methodological breakdown exa
    While total site demand is grounded in empirical French national load curves, sectoral disaggregation into five demand zones (35% residential, 25% commercial, 25% industrial, 10% stadium, 5% street lighting) relies on synthetic deterministic apportioning rather than physically metered distinct customer feeders. Real-world microgrid zones exhibit uncorrelated demand spikes, stochastic machine cycling, and non-simultaneous peak periods.
 3. **Linear Throughput Degradation vs. Non-Linear Electrochemistry:**
    Battery aging is approximated via a constant marginal throughput cost ($c_w = 0.02\,\text{EUR/kWh}$). Real-world lithium-ion degradation depends non-linearly on operational temperature, cell chemistry, cycling depth-of-discharge (DoD), high C-rate mechanical stress, calendar aging at elevated SoC, and solid electrolyte interphase (SEI) growth.
-4. **Uniform Value of Lost Load (VoLL) & Outage Non-Linearity:**
-   Customer curtailment is penalized uniformly at $c_u = 1.00\,\text{EUR/kWh}$ across all sectors and outage durations. In industrial and commercial operations, interruption penalties are step functions: an initial momentary flicker may trip entire production lines (high upfront interruption cost), followed by lower marginal costs per additional unserved hour, with advance notification significantly mitigating financial impact.
+4. **Uniform Value of Lost Load (VoLL) in Regime 1 vs. Regime 2 C&I Extension:**
+   Regime 1 penalizes curtailment uniformly at $c_u = 1.00\,\text{EUR/kWh}$. Regime 2 (`ci_*`) partially addresses this limitation by introducing heterogeneous sector VoLL (`industrial: 3.0`, `residential: 1.5`, `commercial: 1.2`, `stadium: 0.4`, `street: 0.2 EUR/kWh`), weekly peak demand charges (`2.333333 EUR/kW-week`), and a `50.0 EUR` industrial trip switching penalty, though multi-hour interruption duration curves remain simplified.
 5. **Discrete Hourly Time Step Dynamics:**
    The simulation advances in discrete 1-hour time intervals ($\Delta t = 1.0\,\text{h}$). Intra-hour power volatility, sub-second inverter ramping, spinning reserve dispatch, and frequency stabilization dynamics are not captured.
-6. **Prototype Run Artifacts vs. Post-Snapshot Codebase Upgrades (T1–T7):**
-   The experimental metric tables (`results/tables/*.csv`) and run records (`results/runs/*.json`) preserve the historical `v0-prototype` 300k-step benchmark runs. Tasks T1–T7 have implemented critical codebase upgrades:
-   - **T1 (`env/cap_shield.py`):** Inverted relu/deadzone shed mappings and locked out battery recharging during shedding events.
-   - **T2 (`agents/ppo.py`, `experiments/train_core.py`):** Bootstrap value denormalization and proper GAE truncation handling.
-   - **T3 (`agents/safety_layer.py`):** STE surrogate active gradient, hard SoC envelopes, and joint 6-D KKT QP projection.
-   - **T5 (`tools/report/lp_oracle.py`, `load_results.py`):** Exact mixed-integer `solve_week_milp` (`MILP'`) and centralized canonical 1.05x G2 gate helper.
-   - **T6 (`agents/mpc.py`):** Causal receding-horizon `MPCPolicy` with LP and MILP solvers.
-   - **T7 (`tools/report/evaluate_test_split.py`):** $\text{CVaR}_{0.95}$ tail-risk evaluation, max consecutive breach hours, solver latency profiling, and 4 non-destructive out-of-distribution (OOD) stress contingencies.
-   Re-training all 70 benchmark runs under these codebase fixes is planned for future work, requiring approximately 10.5 CPU-hours.
+6. **Post-Fix Validation Runs (T9–T13) vs. Locked `v0-prototype` Test Snapshot:**
+   All 80 post-fix 300k-step runs (`clamped_*`, `clamped_mb_*`, `clamped_ppo_diff_shield`, `clamped_ppo_shield_aux`, `causal23_*`, `ci_*`) have been re-trained and evaluated on Validation (`results/tables/per_seed_metrics.csv`, `runs.csv`, `regime_benchmarks_val.csv`). However, the legacy unclamped `s3_*` runs (20 runs) and the locked one-shot Test tables (`results/tables/test_evaluation.csv`, `test_stress_weeks.csv`, `results/runs/test_lock.json`) deliberately preserve the initial `v0-prototype` snapshot without re-unlocking the Test split.
 
 ---
 
@@ -543,13 +622,13 @@ The codebase is organized into modular packages separating environment physics, 
 
 | Subdirectory | Core Responsibility | Key Modules |
 |---|---|---|
-| [`configs/`](configs) | Centralized configuration management | [`config.yaml`](configs/config.yaml) (hyperparameters, physics constants, experiment aliases) |
-| [`env/`](env) | Physical microgrid simulation | [`smartgrid_env.py`](env/smartgrid_env.py) (Gymnasium physics, charging interlock), [`cap_shield.py`](env/cap_shield.py) (analytical safety shield) |
+| [`configs/`](configs) | Centralized configuration management | [`config.yaml`](configs/config.yaml) (hyperparameters, physics constants, Regime 1 & Regime 2 configs) |
+| [`env/`](env) | Physical microgrid simulation | [`smartgrid_env.py`](env/smartgrid_env.py) (Gymnasium physics, causal forecasts, Regime 2 C&I tariffs), [`cap_shield.py`](env/cap_shield.py) (analytical safety shield) |
 | [`agents/`](agents) | OOP policy hierarchy & safety projections | [`ppo.py`](agents/ppo.py) (`PPOAgent`, `PPOLagrangianAgent`, `PPOResidualAgent`, `PPOShieldedAgent`, `PPOAuxShieldLossAgent`, `PPODiffSafetyLayerAgent`), [`safety_layer.py`](agents/safety_layer.py) (`DifferentiableSafetyLayer`, `SafePolicyNetwork`), [`heuristics.py`](agents/heuristics.py) (`PSM'`, `GridOnly`), [`mpc.py`](agents/mpc.py) (`MPCPolicy`) |
 | [`experiments/`](experiments) | Training harnesses & batch execution | [`train_core.py`](experiments/train_core.py) (inner loop), [`run_shield_variants.py`](experiments/run_shield_variants.py) (comparative evaluation suites) |
-| [`tools/report/`](tools/report) | Evaluation, oracles, & figure generation | [`lp_oracle.py`](tools/report/lp_oracle.py) (HiGHS LP & MILP oracles), [`evaluate_test_split.py`](tools/report/evaluate_test_split.py) (locked test runner, CVaR tail risk, OOD stress testing), [`plots.py`](tools/report/plots.py) (publication figures), [`load_results.py`](tools/report/load_results.py) (canonical G2 helper) |
-| [`tests/`](tests) | Deterministic unit and integration tests | 106 automated unit tests covering physics, buffer mechanics, GAE advantages, agent serialization, LP/MILP oracles, MPC, and stress evaluation |
-| [`results/`](results) | Committed experimental artifacts | `tables/` (CSVs, frozen baselines), `figures/` (thematic evaluation plots), `runs/` (per-seed JSON logs) |
+| [`tools/report/`](tools/report) | Evaluation, oracles, & figure generation | [`lp_oracle.py`](tools/report/lp_oracle.py) (HiGHS LP & MILP oracles), [`eval_regimes_val.py`](tools/report/eval_regimes_val.py) (Regime 1, Regime 2, & 2019-W04 OOD Val benchmark), [`evaluate_test_split.py`](tools/report/evaluate_test_split.py) (locked test runner, CVaR tail risk, OOD stress testing), [`plots.py`](tools/report/plots.py) (publication figures), [`load_results.py`](tools/report/load_results.py) (canonical G2 helper) |
+| [`tests/`](tests) | Deterministic unit and integration tests | 119 automated tests covering physics, causal forecasts, Regime 2 tariffs, buffer mechanics, GAE advantages, agent serialization, LP/MILP oracles, MPC, and stress evaluation |
+| [`results/`](results) | Committed experimental artifacts | `tables/` (`runs.csv`, `per_seed_metrics.csv`, `regime_benchmarks_val.csv`, `frozen_baselines.csv`, locked `test_evaluation.csv`), `figures/` (thematic evaluation plots), `runs/` (per-seed JSON logs) |
 
 ### Quickstart Execution Guide
 
@@ -564,14 +643,15 @@ pip install -r requirements.txt
 python data/download.py
 python data/prepare.py
 
-# 3. Execute comprehensive unit and integration test suite (61 tests)
+# 3. Execute comprehensive unit and integration test suite (119 tests)
 pytest tests/ -v
 
 # 4. Train an agent configuration (e.g., Differentiable Safety Layer, Seed 101)
 python experiments/run_shield_variants.py --methods diff_shield --seeds 101
 
-# 5. Export summary metric tables and generate publication figures
+# 5. Export summary metric tables, run Regime 1/2/OOD Val benchmarks, and generate figures
 python tools/report/export_csv.py
+python tools/report/eval_regimes_val.py
 python tools/report/plots.py --family all
 ```
 
