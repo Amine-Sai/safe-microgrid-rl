@@ -286,3 +286,176 @@ def test_mpc_dynamic_parameters_no_hardcoding() -> None:
     assert isinstance(prime_pol, MPCPolicy)
     assert prime_pol.horizon == 12
     assert prime_pol.cap == 250.0
+
+
+def test_mpc_regime2_peak_demand_epigraph_parity() -> None:
+    """Verify MPCPolicy optimizes epigraph P_peak >= env._week_peak_grid_kw cleanly."""
+    ep_len = 6
+    env = SmartGridEnv(
+        {
+            "split": "val",
+            "charge_clamp": True,
+            "episode_length_hours": ep_len,
+            "battery_capacity_kwh": 200.0,
+            "battery_max_power_kw": 60.0,
+            "battery_soc_init": 0.50,
+            "grid_import_cap_kw": 500.0,
+            "cost_wear_eur_kwh": 0.02,
+            "zone_voll_eur_kwh": {"residential": 0.5, "commercial": 5.0, "stadium": 5.0, "street": 5.0, "industrial": 5.0},
+            "demand_charge_eur_per_kw_week": 10.0,
+        }
+    )
+    env._zone_loads[0:ep_len, :] = 0.0
+    env._zone_loads[0:ep_len, 0] = 100.0
+    env._zone_loads[1, 0] = 200.0  # Spike that MPC should shave using battery + cheap VoLL if needed
+    env._pv_kw_series[0:ep_len] = 0.0
+    env._price[0:ep_len] = 10.0  # Below wear cost (0.02 EUR/kWh) so arbitrage alone won't discharge
+
+    # Part A: When initial_peak is low (0.0), MPC shaves at the spike step.
+    # When env._week_peak_grid_kw is already 200.0, MPC does NOT shed/discharge at a 120 kW step.
+    for use_milp in (False, True):
+        obs, info = env.reset(options={"start_idx": 0})
+        env._zone_loads[0, 0] = 120.0
+        obs = env._get_obs(0)
+        pol = MPCPolicy(env=env, horizon=ep_len, forecast_mode="perfect", use_milp=use_milp)
+        env._week_peak_grid_kw = 200.0
+        act = pol.get_action(obs, info)
+        _, _, _, _, step_info = env.step(act)
+        # Because ratchet is already 200 kW > 120 kW, no shedding or discharge is warranted at t=0
+        assert step_info["total_unserved_kw"] == pytest.approx(0.0, abs=1e-4)
+        assert step_info["battery_power_kw"] >= -1e-4
+
+    # Part B: Full-episode peak-shaving rollout reduces peak below 200 kW
+    obs, info = env.reset(options={"start_idx": 0})
+    pol_milp = MPCPolicy(env=env, horizon=ep_len, forecast_mode="perfect", use_milp=True)
+    pol_milp.reset(env)
+    done = False
+    while not done:
+        act = pol_milp.get_action(obs, info)
+        obs, _, term, trunc, info = env.step(act)
+        done = term or trunc
+    assert info["week_peak_grid_kw"] < 150.0
+
+
+def test_mpc_regime2_zone_voll_sheds_lowest_voll_first() -> None:
+    """Verify MPCPolicy sheds the lowest-VoLL zone first even when it differs from SHED_ORDER."""
+    voll_cfg = {"residential": 0.15, "commercial": 2.0, "stadium": 3.0, "street": 4.0, "industrial": 5.0}
+    env = SmartGridEnv(
+        {
+            "split": "val",
+            "charge_clamp": True,
+            "episode_length_hours": 4,
+            "battery_max_power_kw": 0.0,
+            "grid_import_cap_kw": 450.0,
+            "zone_voll_eur_kwh": voll_cfg,
+        }
+    )
+    env._zone_loads[0:4, :] = 100.0  # 500 kW total -> 50 kW deficit
+    env._pv_kw_series[0:4] = 0.0
+    env._price[0:4] = 50.0
+
+    for use_milp in (False, True):
+        obs, info = env.reset(options={"start_idx": 0})
+        pol = MPCPolicy(env=env, horizon=4, forecast_mode="perfect", use_milp=use_milp)
+        act = pol.get_action(obs, info)
+        _, _, _, _, step_info = env.step(act)
+        shed = step_info["shed_fractions"]
+        assert step_info["grid_exceedance_kw"] <= env.violation_tolerance_kw
+        assert shed[0] == pytest.approx(0.50, abs=1e-4)  # residential (VoLL=0.15) shed first
+        assert all(s == pytest.approx(0.0, abs=1e-6) for s in shed[1:])
+
+
+def test_mpc_regime2_industrial_trip_penalty_aware() -> None:
+    """Verify MILP-MPC accounts for industrial_trip_penalty_eur and env._industrial_tripped."""
+    voll_cfg = {"residential": 5.0, "commercial": 5.0, "stadium": 5.0, "street": 5.0, "industrial": 1.0}
+    base_cfg = {
+        "split": "val",
+        "charge_clamp": True,
+        "episode_length_hours": 4,
+        "battery_max_power_kw": 0.0,
+        "grid_import_cap_kw": 200.0,
+        "zone_voll_eur_kwh": voll_cfg,
+    }
+
+    env_no_pen = SmartGridEnv({**base_cfg, "industrial_trip_penalty_eur": 0.0})
+    env_pen = SmartGridEnv({**base_cfg, "industrial_trip_penalty_eur": 500.0})
+    for e in (env_no_pen, env_pen):
+        e._zone_loads[0:4, :] = 0.0
+        e._zone_loads[0:4, 0] = 150.0  # residential
+        e._zone_loads[0:4, 4] = 100.0  # industrial
+        e._pv_kw_series[0:4] = 0.0
+        e._price[0:4] = 50.0
+
+    # Without trip penalty, MILP-MPC trips industrial (100 EUR < 130 EUR)
+    obs, info = env_no_pen.reset(options={"start_idx": 0})
+    pol_no_pen = MPCPolicy(env=env_no_pen, horizon=4, forecast_mode="perfect", use_milp=True)
+    _, _, _, _, info_no_pen = env_no_pen.step(pol_no_pen.get_action(obs, info))
+    assert info_no_pen["industrial_tripped"] is True
+
+    # With 500 EUR restart penalty from non-tripped state, MILP-MPC avoids tripping
+    obs, info = env_pen.reset(options={"start_idx": 0})
+    pol_pen = MPCPolicy(env=env_pen, horizon=4, forecast_mode="perfect", use_milp=True)
+    _, _, _, _, info_pen = env_pen.step(pol_pen.get_action(obs, info))
+    assert info_pen["industrial_tripped"] is False
+    assert info_pen["cost_industrial_trip_eur"] == 0.0
+
+    # If already tripped, no restart fee applies, so MILP-MPC keeps industrial tripped cleanly
+    obs, info = env_pen.reset(options={"start_idx": 0})
+    env_pen._industrial_tripped = True
+    _, _, _, _, info_cont = env_pen.step(pol_pen.get_action(obs, info))
+    assert info_cont["industrial_tripped"] is True
+    assert info_cont["cost_industrial_trip_eur"] == 0.0
+
+
+def test_mpc_causal_noisy_and_persistence_horizon_integration() -> None:
+    """Verify MPCPolicy uses env.get_horizon_data for causal_noisy and matching persistence modes."""
+    K = 6
+    env_noisy = SmartGridEnv(
+        {
+            "split": "val",
+            "seed": 123,
+            "forecast_horizon_hours": K,
+            "forecast_mode": "causal_noisy",
+            "forecast_noise_rel_pv": 0.25,
+            "forecast_noise_rel_load": 0.15,
+        }
+    )
+    obs, info = env_noisy.reset(options={"start_idx": 0})
+    pol_noisy = MPCPolicy(env=env_noisy, horizon=K, forecast_mode="causal_noisy")
+
+    pv_f, loads_f, price_f = pol_noisy._get_forecast(obs, info=info, env=env_noisy, K=K)
+    assert pv_f.shape == (K,)
+    assert loads_f.shape == (K, 5)
+    assert price_f.shape == (K,)
+    assert np.all(pv_f >= 0.0) and np.all(loads_f >= 0.0)
+    # Exact D-1 spot prices across the entire horizon
+    expected_price = np.maximum(0.0, env_noisy._price[0:K]) / 1000.0
+    assert np.allclose(price_f, expected_price, atol=1e-6)
+    # Current step t=0 matches current observation exactly
+    assert pv_f[0] == pytest.approx(float(obs[1]), abs=1e-5)
+    assert np.allclose(loads_f[0], obs[2:7], atol=1e-5)
+    # Future loads carry causal noise (differ from oracle ground truth)
+    assert not np.allclose(loads_f[1:], env_noisy._zone_loads[1:K])
+
+    # Multi-step execution remains cap-safe
+    for _ in range(12):
+        act = pol_noisy.get_action(obs, info)
+        assert act.shape == (6,)
+        obs, _, _, _, info = env_noisy.step(act)
+        assert info["grid_exceedance_kw"] <= env_noisy.violation_tolerance_kw
+
+    # Matching persistence mode uses env.get_horizon_data: exact D-1 prices + persisted PV/loads
+    env_persist = SmartGridEnv(
+        {
+            "split": "val",
+            "seed": 123,
+            "forecast_horizon_hours": K,
+            "forecast_mode": "persistence",
+        }
+    )
+    obs_p, info_p = env_persist.reset(options={"start_idx": 10})
+    pol_persist = MPCPolicy(env=env_persist, horizon=K, forecast_mode="persistence")
+    pv_p, loads_p, price_p = pol_persist._get_forecast(obs_p, info=info_p, env=env_persist, K=K)
+    assert np.allclose(price_p, np.maximum(0.0, env_persist._price[10 : 10 + K]) / 1000.0, atol=1e-6)
+    assert np.allclose(pv_p, float(obs_p[1]), atol=1e-5)
+    assert np.allclose(loads_p, np.tile(obs_p[2:7], (K, 1)), atol=1e-5)
