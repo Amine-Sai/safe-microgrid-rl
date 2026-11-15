@@ -14,37 +14,54 @@ HOURS_PER_WEEK = 168
 VAL_WEEKS = 26
 
 
-def _gae_reference(rewards, values, dones, truncated, last_value, gamma, lam):
-    """Reference numpy GAE implementation."""
+def _gae_reference(rewards, values, dones, truncated, last_value, gamma, lam, truncated_values=None):
+    """Reference numpy GAE implementation with truncation boundary and pre-reset bootstrap support."""
     T = len(rewards)
     adv = np.zeros(T)
     gae = 0.0
     for t in reversed(range(T)):
-        term = 1.0 if dones[t] else 0.0
-        if t == T - 1:
-            nv = 0.0 if dones[t] else last_value
+        if dones[t] or truncated[t]:
+            gae = 0.0
+        if dones[t]:
+            nv = 0.0
+        elif truncated[t]:
+            if truncated_values is not None and truncated_values[t] is not None:
+                nv = float(truncated_values[t])
+            elif t == T - 1:
+                nv = last_value
+            else:
+                nv = values[t + 1]
         else:
-            nv = values[t + 1]
-        delta = rewards[t] + gamma * nv * (1.0 - term) - values[t]
-        gae = delta + gamma * lam * (1.0 - term) * gae
+            nv = last_value if t == T - 1 else values[t + 1]
+        delta = rewards[t] + gamma * nv * (0.0 if dones[t] else 1.0) - values[t]
+        gae = delta + gamma * lam * (0.0 if dones[t] else 1.0) * gae
         adv[t] = gae
     return adv
 
 
 def test_gae_matches_numpy_reference():
-    """Verify GAE calculation against reference numpy implementation."""
+    """Verify GAE calculation against reference numpy implementation with and without pre-reset bootstrap."""
     r = np.array([1.0, 0.0, 2.0, 1.0, 3.0])
     v = np.array([1.0, 2.0, 1.0, 3.0, 2.0])
     d = np.array([0, 0, 0, 1, 0], dtype=bool)      # terminal at step 3
     tr = np.array([0, 1, 0, 0, 0], dtype=bool)     # truncation at step 1
-    expected = np.array([0.75, -1.0, 2.0, -2.0, 3.0])
+    # Without pre-reset bootstrap (fallback to values[t+1]=1.0): zero leak gives [0.625, -1.5, 2.0, -2.0, 3.0]
+    expected_fallback = np.array([0.625, -1.5, 2.0, -2.0, 3.0])
 
     adv = compute_gae(r, v, d, tr, last_value=4.0, gamma=0.5, lam=0.5)[0]
     ref = _gae_reference(r, v, d, tr, 4.0, 0.5, 0.5)
 
-    assert np.allclose(adv, expected, atol=1e-10), f"compute_gae: {adv}"
-    assert np.allclose(ref, expected, atol=1e-10), f"reference: {ref}"
+    assert np.allclose(adv, expected_fallback, atol=1e-10), f"compute_gae: {adv}"
+    assert np.allclose(ref, expected_fallback, atol=1e-10), f"reference: {ref}"
     assert np.allclose(adv, ref, atol=1e-10)
+
+    # With pre-reset bootstrap V(s'_1) = 2.0:
+    tr_v = np.array([0.0, 2.0, 0.0, 0.0, 0.0])
+    expected_tr = np.array([0.75, -1.0, 2.0, -2.0, 3.0])
+    adv_tr = compute_gae(r, v, d, tr, last_value=4.0, gamma=0.5, lam=0.5, truncated_values=tr_v)[0]
+    ref_tr = _gae_reference(r, v, d, tr, 4.0, 0.5, 0.5, truncated_values=tr_v)
+    assert np.allclose(adv_tr, expected_tr, atol=1e-10)
+    assert np.allclose(ref_tr, expected_tr, atol=1e-10)
 
 
 def test_truncation_bootstrapping():
@@ -326,3 +343,103 @@ def test_from_checkpoint_restores_variant_and_residual(tmp_path):
     assert isinstance(restored_diff, PPODiffSafetyLayerAgent)
     assert restored_diff.p_max == 200.0
     assert restored_diff.p_cap == 350.0
+
+
+def test_denormalized_bootstrap_values():
+    """T2: Prove last_value and last_cost_value use denormalized values matching RolloutBuffer."""
+    from agents.ppo import PPOLagrangianAgent
+
+    agent = PPOLagrangianAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM)
+    agent.ret_normalizer.mean = np.array(50.0, dtype=np.float32)
+    agent.ret_normalizer.var = np.array(16.0, dtype=np.float32)  # std ~ 4.0
+    agent.cost_normalizer.mean = np.array(20.0, dtype=np.float32)
+    agent.cost_normalizer.var = np.array(9.0, dtype=np.float32)   # std ~ 3.0
+
+    raw_val = th.tensor([[1.5]], dtype=th.float32)
+    denorm_val = agent.denormalize_value(raw_val)
+    expected_val = float(raw_val * (np.sqrt(16.0) + agent.ret_normalizer.epsilon) + 50.0)
+    assert float(denorm_val) == pytest.approx(expected_val, abs=1e-4)
+
+    raw_cost = th.tensor([[2.0]], dtype=th.float32)
+    denorm_cost = agent.denormalize_cost_value(raw_cost)
+    expected_cost = float(raw_cost * (np.sqrt(9.0) + agent.cost_normalizer.epsilon) + 20.0)
+    assert float(denorm_cost) == pytest.approx(expected_cost, abs=1e-4)
+
+    test_obs = np.ones(DEFAULT_STATE_DIM, dtype=np.float32)
+    v_est, cv_est = agent.estimate_values(test_obs)
+    assert isinstance(v_est, float)
+    assert isinstance(cv_est, float)
+
+    raw_v = float(agent.value_net(agent.to_tensor(agent.obs_normalizer.normalize(test_obs[None, :]))))
+    assert v_est == pytest.approx(float(agent.denormalize_value(th.tensor(raw_v))), abs=1e-5)
+    raw_cv = float(agent.cost_net(agent.to_tensor(agent.obs_normalizer.normalize(test_obs[None, :]))))
+    assert cv_est == pytest.approx(float(agent.denormalize_cost_value(th.tensor(raw_cv))), abs=1e-5)
+
+
+def test_zero_gae_leak_across_truncated_episode_boundaries_with_pre_reset_bootstrap():
+    """T2: Prove zero GAE leakage across truncated episode boundary and pre-reset bootstrapping."""
+    from agents.ppo import PPOAgent
+
+    agent = PPOAgent(state_dim=DEFAULT_STATE_DIM, action_dim=DEFAULT_ACTION_DIM)
+
+    # Episode 1: 2 steps. Step 1 truncated. Pre-reset next_obs bootstrap = 25.0
+    # Episode 2: 2 steps. Step 3 ends rollout with last_value = 10.0
+    s = np.zeros(DEFAULT_STATE_DIM, dtype=np.float32)
+    a = np.zeros(DEFAULT_ACTION_DIM, dtype=np.float32)
+
+    def _collect_and_finish(ep2_rewards):
+        agent.reset_buffer()
+        # Ep 1 step 0
+        agent.store_transition(s, a, reward=1.0, cost=0.0, value=2.0, cost_value=0.0,
+                               log_prob=0.0, terminated=False, truncated=False)
+        # Ep 1 step 1 (truncated, pre-reset bootstrap = 25.0)
+        agent.store_transition(s, a, reward=2.0, cost=0.0, value=5.0, cost_value=0.0,
+                               log_prob=0.0, terminated=False, truncated=True,
+                               truncated_value=25.0)
+        # Ep 2 step 2 (post-reset new week)
+        agent.store_transition(s, a, reward=ep2_rewards[0], cost=0.0, value=3.0, cost_value=0.0,
+                               log_prob=0.0, terminated=False, truncated=False)
+        # Ep 2 step 3
+        agent.store_transition(s, a, reward=ep2_rewards[1], cost=0.0, value=4.0, cost_value=0.0,
+                               log_prob=0.0, terminated=False, truncated=False)
+        return agent.finish_path(last_value=10.0)
+
+    batch_normal = _collect_and_finish([1.0, 2.0])
+    batch_huge = _collect_and_finish([1e6, 1e6])
+
+    # Ep 1 advantages and returns must be BIT-FOR-BIT IDENTICAL regardless of Ep 2 rewards
+    assert np.allclose(batch_normal["adv_r"][:2], batch_huge["adv_r"][:2], atol=1e-12)
+    assert np.allclose(batch_normal["ret_r"][:2], batch_huge["ret_r"][:2], atol=1e-12)
+
+    # Verify analytical correctness for Ep 1:
+    gamma, lam = agent.gamma, agent.gae_lambda
+    # Step 1 TD error: delta_1 = r_1 + gamma * trunc_val - v_1 = 2.0 + gamma * 25.0 - 5.0
+    expected_delta_1 = 2.0 + gamma * 25.0 - 5.0
+    assert batch_normal["adv_r"][1] == pytest.approx(expected_delta_1, abs=1e-9)
+
+    # Step 0 TD error: delta_0 = r_0 + gamma * v_1 - v_0 = 1.0 + gamma * 5.0 - 2.0
+    expected_delta_0 = 1.0 + gamma * 5.0 - 2.0
+    # Step 0 GAE accumulates step 1: delta_0 + gamma * lam * adv_1
+    expected_adv_0 = expected_delta_0 + gamma * lam * expected_delta_1
+    assert batch_normal["adv_r"][0] == pytest.approx(expected_adv_0, abs=1e-9)
+
+
+def test_raw_action_storage_for_clamped_ppo_residual_and_shielded():
+    """T2: Prove ppo_store_raw_action: true resolves in clamped_ppo_residual & shielded and preserves on-policy logp."""
+    from experiments.train_core import load_config_with_base, load_agent_for_method
+
+    for exp_id in ("clamped_ppo_residual", "clamped_ppo_shielded"):
+        cfg = load_config_with_base(exp_id)
+        assert cfg["ppo_store_raw_action"] is True, f"{exp_id} must have ppo_store_raw_action=True"
+
+        agent = load_agent_for_method(cfg["method"], cfg)
+        assert agent.store_raw_action is True, f"{exp_id} agent must have store_raw_action=True"
+
+        # Rollout transitions and check ratio_off_at_start
+        states = np.random.randn(10, cfg["state_dim"]).astype(np.float32)
+        for s in states:
+            a, lp, v, cv = agent.select_action(s, evaluate=False)
+            agent.store_transition(s, a, 1.0, 0.0, v, cv, lp, False, False)
+        batch = agent.finish_path(0.0, 0.0)
+        diag = agent.update(batch)
+        assert diag["ratio_off_at_start"] == pytest.approx(0.0, abs=1e-6)

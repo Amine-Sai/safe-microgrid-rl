@@ -88,6 +88,7 @@ def compute_gae(
     last_value: float,
     gamma: float = 0.99,
     lam: float = 0.95,
+    truncated_values: Optional[Union[np.ndarray, List[float]]] = None,
 ) -> Tuple[np.ndarray, np.ndarray]:
     r"""Compute Generalized Advantage Estimation (GAE) with truncation-aware bootstrapping.
 
@@ -98,7 +99,9 @@ def compute_gae(
 
     Truncation Handling:
         `dones` marks true terminal transitions only. Episode truncations (fixed horizon
-        cuts at 168 hours) still bootstrap from $V(s_T) = \text{last\_value}$ rather than 0.
+        cuts at 168 hours) bootstrap from pre-reset terminal-step bootstrap $V(s'_t) = \text{truncated\_values}[t]$
+        (or $\text{last\_value}$ at $t = T-1$). Advantage accumulation does NOT leak across
+        episode boundaries (GAE accumulator is reset to 0 at both terminal and truncated steps).
 
     Args:
         rewards: Sequence of step rewards of length T.
@@ -108,6 +111,8 @@ def compute_gae(
         last_value: Critic value estimate for the bootstrap state V(s_T).
         gamma: Temporal discount factor $\gamma \in (0, 1]$.
         lam: GAE exponential decay factor $\lambda \in [0, 1]$.
+        truncated_values: Optional sequence of length T with pre-reset critic bootstrap
+            estimates V(s'_t) for transitions where truncated[t] is True.
 
     Returns:
         Tuple of (advantages, returns), both float64 numpy arrays of length T.
@@ -116,12 +121,23 @@ def compute_gae(
     adv = np.zeros(T, dtype=np.float64)
     gae = 0.0
     for t in reversed(range(T)):
-        not_terminal = 0.0 if dones[t] else 1.0
-        next_value = last_value if t == T - 1 else values[t + 1]
-        if truncated[t] and not (t == T - 1):
-            next_value = values[t + 1] if not dones[t] else 0.0
-        delta = rewards[t] + gamma * next_value * not_terminal - values[t]
-        gae = delta + gamma * lam * not_terminal * gae
+        if dones[t] or truncated[t]:
+            gae = 0.0
+
+        if dones[t]:
+            next_value = 0.0
+        elif truncated[t]:
+            if truncated_values is not None and truncated_values[t] is not None:
+                next_value = float(truncated_values[t])
+            elif t == T - 1:
+                next_value = last_value
+            else:
+                next_value = values[t + 1]
+        else:
+            next_value = last_value if t == T - 1 else values[t + 1]
+
+        delta = rewards[t] + gamma * next_value * (0.0 if dones[t] else 1.0) - values[t]
+        gae = delta + gamma * lam * (0.0 if dones[t] else 1.0) * gae
         adv[t] = gae
     returns = adv + np.asarray(values, dtype=np.float64)
     return adv, returns
@@ -149,6 +165,8 @@ class RolloutBuffer:
         self.log_probs: List[float] = []
         self.terminated: List[bool] = []
         self.truncated: List[bool] = []
+        self.truncated_values: List[float] = []
+        self.truncated_cost_values: List[float] = []
         self.rollout_costs: List[float] = []
         self.shield_shed_kws: List[float] = []
 
@@ -164,6 +182,8 @@ class RolloutBuffer:
         terminated: bool,
         truncated: bool,
         shield_shed_kw: float = 0.0,
+        truncated_value: float = 0.0,
+        truncated_cost_value: float = 0.0,
     ) -> None:
         """Append one transition tuple to the rollout buffer."""
         self.states.append(np.asarray(state, dtype=np.float32))
@@ -175,6 +195,8 @@ class RolloutBuffer:
         self.log_probs.append(float(log_prob))
         self.terminated.append(bool(terminated))
         self.truncated.append(bool(truncated))
+        self.truncated_values.append(float(truncated_value))
+        self.truncated_cost_values.append(float(truncated_cost_value))
         self.rollout_costs.append(float(cost))
         self.shield_shed_kws.append(float(shield_shed_kw))
 
@@ -418,6 +440,8 @@ class PPOAgent:
             "term": self.buffer.terminated,
             "trunc": self.buffer.truncated,
             "shield_shed_kw": getattr(self.buffer, "shield_shed_kws", []),
+            "truncated_values": getattr(self.buffer, "truncated_values", []),
+            "truncated_cost_values": getattr(self.buffer, "truncated_cost_values", []),
         }
 
     @property
@@ -465,6 +489,8 @@ class PPOAgent:
         terminated: bool,
         truncated: bool,
         shield_shed_kw: float = 0.0,
+        truncated_value: float = 0.0,
+        truncated_cost_value: float = 0.0,
     ) -> None:
         """Store a transition tuple, preserving raw unclipped action for on-policy consistency."""
         raw = self.last_raw_action if (self.store_raw_action and self.last_raw_action is not None) else action
@@ -479,6 +505,8 @@ class PPOAgent:
             terminated=terminated,
             truncated=truncated,
             shield_shed_kw=shield_shed_kw,
+            truncated_value=truncated_value,
+            truncated_cost_value=truncated_cost_value,
         )
 
     # ---------------------------------------------------------------- acting
@@ -488,19 +516,30 @@ class PPOAgent:
 
     _t = to_tensor
 
-    def denormalize_value(self, v: th.Tensor) -> th.Tensor:
+    def denormalize_value(self, v: Union[th.Tensor, float, np.ndarray]) -> Union[th.Tensor, float, np.ndarray]:
         """Denormalise value prediction from standard normal space to true return units."""
         std = float(np.sqrt(self.ret_normalizer.var) + self.ret_normalizer.epsilon)
         return v * std + float(self.ret_normalizer.mean)
 
     _denorm_v = denormalize_value
 
-    def denormalize_cost_value(self, v: th.Tensor) -> th.Tensor:
+    def denormalize_cost_value(self, v: Union[th.Tensor, float, np.ndarray]) -> Union[th.Tensor, float, np.ndarray]:
         """Denormalise cost value prediction to true discounted cost units."""
         std = float(np.sqrt(self.cost_normalizer.var) + self.cost_normalizer.epsilon)
         return v * std + float(self.cost_normalizer.mean)
 
     _denorm_c = denormalize_cost_value
+
+    def estimate_values(self, state: np.ndarray) -> Tuple[float, float]:
+        """Compute denormalized reward and cost value predictions for a given state."""
+        arr = np.asarray(state, dtype=np.float32)
+        if arr.ndim == 1:
+            arr = arr[None, :]
+        s = self.to_tensor(self.obs_normalizer.normalize(arr))
+        with th.no_grad():
+            v = float(self.denormalize_value(self.value_net(s)))
+            cv = float(self.denormalize_cost_value(self.cost_net(s))) if self.cost_net is not None else 0.0
+        return v, cv
 
     def select_action(
         self,
@@ -575,7 +614,14 @@ class PPOAgent:
         if T == 0:
             return None
         adv_r, ret_r = compute_gae(
-            b.rewards, b.values, b.terminated, b.truncated, last_value, self.gamma, self.gae_lambda
+            b.rewards,
+            b.values,
+            b.terminated,
+            b.truncated,
+            last_value,
+            self.gamma,
+            self.gae_lambda,
+            truncated_values=getattr(b, "truncated_values", None),
         )
         shed_kws = getattr(b, "shield_shed_kws", None)
         if shed_kws is None or len(shed_kws) != T:
@@ -592,7 +638,14 @@ class PPOAgent:
         }
         if self.lagrangian and self.cost_net is not None:
             adv_c, ret_c = compute_gae(
-                b.costs, b.cost_values, b.terminated, b.truncated, last_cost_value, self.gamma, self.gae_lambda
+                b.costs,
+                b.cost_values,
+                b.terminated,
+                b.truncated,
+                last_cost_value,
+                self.gamma,
+                self.gae_lambda,
+                truncated_values=getattr(b, "truncated_cost_values", None),
             )
             out.update(adv_c=adv_c, ret_c=ret_c)
         return out

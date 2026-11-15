@@ -207,12 +207,14 @@ experiments:
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
+    ppo_store_raw_action: true
   clamped_ppo_shielded:
     action_dim: 1
     shielded: true
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
+    ppo_store_raw_action: true
   clamped_mb_ppo:
     reward_scale: 0.096879
     total_steps: 300000

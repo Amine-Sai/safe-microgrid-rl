@@ -371,10 +371,15 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
             actions_taken.append(np.asarray(action, dtype=np.float32))
             soc_history.append(float(next_obs[0]))
             shaped = agent.scale_reward(reward, obs, next_obs, terminated, truncated)
+            trunc_v, trunc_cv = 0.0, 0.0
+            if truncated and not terminated:
+                trunc_v, trunc_cv = agent.estimate_values(next_obs)
             agent.store_transition(
                 obs, action, shaped, cost, value, cost_value,
                 logp, terminated, truncated,
                 shield_shed_kw=float(info.get("shield_shed_kw", 0.0)),
+                truncated_value=trunc_v,
+                truncated_cost_value=trunc_cv,
             )
             obs = next_obs
             last_term = bool(terminated)
@@ -387,10 +392,7 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
                 obs, _ = env_train.reset()
 
         # Update on rollout
-        with th.no_grad():
-            last_state = agent.to_tensor(agent.obs_normalizer.normalize(obs[None, :]))
-            last_value = float(agent.value_net(last_state))
-            last_cost_value = float(agent.cost_net(last_state)) if agent.cost_net is not None else 0.0
+        last_value, last_cost_value = agent.estimate_values(obs)
         batch = agent.finish_path(0.0 if last_term else last_value,
                                   0.0 if (last_term and is_lagrangian) else last_cost_value)
         if batch is not None:
