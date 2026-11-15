@@ -22,6 +22,8 @@ BASE = load_config_with_base("configs/config.yaml")
 
 def test_base_yaml_documents_every_key_with_a_default():
     """Every knob lives in the defaults block with default == current live behaviour."""
+    from env.smartgrid_env import default_config
+
     assert BASE["method"] == "ppo"
     assert BASE["shed_mapping"] == "linear"
     assert BASE["reward_scale"] == 1.0
@@ -31,6 +33,19 @@ def test_base_yaml_documents_every_key_with_a_default():
     assert BASE["rollout_steps"] == 2048
     assert BASE["torch_threads"] == 1
     assert BASE["charge_clamp"] is True
+
+    env_defaults = default_config()
+    for key in (
+        "forecast_mode",
+        "forecast_noise_rel_pv",
+        "forecast_noise_rel_wind",
+        "forecast_noise_rel_load",
+        "demand_charge_eur_per_kw_week",
+        "zone_voll_eur_kwh",
+        "industrial_trip_penalty_eur",
+    ):
+        assert key in BASE, f"Missing T9 env key {key!r} in configs/config.yaml defaults"
+        assert BASE[key] == env_defaults[key]
 
 
 def test_unknown_key_raises():
@@ -203,7 +218,7 @@ def test_agent_helper_matches_training_kwargs():
         assert a.residual_coef == cfg["residual_coef"]
         assert a.residual_policy is None
 
-    from agents.ppo import PPOAuxShieldLossAgent, PPODiffSafetyLayerAgent
+    from agents.ppo import PPOAuxShieldLossAgent, PPODiffSafetyLayerAgent, PPOShieldedAgent
     from agents.safety_layer import SafePolicyNetwork
     cfg_aux = load_config_with_base("clamped_ppo_shield_aux")
     a_aux = pp.load_agent_for_method(cfg_aux["method"], cfg_aux)
@@ -216,6 +231,95 @@ def test_agent_helper_matches_training_kwargs():
     assert isinstance(a_diff, PPODiffSafetyLayerAgent)
     assert type(a_diff) is PPODiffSafetyLayerAgent
     assert isinstance(a_diff.policy, SafePolicyNetwork)
+
+    # Regime 1 (causal23) and Regime 2 (ci) agents: 1D+CapShield vs 6D joint KKT QP
+    for exp_id in ("causal23_ppo_shielded", "ci_ppo_shielded"):
+        cfg_sh = load_config_with_base(exp_id)
+        ag_sh = pp.load_agent_for_method(cfg_sh["method"], cfg_sh)
+        assert type(ag_sh) is PPOShieldedAgent
+        assert ag_sh.state_dim == 23
+        assert ag_sh.action_dim == 1
+        assert ag_sh.store_raw_action is True
+        assert ag_sh.use_minibatches is True
+        assert pp.is_shielded_run(cfg_sh["method"], cfg_sh) is True
+
+    for exp_id in ("causal23_ppo_diff_shield", "ci_ppo_diff_shield"):
+        cfg_d1 = load_config_with_base(exp_id)
+        ag_d1 = pp.load_agent_for_method(cfg_d1["method"], cfg_d1)
+        assert type(ag_d1) is PPODiffSafetyLayerAgent
+        assert isinstance(ag_d1.policy, SafePolicyNetwork)
+        assert ag_d1.state_dim == 23
+        assert ag_d1.action_dim == 1
+        assert ag_d1.store_raw_action is True
+        assert pp.is_shielded_run(cfg_d1["method"], cfg_d1) is True
+
+    cfg_d6 = load_config_with_base("ci_ppo_diff_6d")
+    ag_d6 = pp.load_agent_for_method(cfg_d6["method"], cfg_d6)
+    assert type(ag_d6) is PPODiffSafetyLayerAgent
+    assert isinstance(ag_d6.policy, SafePolicyNetwork)
+    assert ag_d6.state_dim == 23
+    assert ag_d6.action_dim == 6
+    assert ag_d6.store_raw_action is True
+    assert cfg_d6["shielded"] is False
+    assert pp.is_shielded_run(cfg_d6["method"], cfg_d6) is False
+
+
+@pytest.mark.needs_real_data
+def test_regime1_causal23_and_regime2_ci_env_and_scale(tmp_path):
+    """Verify T9 env forwarding, 23-D obs, Regime 2 reward scaling, and 6D KKT QP rollout."""
+    import numpy as np
+    from experiments.train_core import (
+        build_env,
+        grid_only_reward_scale,
+        load_agent_for_method,
+        train_single_method_ppo,
+    )
+
+    cfg_r1 = load_config_with_base("causal23_ppo_residual")
+    env_r1 = build_env(cfg_r1, split="val", seed=42)
+    assert env_r1.obs_dim == 23
+    assert env_r1.forecast_horizon_hours == 6
+    assert env_r1.forecast_mode == "causal_noisy"
+    assert env_r1.charge_clamp is True
+    ag_res = load_agent_for_method(cfg_r1["method"], cfg_r1)
+    assert ag_res.state_dim == 23
+    obs_r1, _ = env_r1.reset(seed=42)
+    assert obs_r1.shape == (23,)
+    act_res, _, _, _ = ag_res.select_action(obs_r1, evaluate=True)
+    assert act_res.shape == (6,)
+
+    cfg_ci = load_config_with_base("ci_ppo_diff_6d")
+    env_ci = build_env(cfg_ci, split="val", seed=42)
+    assert env_ci.obs_dim == 23
+    assert env_ci.forecast_mode == "causal_noisy"
+    assert env_ci.demand_charge_eur_per_kw_week == pytest.approx(2.333333)
+    assert env_ci.industrial_trip_penalty_eur == pytest.approx(50.0)
+    assert np.allclose(env_ci.get_zone_voll(), [1.5, 1.2, 0.4, 0.2, 3.0])
+
+    ag_d6 = load_agent_for_method(cfg_ci["method"], cfg_ci)
+    obs_ci, _ = env_ci.reset(seed=42)
+    act_d6, logp, val, _ = ag_d6.select_action(obs_ci, evaluate=False)
+    assert act_d6.shape == (6,)
+    assert np.isfinite(logp) and np.isfinite(val)
+    ag_d6.store_transition(obs_ci, act_d6, -1.0, 0.0, val, 0.0, logp, False, False)
+    assert ag_d6.buffer.actions[0].shape == (6,)
+
+    # Regime 2 Grid-Only scale adapts below Regime 1's 0.096879 due to demand charges
+    ci_scale = grid_only_reward_scale(cfg_ci, cfg_ci["shed_mapping"], method_name="ci_test")
+    assert 0.0 < ci_scale < PUBLISHED_GRID_ONLY_REWARD_SCALE
+
+    # Smoke-run trainer end-to-end on ci_ppo_diff_6d (6D KKT QP without CapShield)
+    smoke_cfg = dict(cfg_ci, total_steps=200, eval_interval_steps=200, rollout_steps=200)
+    res = train_single_method_ppo(
+        smoke_cfg["method"], smoke_cfg, ckpt_dir=str(tmp_path), run_name="ci6d_smoke", allow_overwrite=True
+    )
+    assert res["resolved_config"]["reward_scale_effective"] == pytest.approx(ci_scale, rel=1e-6)
+    fm = res["final_metrics"]
+    assert fm["demand_charge_eur"] > 0.0
+    assert fm["total_cost_eur"] == pytest.approx(
+        fm["energy_purchase_eur"] + fm["unserved_penalty_eur"]
+        + fm["battery_wear_eur"] + fm["demand_charge_eur"] + fm["industrial_trip_eur"]
+    )
 
 
 @pytest.mark.needs_real_data

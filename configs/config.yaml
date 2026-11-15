@@ -42,6 +42,13 @@ defaults:
   action_saturation_threshold: 0.99
   soc_pinned_tolerance: 0.005
   forecast_horizon_hours: 0
+  forecast_mode: oracle
+  forecast_noise_rel_pv: 0.15
+  forecast_noise_rel_wind: 0.20
+  forecast_noise_rel_load: 0.08
+  demand_charge_eur_per_kw_week: 0.0
+  zone_voll_eur_kwh: null
+  industrial_trip_penalty_eur: 0.0
   device: cpu
   aux_shield_coef: 0.0
 experiments:
@@ -321,6 +328,106 @@ experiments:
     action_dim: 1
     shielded: true
     reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+    ppo_store_raw_action: true
+    ppo_use_minibatches: true
+    ppo_value_epochs: 5
+  # --- Regime 1: Causal 23-D Lookahead ---
+  causal23_ppo_shielded:
+    state_dim: 23
+    action_dim: 1
+    shielded: true
+    forecast_horizon_hours: 6
+    forecast_mode: causal_noisy
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+    ppo_store_raw_action: true
+    ppo_use_minibatches: true
+    ppo_value_epochs: 5
+  causal23_ppo_diff_shield:
+    method: ppo_diff_shield
+    state_dim: 23
+    action_dim: 1
+    shielded: true
+    forecast_horizon_hours: 6
+    forecast_mode: causal_noisy
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+    ppo_store_raw_action: true
+    ppo_use_minibatches: true
+    ppo_value_epochs: 5
+  causal23_ppo_residual:
+    method: ppo_lagrangian
+    state_dim: 23
+    residual_on_heuristic: true
+    residual_coef: 0.25
+    forecast_horizon_hours: 6
+    forecast_mode: causal_noisy
+    reward_scale: 0.096879
+    total_steps: 300000
+    eval_interval_steps: 50000
+    ppo_store_raw_action: true
+    ppo_use_minibatches: true
+    ppo_value_epochs: 5
+  # --- Regime 2: C&I Demand-Charge + Zone VoLL ---
+  ci_ppo_shielded:
+    state_dim: 23
+    action_dim: 1
+    shielded: true
+    forecast_horizon_hours: 6
+    forecast_mode: causal_noisy
+    demand_charge_eur_per_kw_week: 2.333333
+    zone_voll_eur_kwh:
+      residential: 1.5
+      commercial: 1.2
+      industrial: 3.0
+      stadium: 0.4
+      street: 0.2
+    industrial_trip_penalty_eur: 50.0
+    reward_scale_mode: grid_only
+    total_steps: 300000
+    eval_interval_steps: 50000
+    ppo_store_raw_action: true
+    ppo_use_minibatches: true
+    ppo_value_epochs: 5
+  ci_ppo_diff_shield:
+    method: ppo_diff_shield
+    state_dim: 23
+    action_dim: 1
+    shielded: true
+    forecast_horizon_hours: 6
+    forecast_mode: causal_noisy
+    demand_charge_eur_per_kw_week: 2.333333
+    zone_voll_eur_kwh:
+      residential: 1.5
+      commercial: 1.2
+      industrial: 3.0
+      stadium: 0.4
+      street: 0.2
+    industrial_trip_penalty_eur: 50.0
+    reward_scale_mode: grid_only
+    total_steps: 300000
+    eval_interval_steps: 50000
+    ppo_store_raw_action: true
+    ppo_use_minibatches: true
+    ppo_value_epochs: 5
+  ci_ppo_diff_6d:
+    method: ppo_diff_shield
+    state_dim: 23
+    forecast_horizon_hours: 6
+    forecast_mode: causal_noisy
+    demand_charge_eur_per_kw_week: 2.333333
+    zone_voll_eur_kwh:
+      residential: 1.5
+      commercial: 1.2
+      industrial: 3.0
+      stadium: 0.4
+      street: 0.2
+    industrial_trip_penalty_eur: 50.0
+    reward_scale_mode: grid_only
     total_steps: 300000
     eval_interval_steps: 50000
     ppo_store_raw_action: true

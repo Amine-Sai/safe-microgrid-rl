@@ -35,6 +35,8 @@ def evaluate_deterministic_val(env_val: SmartGridEnv, agent, extra_log=None) -> 
     total_purchase = 0.0
     total_unserved = 0.0
     total_wear = 0.0
+    total_demand_charge = 0.0
+    total_trip_penalty = 0.0
     violation_hours = 0
     unserved_kwh = 0.0
     demand_kwh = 0.0
@@ -58,6 +60,8 @@ def evaluate_deterministic_val(env_val: SmartGridEnv, agent, extra_log=None) -> 
             total_purchase += info["energy_cost"]
             total_unserved += info["unserved_cost"]
             total_wear += info["battery_wear_cost"]
+            total_demand_charge += info.get("cost_demand_charge_eur", 0.0)
+            total_trip_penalty += info.get("cost_industrial_trip_eur", 0.0)
             unserved_kwh += info["total_unserved_kw"] * base_env.dt_hours
             demand_kwh += (info["total_served_kw"] + info["total_unserved_kw"]) * base_env.dt_hours
 
@@ -72,7 +76,13 @@ def evaluate_deterministic_val(env_val: SmartGridEnv, agent, extra_log=None) -> 
                 soc_clipped_kw_list.append(info.get("charge_clipped_by_soc_kw", 0.0))
                 is_cap_clipped_list.append(bool(info.get("is_charge_clipped_by_cap", False)))
 
-    total_cost = total_purchase + total_unserved + total_wear
+    total_cost = (
+        total_purchase
+        + total_unserved
+        + total_wear
+        + total_demand_charge
+        + total_trip_penalty
+    )
     violation_rate = (violation_hours / total_val_hours) * 100.0
     unserved_pct = (unserved_kwh / demand_kwh) * 100.0
     mean_exceedance = float(np.mean(exceedances))
@@ -80,6 +90,8 @@ def evaluate_deterministic_val(env_val: SmartGridEnv, agent, extra_log=None) -> 
         "energy_purchase_eur": float(total_purchase),
         "unserved_penalty_eur": float(total_unserved),
         "battery_wear_eur": float(total_wear),
+        "demand_charge_eur": float(total_demand_charge),
+        "industrial_trip_eur": float(total_trip_penalty),
         "total_cost_eur": float(total_cost),
         "unserved_energy_pct": float(unserved_pct),
         "violation_rate_pct": float(violation_rate),
@@ -130,7 +142,20 @@ ENV_KEYS = (
     "cap_clamp_tolerance_kw", "violation_tolerance_kw",
     "action_saturation_threshold", "soc_pinned_tolerance",
     "forecast_horizon_hours",
+    "forecast_mode", "forecast_noise_rel_pv",
+    "forecast_noise_rel_wind", "forecast_noise_rel_load",
+    "demand_charge_eur_per_kw_week", "zone_voll_eur_kwh",
+    "industrial_trip_penalty_eur",
 )
+
+
+def is_shielded_run(method_name: str, cfg: dict) -> bool:
+    """Whether CapShield wraps the env (1D battery dispatch + external shield)."""
+    return (
+        bool(cfg.get("shielded", False))
+        or int(cfg.get("action_dim", 6)) == 1
+        or method_name == "ppo_shield_aux"
+    )
 
 
 def build_env(cfg: dict, split: str = "train", seed: Optional[int] = None) -> SmartGridEnv:
@@ -247,9 +272,12 @@ def load_agent_for_method(method_name: str, cfg: dict):
 
 def _ppo_kwargs(cfg: dict, method_name: str) -> dict:
     """PPOAgent constructor kwargs shared by training and agent restoration."""
+    forecast_dim = 6 if int(cfg.get("forecast_horizon_hours", 0)) > 0 else 0
     state_dim = cfg.get("state_dim")
-    if state_dim is None:
-        state_dim = 17 + (6 if int(cfg.get("forecast_horizon_hours", 0)) > 0 else 0)
+    if state_dim is None or (forecast_dim > 0 and int(state_dim) == 17):
+        state_dim = 17 + forecast_dim
+    p_max_val = cfg.get("battery_max_power_kw")
+    p_cap_val = cfg.get("grid_import_cap_kw")
 
     return dict(
         state_dim=state_dim, action_dim=cfg["action_dim"],
@@ -276,8 +304,8 @@ def _ppo_kwargs(cfg: dict, method_name: str) -> dict:
         init_log_std_shed=cfg.get("ppo_init_log_std_shed", None),
         device=cfg.get("device", "cpu"),
         aux_shield_coef=cfg.get("aux_shield_coef", 0.5),
-        p_max=cfg.get("battery_max_power_kw", 250.0),
-        p_cap=cfg.get("grid_import_cap_kw", 368.153918),
+        p_max=250.0 if p_max_val is None else float(p_max_val),
+        p_cap=368.153918 if p_cap_val is None else float(p_cap_val),
     )
 
 
@@ -315,8 +343,8 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
     env_train.action_space.seed(cfg["seed"])
     env_val = build_env(dict(cfg, shed_mapping=shed_mapping), split="val", seed=cfg["seed"] + 100)
 
-    # CapShield wraps the env and sheds excess over cap
-    shielded = bool(cfg.get("shielded", False)) or method_name in ("ppo_shield_aux", "ppo_diff_shield")
+    # CapShield wraps the env and sheds excess over cap (disabled for 6D KKT QP mode)
+    shielded = is_shielded_run(method_name, cfg)
     if shielded:
         from env.cap_shield import CapShield
         env_train = CapShield(env_train)
@@ -330,6 +358,10 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
     rollout_steps = cfg.get("rollout_steps", 2048)
     cost_limit = cfg["cost_limit"]
     is_lagrangian = "lagrangian" in method_name
+
+    effective_scale = grid_only_reward_scale(cfg, shed_mapping, method_name=method_name)
+    if effective_scale != cfg.get("reward_scale", 1.0):
+        cfg = dict(cfg, reward_scale=effective_scale)
 
     _ = _ppo_kwargs(cfg, method_name)
     agent = load_agent_for_method(method_name, cfg)
@@ -366,8 +398,13 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
             grid_import = float(info.get("grid_import_kw", 0.0))
             excess = max(0.0, grid_import - env_train.grid_import_cap_kw)
             all_train_exceedances.append(excess)
-            all_train_costs_eur.append(info["energy_cost"] + info["unserved_cost"]
-                                       + info["battery_wear_cost"])
+            all_train_costs_eur.append(
+                info["energy_cost"]
+                + info["unserved_cost"]
+                + info["battery_wear_cost"]
+                + info.get("cost_demand_charge_eur", 0.0)
+                + info.get("cost_industrial_trip_eur", 0.0)
+            )
             actions_taken.append(np.asarray(action, dtype=np.float32))
             soc_history.append(float(next_obs[0]))
             shaped = agent.scale_reward(reward, obs, next_obs, terminated, truncated)
