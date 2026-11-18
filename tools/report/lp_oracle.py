@@ -594,6 +594,14 @@ def update_constants_and_baselines(val_res: Dict[str, Any], test_res: Dict[str, 
 
     rows.append(lp_row)
 
+    canonical_order = {"Grid-Only": 0, "PSM'": 1, "LP'": 2, "Shield + Idle": 3, "Shield + PSM'": 4}
+    rows = [
+        r for _, r in sorted(
+            enumerate(rows),
+            key=lambda item: (canonical_order.get(item[1].get("method", ""), len(canonical_order)), item[0]),
+        )
+    ]
+
     with open(fb_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fieldnames)
         w.writeheader()
@@ -661,15 +669,15 @@ def update_constants_and_baselines(val_res: Dict[str, Any], test_res: Dict[str, 
 def main():
     parser = argparse.ArgumentParser(description="Hindsight LP and MILP oracle solver.")
     parser.add_argument("--oracle", choices=["lp", "milp", "both"], default="lp")
-    parser.add_argument("--split", choices=["val", "test", "all"], default="all")
+    parser.add_argument("--split", choices=["val", "test", "all", "both"], default="all")
     parser.add_argument("--mip-rel-gap", type=float, default=None, help="Relative MIP optimality gap.")
     parser.add_argument("--time-limit", type=float, default=None, help="Time limit in seconds per week.")
     parser.add_argument("--update-tables", action="store_true", help="Update CSV tables.")
     args = parser.parse_args()
 
     if args.oracle in ("lp", "both"):
-        val_res = compute_split_lp("val") if args.split in ("val", "all") else None
-        test_res = compute_split_lp("test") if args.split in ("test", "all") else None
+        val_res = compute_split_lp("val") if args.split in ("val", "all", "both") else None
+        test_res = compute_split_lp("test") if args.split in ("test", "all", "both") else None
 
         if val_res:
             print(
@@ -692,12 +700,12 @@ def main():
     if args.oracle in ("milp", "both"):
         val_milp = (
             compute_split_milp("val", mip_rel_gap=args.mip_rel_gap, time_limit=args.time_limit)
-            if args.split in ("val", "all")
+            if args.split in ("val", "all", "both")
             else None
         )
         test_milp = (
             compute_split_milp("test", mip_rel_gap=args.mip_rel_gap, time_limit=args.time_limit)
-            if args.split in ("test", "all")
+            if args.split in ("test", "all", "both")
             else None
         )
 

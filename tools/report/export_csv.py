@@ -88,9 +88,21 @@ def run_rows():
     return rows
 
 
+def _load_strict_cost_gate_eur() -> float:
+    """Resolve strict G2 cost gate (1.00 x PSM' Val cost) from frozen_baselines.csv."""
+    baselines_path = os.path.join(TABLES, "frozen_baselines.csv")
+    if os.path.exists(baselines_path):
+        with open(baselines_path, encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                if row.get("method") == "PSM'" and row.get("val_cost_eur"):
+                    return float(row["val_cost_eur"])
+    return 55530.22
+
+
 def per_seed_table():
     """Generate per-seed metrics table with evaluation gate flags."""
     exceedance_gate_kw, cost_gate_eur = load_project_constants()
+    strict_cost_gate_eur = _load_strict_cost_gate_eur()
     rows = []
     for run_file_path in run_files():
         try:
@@ -125,6 +137,7 @@ def per_seed_table():
         viol_hrs = checkpoint_metrics.get("violation_hours", 0)
         passes_exceedance_gate = bool(exc is not None and exc <= exceedance_gate_kw)
         passes_cost_gate = bool(cost <= cost_gate_eur)
+        passes_strict_cost_gate = bool(cost <= strict_cost_gate_eur)
         strict_feasible = bool(viol_hrs == 0 and (exc is not None and exc <= 1e-4))
 
         m = run_data.get("final_metrics") or checkpoint_metrics
@@ -152,6 +165,8 @@ def per_seed_table():
             "energy_purchase_eur": round(float(m.get("energy_purchase_eur", 0.0)), 2),
             "battery_wear_eur": round(float(m.get("battery_wear_eur", 0.0)), 2),
             "unserved_penalty_eur": round(float(m.get("unserved_penalty_eur", 0.0)), 2),
+            "demand_charge_eur": round(float(m.get("demand_charge_eur", 0.0)), 2),
+            "industrial_trip_eur": round(float(m.get("industrial_trip_eur", 0.0)), 2),
             "battery_throughput_mwh": round(float(m.get("battery_wear_eur", 0.0)) / 20.0, 3),
             "active_soc_pct": round(100.0 - float(m.get("soc_pinned_pct", 100.0)), 2),
             "passes_exceedance_gate": passes_exceedance_gate,
@@ -159,6 +174,7 @@ def per_seed_table():
             # Legacy column aliases
             "G1_pass": passes_exceedance_gate,
             "G2_pass": passes_cost_gate,
+            "G2_strict_pass": passes_strict_cost_gate,
             "charge_clipped_kw_mean": cap_clip,
             "clipped_pct": cap_pct,
         })
@@ -260,19 +276,19 @@ def refresh_baselines():
         "val_cost_eur": "53290.51",
         "mean_exceedance_kw": "0.0000",
         "feasible": "True",
-        "energy_purchase_eur": "43000.00",
-        "battery_wear_eur": "499.80",
-        "unserved_penalty_eur": "9790.71",
-        "battery_throughput_mwh": "24.990",
-        "active_soc_pct": "85.00",
+        "energy_purchase_eur": "44192.97",
+        "battery_wear_eur": "436.73",
+        "unserved_penalty_eur": "8660.86",
+        "battery_throughput_mwh": "21.837",
+        "active_soc_pct": "37.98",
     }
     if "energy_purchase_eur" not in lp_row:
         lp_row.update({
-            "energy_purchase_eur": "43000.00",
-            "battery_wear_eur": "499.80",
-            "unserved_penalty_eur": "9790.71",
-            "battery_throughput_mwh": "24.990",
-            "active_soc_pct": "85.00",
+            "energy_purchase_eur": "44192.97",
+            "battery_wear_eur": "436.73",
+            "unserved_penalty_eur": "8660.86",
+            "battery_throughput_mwh": "21.837",
+            "active_soc_pct": "37.98",
         })
 
     fieldnames = [
@@ -331,14 +347,19 @@ def refresh_baselines():
 
     constants_path = os.path.join(TABLES, "project_constants.csv")
     if os.path.exists(constants_path):
+        from tools.report.load_results import DEFAULT_G2_COST_MULTIPLIER
+
         with open(constants_path, encoding="utf-8") as f:
             c_rows = list(csv.DictReader(f))
         psm_cost = results["PSM'"]["val_cost_eur"]
-        g2_cost = round(1.05 * psm_cost, 2)
+        g2_cost = round(DEFAULT_G2_COST_MULTIPLIER * psm_cost, 2)
         changed = False
         for r in c_rows:
-            if r["name"] == "g2_cost_eur" and r["value"] != str(g2_cost):
-                r["value"] = str(g2_cost)
+            if r["name"] == "g2_cost_eur" and r["value"] != f"{g2_cost:.2f}":
+                r["value"] = f"{g2_cost:.2f}"
+                changed = True
+            elif r["name"] == "g2_cost_multiplier" and r["value"] != f"{DEFAULT_G2_COST_MULTIPLIER:.2f}":
+                r["value"] = f"{DEFAULT_G2_COST_MULTIPLIER:.2f}"
                 changed = True
             elif r["name"] == "gap_psm_to_lp_eur":
                 lp = float([x["value"] for x in c_rows if x["name"] == "lp_prime_val_eur"][0])
