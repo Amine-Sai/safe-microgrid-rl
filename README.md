@@ -36,13 +36,21 @@ The operational decision interval is discrete hourly steps ($\Delta t = 1.0\text
 
 The 17-dimensional state vector $s_t \in \mathcal{S}$ exposes physical asset states, meteorological features, and calendar signals:
 
-$$s_t = \begin{bmatrix} \text{SoC}_t, P_{\text{pv}, t}, P_{\text{load}, 1, t}, \dots, P_{\text{load}, 5, t}, p_t, T_{\text{amb}, t}, RH_t, BP_t, \sin\left(\frac{2\pi h_t}{24}\right), \cos\left(\frac{2\pi h_t}{24}\right), \sin\left(\frac{2\pi D_t}{7}\right), \cos\left(\frac{2\pi D_t}{7}\right), \mathbb{I}_{\text{event}, t}, \mathbb{I}_{\text{event\_next\_1h}, t} \end{bmatrix}^\top$$
+$$
+s_t = \begin{bmatrix}
+\text{SoC}_t,\; P_{\text{pv}, t},\; P_{\text{load}, 1, t},\; \dots,\; P_{\text{load}, 5, t},\; p_t,\; T_{\text{amb}, t},\; RH_t,\; BP_t,\;
+\sin\left(\frac{2\pi h_t}{24}\right),\; \cos\left(\frac{2\pi h_t}{24}\right),\; \sin\left(\frac{2\pi D_t}{7}\right),\; \cos\left(\frac{2\pi D_t}{7}\right),\;
+\mathbb{I}_{\text{event}, t},\; \mathbb{I}_{\text{event-next-1h}, t}
+\end{bmatrix}^\top
+$$
 
-where $\text{SoC}_t \in [0, 1]$ is the battery state-of-charge, $P_{\text{pv}, t} \ge 0$ is current rooftop solar power (kW), $P_{\text{load}, z, t} \ge 0$ are the five zonal facility loads (kW), $p_t$ is the day-ahead spot electricity price (EUR/kWh), $T_{\text{amb}, t}$, $RH_t$, and $BP_t$ denote ambient temperature ($^\circ\text{C}$), relative humidity (%), and barometric pressure (hPa), $h_t \in [0, 23]$ and $D_t \in [0, 6]$ encode diurnal and weekly periodicity, $\mathbb{I}_{\text{event}, t} \in \{0, 1\}$ indicates active stadium match events, and $\mathbb{I}_{\text{event\_next\_1h}, t} \in \{0, 1\}$ is the 1-hour event lookahead indicator.
+where $\text{SoC}_t \in [0, 1]$ is the battery state-of-charge, $P_{\text{pv}, t} \ge 0$ is current rooftop solar power (kW), $P_{\text{load}, z, t} \ge 0$ are the five zonal facility loads (kW), $p_t$ is the day-ahead spot electricity price (EUR/kWh), $T_{\text{amb}, t}$, $RH_t$, and $BP_t$ denote ambient temperature ($^\circ\text{C}$), relative humidity (%), and barometric pressure (hPa), $h_t \in [0, 23]$ and $D_t \in [0, 6]$ encode diurnal and weekly periodicity, $\mathbb{I}_{\text{event}, t} \in \{0, 1\}$ indicates active stadium match events, and $\mathbb{I}_{\text{event-next-1h}, t} \in \{0, 1\}$ is the 1-hour event lookahead indicator.
 
 The 6-dimensional continuous control action $a_t \in \mathcal{A}$ coordinates energy storage and demand response:
 
-$$a_t = \begin{bmatrix} a_{\text{bat}, t}, a_{\text{shed}, 1, t}, a_{\text{shed}, 2, t}, a_{\text{shed}, 3, t}, a_{\text{shed}, 4, t}, a_{\text{shed}, 5, t} \end{bmatrix}^\top \in [-1, 1]^6$$
+$$
+a_t = \begin{bmatrix} a_{\text{bat}, t}, a_{\text{shed}, 1, t}, a_{\text{shed}, 2, t}, a_{\text{shed}, 3, t}, a_{\text{shed}, 4, t}, a_{\text{shed}, 5, t} \end{bmatrix}^\top \in [-1, 1]^6
+$$
 
 where $a_{\text{bat}, t} \in [-1, 1]$ commands battery continuous power ($-1.0 \implies 250\,\text{kW}$ discharge, $+1.0 \implies 250\,\text{kW}$ charge), and $a_{\text{shed}, z, t} \in [-1, 1]$ maps linearly via $s_{z, t} = (a_{\text{shed}, z, t} + 1)/2 \in [0, 1]$ to the fractional curtailment ratio applied to demand sector $z$ (residential, commercial, stadium, street, industrial).
 
@@ -53,11 +61,15 @@ The modeled infrastructure comprises four coupled physical subsystems:
 1. **Utility Grid Connection & Power Balance:**
    The point of common coupling (PCC) connects the facility to the transmission grid. Net served load after customer curtailment and solar self-consumption is:
 
-   $$P_{\text{net\_served}, t} = \sum_{z=1}^5 (1 - s_{z, t}) P_{\text{load}, z, t} - P_{\text{pv}, t}$$
+   $$
+   P_{\text{net-served}, t} = \sum_{z=1}^5 (1 - s_{z, t}) P_{\text{load}, z, t} - P_{\text{pv}, t}
+   $$
 
    Real-time grid power import $P_{\text{grid}, t}$ balances facility demand and battery power:
 
-   $$P_{\text{grid}, t} = \max\left(0, P_{\text{net\_served}, t} + P_{\text{bat}, t}\right)$$
+   $$
+   P_{\text{grid}, t} = \max\left(0, P_{\text{net-served}, t} + P_{\text{bat}, t}\right)
+   $$
 
    Reverse power injection back into the utility grid is barred ($P_{\text{grid}, t} \ge 0$).
 
@@ -127,7 +139,9 @@ To systematically isolate the physical and algorithmic drivers of control failur
 2. `clamped`:
    The reference physical formulation implementing an automated physical operator interlock. The environment dynamically restricts battery charging power to the instantaneous available contractual headroom:
 
-   $$P\_{\text{ch}, t}^{\text{allowed}} = \min\left( P\_{\text{ch}, t}^{\text{req}}, \max(0, P\_{\text{cap}} - P\_{\text{net\\\_served}, t}) \right)$$
+   $$
+   P_{\text{ch}, t}^{\text{allowed}} = \min\left( P_{\text{ch}, t}^{\text{req}}, \max\left(0, P_{\text{cap}} - P_{\text{net-served}, t}\right) \right)
+   $$
 
    This interlock guarantees that battery charging can never induce a grid-cap violation by construction, isolating load shedding as the sole mechanism for resolving capacity emergencies.
 3. `clamped_mb`:
@@ -203,19 +217,23 @@ Reinforcement learning provides two distinct advantages over traditional optimiz
 To investigate constraint enforcement in continuous action spaces ($\mathcal{A} \subset \mathbb{R}^6$), five distinct safe RL paradigms were selected:
 
 1. **Unconstrained PPO (Baseline Formulation):**
-   Standard Proximal Policy Optimization (Schulman et al., 2017) maximizing discounted economic returns via Generalized Advantage Estimation (GAE). Selected to establish the baseline economic performance of RL and test whether high economic penalties (the €1.00/kWh VoLL) implicitly enforce physical capacity limits.
+   Standard Proximal Policy Optimization (Schulman et al., 2017) maximizing discounted economic returns via Generalized Advantage Estimation (GAE; Schulman et al., 2016). Selected to establish the baseline economic performance of RL and test whether high economic penalties (the €1.00/kWh VoLL) implicitly enforce physical capacity limits.
 
 2. **Dual-Lagrangian PPO (PPO-Lagrangian):**
    The canonical formulation for Constrained MDPs (Tessler et al., 2019; Spoor et al., 2025). It defines a saddle-point Lagrangian objective $\mathcal{L}(\theta, \lambda) = J(\pi_\theta) - \lambda (\bar{C}(\pi_\theta) - d)$, where the non-negative dual multiplier $\lambda \ge 0$ is dynamically adapted via subgradient ascent:
 
-   $$\lambda\_{k+1} = \max\left(0, \lambda\_k + \alpha\_\lambda (\bar{C}\_k - d)\right)$$
+   $$
+   \lambda_{k+1} = \max\left(0, \lambda_k + \alpha_\lambda (\bar{C}_k - d)\right)
+   $$
 
    Selected to evaluate whether adaptive constraint weighting can reliably balance cost minimization against capacity exceedance.
 
 3. **Residual Policy Learning (PPO-Residual):**
    Following Silver et al. (2018), a parameterized policy network $\pi_\theta(s)$ is superimposed onto the tuned domain heuristic $\pi_{\text{base}}(s) = \text{PSM'}(s)$:
 
-   $$a\_t = \pi\_{\text{base}}(s\_t) + \alpha\_{\text{res}} \cdot \pi\_\theta(s\_t)$$
+   $$
+   a_t = \pi_{\text{base}}(s_t) + \alpha_{\text{res}} \cdot \pi_\theta(s_t)
+   $$
 
    Selected to test whether RL can refine a safe, high-performing heuristic to extract dynamic price arbitrage without destabilizing safety.
 
@@ -233,7 +251,7 @@ To investigate constraint enforcement in continuous action spaces ($\mathcal{A} 
 
      While computationally efficient, this formulation exhibited an active-manifold gradient pathology: when the constraint bound ($g > 0$), the analytical derivative $\frac{\partial \tilde{a}_{\text{bat}}}{\partial a_{\text{bat}}} = 1 - 1 = 0$ vanished, starving the policy of directional gradient feedback during acute overruns. It relied on an outer `CapShield` wrapper for multi-zone demand curtailment and battery SoC boundary enforcement. An auxiliary loss variant (`PPO-Aux-Shield`) penalizing policy divergence from safe actions ($\mathcal{L}_{\text{aux}} = \frac{1}{2} \|a - \tilde{a}\|_2^2$) was also evaluated.
    - **Post-Snapshot T3 Upgrades:** In task T3, `agents/safety_layer.py` was structurally enhanced with:
-     a) **Straight-Through Estimator (STE) Active Gradient:** Applies a leaky STE surrogate derivative ($\frac{\partial \tilde{a}}{\partial a} = \alpha_{\text{ste}} = 0.1$) on active constraints, restoring non-vanishing gradient flow back to the actor during peak demand surges.
+     a) **Straight-Through Estimator (STE) Active Gradient:** Applies a leaky STE surrogate derivative (Bengio et al., 2013; $\frac{\partial \tilde{a}}{\partial a} = \alpha_{\text{ste}} = 0.1$) on active constraints, restoring non-vanishing gradient flow back to the actor during peak demand surges.
      b) **Hard SoC Envelopes:** Analytical projection boundaries directly enforcing $\text{SoC} \in [\text{SoC}_{\text{min}}, \text{SoC}_{\text{max}}] = [0.10, 0.90]$.
      c) **Joint 6-D KKT QP Projection:** Formulates the full 6-dimensional Quadratic Program over battery dispatch and 5-zone load shedding with exact KKT dual multipliers and full-rank Jacobian backpropagation.
      d) **Distribution Consistency:** `SafePolicyNetwork` evaluates action log-probabilities using raw outputs (`forward_raw`), eliminating double-projection distortions.
@@ -559,7 +577,7 @@ Adhering to the two-stage evaluation framework, the methodological breakdown exa
 - **Root Cause:** In the unclamped environment, battery charging commands can independently push facility net load over $P_{\text{cap}}$. Coupled with the 50:1 cost asymmetry between customer load curtailment (€1,000/MWh) and electricity purchases (~€50–€150/MWh), the unconstrained policy learns to charge aggressively during low tariffs without regard to capacity headroom, triggering charging-induced capacity violations.
 
 #### 2. Clamped Full-Batch PPO (`clamped_ppo`)
-- **Strengths:** Eliminates charging-induced violations by construction via the automated physical charging interlock ($`P_{\text{ch}}^{\text{allowed}} \le \max(0, P_{\text{cap}} - P_{\text{net\_served}})`$).
+- **Strengths:** Eliminates charging-induced violations by construction via the automated physical charging interlock ($P_{\text{ch}}^{\text{allowed}} \le \max(0, P_{\text{cap}} - P_{\text{net-served}})$).
 - **Failures:** Still incurs 464.8 violation hours and 3.23 kW mean exceedance, while battery throughput remains parked at only 5.89 MWh (2.8% active SoC).
 - **Root Cause:** While the charging interlock guarantees charging cannot cause violations, capacity emergencies from uncontrollable facility demand require active load curtailment or battery discharge. Under full-batch updates, policy gradients averaged over 168 hours fail to associate localized peak surges with shedding actions. The policy executes zero load shedding and leaves the battery essentially idle.
 
@@ -693,9 +711,18 @@ python tools/report/plot_stress_trajectory.py
   title         = {Safe Exploration in Continuous Action Spaces},
   author        = {Dalal, Gal and Dvijotham, Krishnamurthy and Vecerik, Matej
                    and Hester, Todd and Paduraru, Cosmin and Tassa, Yuval},
-  booktitle     = {Proceedings of the Thirty-Second AAAI Conference on Artificial Intelligence (AAAI)},
+  journal       = {arXiv preprint arXiv:1801.08757},
   year          = {2018},
   eprint        = {1801.08757},
+  archivePrefix = {arXiv}
+}
+
+@article{bengio2013estimating,
+  title         = {Estimating or Propagating Gradients Through Stochastic Neurons for Conditional Computation},
+  author        = {Bengio, Yoshua and L{\'e}onard, Nicholas and Courville, Aaron},
+  journal       = {arXiv preprint arXiv:1308.3432},
+  year          = {2013},
+  eprint        = {1308.3432},
   archivePrefix = {arXiv}
 }
 
@@ -731,7 +758,7 @@ python tools/report/plot_stress_trajectory.py
 
 @article{spoor2025towards,
   title         = {Towards a Practical Understanding of Lagrangian Methods in Safe Reinforcement Learning},
-  author        = {Spoor, Lindsay and Serra-G{\'o}mez, {\'A}lvaro and Plaat, Aske and Moerland, Thomas},
+  author        = {Spoor, Lindsay and Serra-G{\'o}mez, {\'A}lvaro and Plaat, Aske and Moerland, Thomas M.},
   journal       = {arXiv preprint arXiv:2510.17564},
   year          = {2025},
   eprint        = {2510.17564},
@@ -745,14 +772,6 @@ python tools/report/plot_stress_trajectory.py
   year          = {2019},
   eprint        = {1805.11074},
   archivePrefix = {arXiv}
-}
-
-@inproceedings{ng1999policy,
-  title         = {Policy Invariance Under Reward Transformations: Theory and Application to Reward Shaping},
-  author        = {Ng, Andrew Y. and Harada, Daishi and Russell, Stuart J.},
-  booktitle     = {Proceedings of the Sixteenth International Conference on Machine Learning (ICML)},
-  pages         = {278--287},
-  year          = {1999}
 }
 ```
 
