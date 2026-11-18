@@ -443,3 +443,60 @@ def test_raw_action_storage_for_clamped_ppo_residual_and_shielded():
         batch = agent.finish_path(0.0, 0.0)
         diag = agent.update(batch)
         assert diag["ratio_off_at_start"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_lagrangian_rollout_episode_costs_update_once():
+    """T2: update_lambda_from_source() prioritizes rollout_episode_costs over cost_history and clears it."""
+    from agents.ppo import PPOLagrangianAgent
+
+    lag = PPOLagrangianAgent(
+        state_dim=DEFAULT_STATE_DIM,
+        action_dim=DEFAULT_ACTION_DIM,
+        cost_limit=0.05,
+        lambda_init=0.5,
+        lr_dual=0.1,
+        lambda_lr_mult=1.0,
+    )
+    lag.cost_history = [5.0, 5.0]
+    lag.rollout_episode_costs = [0.0]
+
+    lam_after = lag.update_lambda_from_source()
+    assert lam_after < 0.5, f"Expected lambda to decrease using rollout_episode_costs=[0.0], got {lam_after}"
+    assert lam_after == pytest.approx(0.5 + 0.1 * (0.0 - 0.05), abs=1e-9)
+    assert lag.rollout_episode_costs == [], "rollout_episode_costs must be cleared after dual update"
+
+    lag0 = PPOLagrangianAgent(
+        state_dim=DEFAULT_STATE_DIM,
+        action_dim=DEFAULT_ACTION_DIM,
+        cost_limit=0.05,
+        lambda_init=0.0,
+    )
+    lag0.cost_history = [5.0, 5.0]
+    lag0.rollout_episode_costs = [0.0]
+    assert lag0.update_lambda_from_source() == 0.0
+    assert lag0.rollout_episode_costs == []
+
+
+def test_aux_shield_loss_masked_at_soc_min():
+    """T2: At SoC = 0.10 (soc_min), PPOAuxShieldLossAgent.compute_aux_loss targets 0.0 discharge."""
+    from agents.ppo import PPOAuxShieldLossAgent
+
+    agent = PPOAuxShieldLossAgent(
+        state_dim=DEFAULT_STATE_DIM,
+        action_dim=1,
+        aux_shield_coef=0.5,
+        soc_min=0.10,
+    )
+    raw_s = np.zeros((1, DEFAULT_STATE_DIM), dtype=np.float32)
+    raw_s[0, 0] = 0.10
+    agent.obs_normalizer.update(raw_s)
+    s_t = agent.to_tensor(agent.obs_normalizer.normalize(raw_s))
+
+    with th.no_grad():
+        action_mean = agent.policy.forward(s_t)[:, :1]
+    assert th.allclose(action_mean, th.zeros_like(action_mean), atol=1e-6)
+
+    weights = th.ones((1, 1), dtype=th.float32)
+    loss = agent.compute_aux_loss(s_t, weights)
+    assert loss.item() < 1e-6, f"Expected aux loss < 1e-6 at soc_min with action_mean=0.0, got {loss.item()}"
+

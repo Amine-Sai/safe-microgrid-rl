@@ -57,6 +57,7 @@ def test_frozen_baselines_loaded_dynamically():
         assert "exceedance_kw" in data
         assert "battery_throughput_mwh" in data
         assert data["cost_eur"] > 30000.0
+    assert baselines["LP'"]["battery_throughput_mwh"] == pytest.approx(21.837, abs=1e-2)
 
 
 def test_test_stress_weeks_data_loaded_dynamically():
@@ -94,9 +95,17 @@ def test_extract_metric_row_no_hardcoding():
 def test_load_regime_benchmarks_and_training_curves():
     """Verify regime benchmark, training curve, and read-only test summary loaders."""
     regime_rows = load_regime_benchmarks()
-    assert len(regime_rows) == 77
+    assert len(regime_rows) == 121
     suites = {row["suite"] for row in regime_rows}
     assert {"regime1_val", "regime2_val", "ood_val_2019-W04"}.issubset(suites)
+    regime2_methods = {row["method"] for row in regime_rows if row["suite"] == "regime2_val"}
+    assert {"Shield + Idle", "Shield + PSM'"}.issubset(regime2_methods)
+    ood_rows = [row for row in regime_rows if row["suite"] == "ood_val_2019-W04"]
+    assert any(row["method"] == "Shield + MPCPolicy(causal_noisy, H=24)" for row in ood_rows)
+    assert any(
+        row["method"] == "clamped_ppo_diff_shield" and row["row_type"] == "mean"
+        for row in ood_rows
+    )
     assert all(
         isinstance(row["n_weeks"], int)
         and isinstance(row["cost_eur"], float)
@@ -146,3 +155,15 @@ def test_load_regime_benchmarks_and_training_curves():
         for field in summary_float_keys:
             assert isinstance(entry[field], float) and math.isfinite(entry[field])
     assert test_summary["clamped_ppo_diff_shield"]["n"] == 5
+
+
+def test_presentation_report_modules_import_cleanly():
+    """T5: Verify reconstructed style and presentation_plots modules import cleanly."""
+    import tools.report.presentation_plots as presentation_plots
+    import tools.report.style as style
+
+    assert callable(getattr(presentation_plots, "plot_presentation_all", None))
+    assert callable(getattr(presentation_plots, "main", None))
+    assert callable(getattr(style, "apply_presentation_rc", None))
+    assert callable(getattr(style, "save_slide_fig", None))
+

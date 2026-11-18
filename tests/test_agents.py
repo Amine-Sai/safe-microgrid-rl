@@ -377,3 +377,80 @@ def test_safe_policy_network_log_prob_consistency(project_constants):
     batch = agent.finish_path(last_value=value)
     assert batch is not None
 
+
+def test_safe_policy_distribution_backward_calls_safety_layer(project_constants):
+    """T1: SafePolicyNetwork.distribution() preserves forward_raw values and propagates STE gradients via safety_layer."""
+    from agents.ppo import initial_grid_only_action_mean
+    from agents.safety_layer import SafePolicyNetwork
+
+    p_max = 250.0
+    p_cap = project_constants.get("grid_import_cap_kw", 368.15)
+    layer = DifferentiableSafetyLayer(p_max=p_max, p_cap=p_cap, surrogate_grad_scale=0.1)
+    init_mean = initial_grid_only_action_mean("linear", 6)
+    net = SafePolicyNetwork(state_dim=DEFAULT_STATE_DIM, action_dim=6, safety_layer=layer, init_mean=init_mean)
+
+    calls = [0]
+    orig_forward = layer.forward
+
+    def spy_forward(state: th.Tensor, action: th.Tensor) -> th.Tensor:
+        calls[0] += 1
+        return orig_forward(state, action)
+
+    layer.forward = spy_forward  # type: ignore[method-assign]
+
+    s = th.zeros((4, DEFAULT_STATE_DIM), dtype=th.float32)
+    s[:, 0] = 0.50
+    s[:, 1] = 0.0
+    s[:, 2:7] = 100.0  # P_net = 500 kW > p_cap -> active constraint g > 0
+
+    with th.enable_grad():
+        raw_mu = net.forward_raw(s)
+        assert layer.constraint_val(s, raw_mu).min().item() > 0.0
+        dist = net.distribution(s)
+        assert calls[0] == 1, f"Expected safety_layer.forward to be called once, got {calls[0]}"
+        assert th.allclose(dist.mean, raw_mu), "dist.mean must match forward_raw(s)"
+
+        u = (dist.mean + 0.25).detach()
+        net.zero_grad()
+        (-dist.log_prob(u).sum()).backward()
+        assert net.mu.weight.grad is not None
+        assert net.mu.weight.grad.abs().sum().item() > 0.0, "Expected non-zero mu.weight.grad under active constraint"
+
+
+def test_safety_layer_6d_industrial_piecewise_consistency(project_constants):
+    """T1: 6-D DifferentiableSafetyLayer industrial shedding matches SmartGridEnv below threshold."""
+    from env.smartgrid_env import shed_action_to_fractions
+
+    p_max = 250.0
+    p_cap = project_constants.get("grid_import_cap_kw", 368.153918)
+    layer = DifferentiableSafetyLayer(
+        p_max=p_max,
+        p_cap=p_cap,
+        motor_min_pct=70.0,
+        industrial_shutdown_threshold=0.90,
+    )
+
+    zone_loads = np.array([100.0, 90.0, 80.0, 50.0, 150.0], dtype=np.float32)
+    s = th.zeros((1, DEFAULT_STATE_DIM), dtype=th.float32)
+    s[0, 0] = 0.50
+    s[0, 1] = 0.0
+    s[0, 2:7] = th.from_numpy(zone_loads)
+
+    for a_ind in (-1.0, -0.5, 0.0, 0.5, 0.8):
+        shed_act = np.array([-1.0, -0.5, 0.0, 0.2, a_ind], dtype=np.float32)
+        act = th.tensor([[0.0, *shed_act]], dtype=th.float32)
+
+        fracs_env = shed_action_to_fractions(
+            shed_act,
+            shed_mapping="linear",
+            motor_min_pct=70.0,
+            industrial_shutdown_threshold=0.90,
+        )
+        fracs_layer = layer._zone_shed_fractions(act[:, 1:])[0].detach().numpy()
+        assert np.allclose(fracs_layer, fracs_env, atol=1e-6), f"Mismatch for a_ind={a_ind}: {fracs_layer} vs {fracs_env}"
+
+        g_layer = float(layer.constraint_val(s, act).item())
+        expected_g = float(zone_loads.sum()) - float(np.sum(zone_loads * fracs_env)) - p_cap
+        assert abs(g_layer - expected_g) <= 1e-4, f"g mismatch for a_ind={a_ind}: {g_layer} vs {expected_g}"
+
+

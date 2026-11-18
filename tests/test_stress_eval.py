@@ -274,3 +274,82 @@ def test_frozen_test_lock_json_unmutated_after_all_evaluations():
     # Hash must be bit-for-bit identical
     new_lock_hash = _read_lock_hash()
     assert new_lock_hash == lock_hash, "test_lock.json was modified during evaluation!"
+
+
+def test_ood_wrapper_syncs_cap_shield_obs_and_agent_params():
+    """T3: OODPerturbationWrapper syncs CapShield._last_obs and PPODiffSafetyLayerAgent params, then restores."""
+    from agents.ppo import PPODiffSafetyLayerAgent
+
+    base_env = SmartGridEnv({"split": "val", "charge_clamp": True, "forecast_horizon_hours": 6})
+    shield_env = CapShield(base_env)
+    orig_cap = float(shield_env.cap_kw)
+    orig_pmax = float(shield_env.bat_max_power_kw)
+
+    # 1. Forecast noise syncs perturbed obs into CapShield._last_obs on reset and step
+    noise_cfg = get_ood_contingency_config("forecast_noise", {"noise_std": 0.50})
+    with OODPerturbationWrapper(shield_env, contingency="forecast_noise", contingency_config=noise_cfg) as ood_env:
+        obs0, _ = ood_env.reset(options={"start_idx": 0})
+        assert shield_env._last_obs is not None
+        assert np.allclose(shield_env._last_obs, obs0)
+
+        obs1, _, _, _, _ = ood_env.step(np.array([0.0], dtype=np.float32))
+        assert np.allclose(shield_env._last_obs, obs1)
+
+    # 2. grid_cap_reduction & bess_derate sync PPODiffSafetyLayerAgent and restore cleanly
+    agent = PPODiffSafetyLayerAgent(state_dim=23, action_dim=1, p_max=orig_pmax, p_cap=orig_cap)
+    cap_cfg = get_ood_contingency_config("grid_cap_reduction", {"cap_factor": 0.80})
+    with OODPerturbationWrapper(shield_env, contingency="grid_cap_reduction", contingency_config=cap_cfg) as ood_env:
+        ood_env.configure_policy(agent)
+        assert agent.p_cap == pytest.approx(orig_cap * 0.80, rel=1e-5)
+        assert agent.safety_layer.p_cap == pytest.approx(orig_cap * 0.80, rel=1e-5)
+    agent.sync_env_params(shield_env)
+    assert agent.p_cap == pytest.approx(orig_cap, rel=1e-5)
+    assert agent.safety_layer.p_cap == pytest.approx(orig_cap, rel=1e-5)
+
+    derate_cfg = get_ood_contingency_config("bess_derate", {"derate_factor": 0.50})
+    with OODPerturbationWrapper(shield_env, contingency="bess_derate", contingency_config=derate_cfg) as ood_env:
+        ood_env.configure_policy(agent)
+        assert agent.p_max == pytest.approx(orig_pmax * 0.50, rel=1e-5)
+        assert agent.safety_layer.p_max == pytest.approx(orig_pmax * 0.50, rel=1e-5)
+    agent.sync_env_params(shield_env)
+    assert agent.p_max == pytest.approx(orig_pmax, rel=1e-5)
+    assert agent.safety_layer.p_max == pytest.approx(orig_pmax, rel=1e-5)
+
+    # 3. End-to-end evaluate_ood_stress_suite restores agent and env params after contingencies
+    res = evaluate_ood_stress_suite(
+        shield_env,
+        policy=None,
+        agent_wrapper=agent,
+        start_idx=0,
+        contingencies=["grid_cap_reduction", "bess_derate"],
+    )
+    assert {"nominal", "grid_cap_reduction", "bess_derate"}.issubset(res.keys())
+    assert agent.p_cap == pytest.approx(orig_cap, rel=1e-5)
+    assert agent.p_max == pytest.approx(orig_pmax, rel=1e-5)
+    assert shield_env.cap_kw == pytest.approx(orig_cap, rel=1e-5)
+    assert shield_env.bat_max_power_kw == pytest.approx(orig_pmax, rel=1e-5)
+
+
+def test_mpc_forecast_noise_preserves_t0_and_prices():
+    """T3: MPCPolicy._get_forecast leaves t=0 (pv[0], loads[0]) and all price_kwh uncorrupted."""
+    env = SmartGridEnv({"split": "val", "charge_clamp": True})
+    o0, inf0 = env.reset(options={"start_idx": 0})
+
+    for mode in ("persistence", "perfect"):
+        mpc_clean = MPCPolicy(env=env, horizon=6, forecast_mode=mode, forecast_noise_std=0.0, seed=7)
+        mpc_noisy = MPCPolicy(
+            env=env,
+            horizon=6,
+            forecast_mode=mode,
+            forecast_noise_std=0.20,
+            forecast_noise_relative=True,
+            seed=7,
+        )
+        pv_c, loads_c, price_c = mpc_clean._get_forecast(o0, info=inf0)
+        pv_n, loads_n, price_n = mpc_noisy._get_forecast(o0, info=inf0)
+
+        assert pv_n[0] == pytest.approx(pv_c[0], abs=1e-6)
+        assert np.allclose(loads_n[0], loads_c[0], atol=1e-6)
+        assert np.allclose(price_n, price_c, atol=1e-6)
+        assert not (np.allclose(pv_n[1:], pv_c[1:], atol=1e-6) and np.allclose(loads_n[1:], loads_c[1:], atol=1e-6))
+
