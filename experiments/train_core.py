@@ -279,7 +279,7 @@ def _ppo_kwargs(cfg: dict, method_name: str) -> dict:
     p_max_val = cfg.get("battery_max_power_kw")
     p_cap_val = cfg.get("grid_import_cap_kw")
 
-    return dict(
+    kwargs = dict(
         state_dim=state_dim, action_dim=cfg["action_dim"],
         shed_mapping=cfg.get("shed_mapping", "linear"),
         lr_policy=cfg.get("lr_policy", 3e-4), lr_value=cfg.get("lr_value", 1e-3),
@@ -307,6 +307,19 @@ def _ppo_kwargs(cfg: dict, method_name: str) -> dict:
         p_max=250.0 if p_max_val is None else float(p_max_val),
         p_cap=368.153918 if p_cap_val is None else float(p_cap_val),
     )
+    for dst_key, cfg_key in (
+        ("soc_min", "battery_soc_min"),
+        ("soc_max", "battery_soc_max"),
+        ("eta_charge", "battery_eta_charge"),
+        ("eta_discharge", "battery_eta_discharge"),
+        ("capacity_kwh", "battery_capacity_kwh"),
+        ("dt_hours", "dt_hours"),
+        ("motor_min_pct", "motor_min_pct"),
+        ("industrial_shutdown_threshold", "industrial_shutdown_threshold"),
+    ):
+        if cfg.get(cfg_key) is not None:
+            kwargs[dst_key] = float(cfg[cfg_key])
+    return kwargs
 
 
 def _ppo_residual_policy():
@@ -367,7 +380,9 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
     agent = load_agent_for_method(method_name, cfg)
     agent.rng = np.random.RandomState(cfg["seed"])
     agent.shed_mapping = shed_mapping
-    if hasattr(agent, "safety_layer"):
+    if hasattr(agent, "sync_env_params"):
+        agent.sync_env_params(env_train)
+    elif hasattr(agent, "safety_layer"):
         agent.safety_layer.p_cap = env_train.grid_import_cap_kw
 
     ckpt_stem = "%s_seed%s" % (run_id, cfg["seed"])
@@ -422,10 +437,6 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
             last_term = bool(terminated)
             if truncated or terminated:
                 agent.end_episode(bool(terminated))
-                if is_lagrangian:
-                    lambda_value = agent.update_lambda_from_source()
-                    lambda_trajectory.append({"step": step, "lambda": lambda_value,
-                                              "J_c": float(np.mean(agent.cost_history[-1:])) if agent.cost_history else 0.0})
                 obs, _ = env_train.reset()
 
         # Update on rollout
@@ -434,6 +445,20 @@ def train_single_method_ppo(method_name: str, cfg: dict, ckpt_dir: str = None,
                                   0.0 if (last_term and is_lagrangian) else last_cost_value)
         if batch is not None:
             agent.update(batch)
+        if is_lagrangian:
+            ep_costs = getattr(agent, "rollout_episode_costs", None)
+            if ep_costs:
+                rollout_jc = float(np.mean(ep_costs))
+            elif getattr(agent.buffer, "rollout_costs", None):
+                rollout_jc = float(np.mean(agent.buffer.rollout_costs))
+            elif getattr(agent, "cost_history", None):
+                rollout_jc = float(np.mean(agent.cost_history[-1:]))
+            else:
+                rollout_jc = 0.0
+            lambda_value = agent.update_lambda_from_source()
+            lambda_trajectory.append(
+                {"step": step, "lambda": lambda_value, "J_c": rollout_jc}
+            )
         agent.reset_buffer()
 
         # Periodic evaluation

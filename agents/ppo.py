@@ -858,8 +858,12 @@ class PPOAgent:
         """Record the finished episode mean constraint cost; clear rollout costs."""
         if not hasattr(self, "cost_history"):
             self.cost_history: List[float] = []
+        if not hasattr(self, "rollout_episode_costs"):
+            self.rollout_episode_costs: List[float] = []
         if self.buffer.rollout_costs:
-            self.cost_history.append(float(np.mean(self.buffer.rollout_costs)))
+            ep_cost = float(np.mean(self.buffer.rollout_costs))
+            self.cost_history.append(ep_cost)
+            self.rollout_episode_costs.append(ep_cost)
         self.buffer.rollout_costs = []
 
     # ---------------------------------------------------------------- io
@@ -1034,6 +1038,7 @@ class PPOLagrangianAgent(PPOAgent):
         self.lambda_lr: float = float(lr_dual * lambda_lr_mult)
         self.lambda_history: List[float] = []
         self.cost_history: List[float] = []
+        self.rollout_episode_costs: List[float] = []
 
     def combine_advantages(
         self,
@@ -1055,8 +1060,15 @@ class PPOLagrangianAgent(PPOAgent):
 
     def update_lambda_from_source(self) -> float:
         r"""Update dual multiplier $\lambda \leftarrow \max(0, \lambda + \alpha_\lambda (\bar{J}_C - d))$."""
-        recent = self.cost_history[-10:] if self.cost_history else self.buffer.rollout_costs
-        j_c = float(np.mean(recent)) if recent else 0.0
+        if getattr(self, "rollout_episode_costs", None):
+            j_c = float(np.mean(self.rollout_episode_costs))
+            self.rollout_episode_costs = []
+        elif self.buffer.rollout_costs:
+            j_c = float(np.mean(self.buffer.rollout_costs))
+        elif self.cost_history:
+            j_c = float(self.cost_history[-1])
+        else:
+            j_c = 0.0
         self.lambda_ = max(0.0, self.lambda_ + self.lambda_lr * (j_c - self.cost_limit))
         self.lambda_history.append(self.lambda_)
         return self.lambda_
@@ -1168,10 +1180,38 @@ class PPOAuxShieldLossAgent(PPOShieldedAgent):
         self.aux_shield_coef: float = float(aux_shield_coef)
         self._current_shield_shed_weights: Optional[th.Tensor] = None
 
+        from env.smartgrid_env import default_config
+        cfg = default_config()
+
+        def _resolve_param(primary: str, cfg_key: str) -> float:
+            val = kwargs.get(primary)
+            if val is None:
+                val = kwargs.get(cfg_key)
+            if val is None:
+                val = cfg[cfg_key]
+            return float(val)
+
+        self.soc_min: float = _resolve_param("soc_min", "battery_soc_min")
+        self.capacity_kwh: float = _resolve_param("capacity_kwh", "battery_capacity_kwh")
+        self.eta_discharge: float = _resolve_param("eta_discharge", "battery_eta_discharge")
+        self.dt_hours: float = _resolve_param("dt_hours", "dt_hours")
+        self.p_max: float = _resolve_param("p_max", "battery_max_power_kw")
+
     def compute_aux_loss(self, s_t: th.Tensor, shield_shed_weights: th.Tensor) -> th.Tensor:
-        r"""Compute auxiliary imitation penalty: $\mathbb{E}[w \cdot (\mu_\theta(s)_0 - (-1.0))^2]$."""
+        r"""Compute auxiliary imitation penalty toward SoC-feasible maximum discharge."""
         action_mean = self.policy.forward(s_t)[:, :1]
-        target_action = -1.0
+        if self.obs_normalizer is not None and getattr(self.obs_normalizer, "count", 0) > 0:
+            mean0 = float(np.asarray(self.obs_normalizer.mean).flat[0])
+            var = getattr(self.obs_normalizer, "var", None)
+            eps = float(getattr(self.obs_normalizer, "epsilon", 1e-8))
+            std0 = float(np.sqrt(np.asarray(var).flat[0]) + eps) if var is not None else 1.0
+            soc = s_t[:, 0:1] * std0 + mean0
+        else:
+            soc = s_t[:, 0:1]
+
+        max_dis_p = (soc - self.soc_min) * self.capacity_kwh * (self.eta_discharge / max(self.dt_hours, 1e-6))
+        target_action = th.clamp(-max_dis_p / max(self.p_max, 1e-6), -1.0, 0.0).detach()
+
         weights = shield_shed_weights if shield_shed_weights.dtype.is_floating_point else shield_shed_weights.float()
         if weights.dim() == 1:
             weights = weights.view(-1, 1)
@@ -1239,10 +1279,26 @@ class PPODiffSafetyLayerAgent(PPOAgent):
         self.p_cap: float = float(p_cap)
 
         from agents.safety_layer import DifferentiableSafetyLayer, SafePolicyNetwork
+        layer_kwargs: Dict[str, Any] = {
+            "p_max": self.p_max,
+            "p_cap": self.p_cap,
+            "obs_normalizer": self.obs_normalizer,
+        }
+        for key in (
+            "soc_min",
+            "soc_max",
+            "eta_charge",
+            "eta_discharge",
+            "capacity_kwh",
+            "dt_hours",
+            "surrogate_grad_scale",
+            "motor_min_pct",
+            "industrial_shutdown_threshold",
+        ):
+            if key in kwargs and kwargs[key] is not None:
+                layer_kwargs[key] = kwargs[key]
         self.safety_layer: DifferentiableSafetyLayer = DifferentiableSafetyLayer(
-            p_max=self.p_max,
-            p_cap=self.p_cap,
-            obs_normalizer=self.obs_normalizer,
+            **layer_kwargs
         ).to(self.device)
 
         init_mean = self.get_initial_policy_mean()
@@ -1256,6 +1312,52 @@ class PPODiffSafetyLayerAgent(PPOAgent):
         ).to(self.device)
         lr_policy = kwargs.get("lr_policy", 3e-4)
         self.policy_optimizer: th.optim.Optimizer = th.optim.Adam(self.policy.parameters(), lr=lr_policy)
+
+    def sync_env_params(self, env: Any) -> None:
+        """Synchronize safety layer physical and cap parameters from environment."""
+        if env is None:
+            return
+        base_env = getattr(env, "base_env", None) or getattr(env, "unwrapped", None) or getattr(env, "env", env)
+
+        p_max = getattr(env, "bat_max_power_kw", None)
+        if p_max is None:
+            p_max = getattr(base_env, "bat_max_power_kw", None)
+        if p_max is not None:
+            self.p_max = float(p_max)
+            self.safety_layer.p_max = self.p_max
+
+        p_cap = getattr(env, "cap_kw", None)
+        if p_cap is None:
+            p_cap = getattr(env, "grid_import_cap_kw", None)
+        if p_cap is None:
+            p_cap = getattr(base_env, "cap_kw", None)
+        if p_cap is None:
+            p_cap = getattr(base_env, "grid_import_cap_kw", None)
+        if p_cap is not None:
+            self.p_cap = float(p_cap)
+            self.safety_layer.p_cap = self.p_cap
+
+        for layer_attr, env_attr in (
+            ("soc_min", "bat_soc_min"),
+            ("soc_max", "bat_soc_max"),
+            ("eta_charge", "bat_eta_charge"),
+            ("eta_discharge", "bat_eta_discharge"),
+            ("capacity_kwh", "bat_capacity_kwh"),
+            ("dt_hours", "dt_hours"),
+            ("industrial_shutdown_threshold", "industrial_shutdown_threshold"),
+        ):
+            val = getattr(env, env_attr, getattr(base_env, env_attr, None))
+            if val is not None and hasattr(self.safety_layer, layer_attr):
+                setattr(self.safety_layer, layer_attr, float(val))
+
+        motor_min = getattr(env, "motor_min_pct", getattr(base_env, "motor_min_pct", None))
+        if motor_min is not None:
+            raw_mm = float(motor_min)
+            mm_frac = raw_mm / 100.0 if raw_mm > 1.0 else raw_mm
+            if hasattr(self.safety_layer, "motor_min_frac"):
+                self.safety_layer.motor_min_frac = mm_frac
+                thresh = getattr(self.safety_layer, "industrial_shutdown_threshold", 0.90)
+                self.safety_layer.ind_linear_scale = (1.0 - mm_frac) / max(float(thresh), 1e-6)
 
     def select_action(
         self,
