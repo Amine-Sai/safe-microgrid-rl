@@ -240,15 +240,19 @@ Evaluated over 26 Val weeks with `2.333333 EUR/kW-week` weekly peak demand charg
 
 ## 9. Report Figures & Evaluation Suite
 
-All publication figures are generated via `python3 tools/report/plots.py`, and multi-regime / OOD Val benchmarks are generated via `python3 tools/report/eval_regimes_val.py`:
-- **Study 1: Clamping & Batching Ablation in Basic PPO (`results/figures/study1_ppo_ablation/`):**
-  Examines `cost.png`, `grid_exceedance.png`, `battery/throughput.png`, and `battery/active_soc.png` across unconstrained PPO variants.
-- **Study 2: Capped PPO vs. Baselines (`results/figures/study2_capped_ppo/`):**
-  Compares benchmark methods across `cost.png`, `grid_exceedance.png`, `unserved_load.png`, `battery/throughput.png`, and `battery/active_soc.png`.
-- **Study 3: Multi-Objective Pareto Frontier (`results/figures/study3_stress_pareto/`):**
-  Maps mean grid exceedance against total cost (`pareto.png`) and evaluates multi-week stress scenarios (`stress_week_pareto.png`) with G1/G2 gates.
-- **Study 4: Plain PPO vs. PPO-Lagrangian (`results/figures/study4_plain_vs_lagrangian/`):**
-  Side-by-side comparison across unclamped, clamped full-batch, and clamped minibatch configurations (`cost.png`, `grid_exceedance.png`, `battery/throughput.png`, `battery/active_soc.png`).
+Multi-regime and OOD Val benchmarks are generated via [`tools/report/eval_regimes_val.py`](tools/report/eval_regimes_val.py), and the 12 consolidated PNG benchmark figures are stored in `results/figures/presentation/`:
+1. **[`01_ablation_pathologies.png`](results/figures/presentation/01_ablation_pathologies.png)**: 3-panel ablation comparing cost decomposition, cap violation rates, and active SoC across `Grid-Only`, `PPO (Full-Batch)`, `PPO (Minibatch)`, `PPO-Lagrangian`, `Shielded PPO`, and `PPO-Diff-Shield`.
+2. **[`02_pareto_cost_safety.png`](results/figures/presentation/02_pareto_cost_safety.png)**: Broken-X 3-column Pareto view separating the 0.00 kW exact-zero safe lane, log-scale leaky/unsafe exceedance, and P50 step inference latency.
+3. **[`03_learning_dynamics.png`](results/figures/presentation/03_learning_dynamics.png)**: 50k–300k step Validation learning curves (mean ± 1 SD across 5 seeds) tracking total cost, cap violation rate, and active unpinned SoC.
+4. **[`04_regime1_causal_mpc.png`](results/figures/presentation/04_regime1_causal_mpc.png)**: Regime 1 Cleveland dot + per-seed interval benchmark comparing `LP'`/`MILP'`, `MPCPolicy` (`perfect`, `causal_noisy`, `persistence`), `PSM'`, `clamped_ppo_diff_shield`, and `causal23_ppo_diff_shield` on cost, $\text{CVaR}_{0.95}$, and P50 latency.
+5. **[`05_regime2_ci_ablation.png`](results/figures/presentation/05_regime2_ci_ablation.png)**: Regime 2 C&I tariff stacked cost decomposition (energy, demand charge, zone VoLL, wear, trip penalty) and non-energy / motor-leakage ablation (`ci_ppo_diff_shield` vs. `PSM'`, `ci_ppo_shielded`, and unshielded `ci_ppo_diff_6d`).
+6. **[`06_ood_stress_2019w04.png`](results/figures/presentation/06_ood_stress_2019w04.png)**: 2-panel 2019-W04 OOD contingency matrix (`nominal`, `pv_inverter_trip`, `bess_derate`, `grid_cap_reduction`, `forecast_noise`) comparing violation rate and weekly cost / $\text{CVaR}_{0.95}$ across `PSM'`, `MPCPolicy(causal_noisy, H=24)`, and `clamped_ppo_diff_shield`.
+7. **[`07_dispatch_case_2019w04.png`](results/figures/presentation/07_dispatch_case_2019w04.png)**: 3-row synchronized full-168h dispatch case study on Val `2019-W04` (net grid import vs. cap, battery SoC cycling vs. parking, and cumulative unserved load).
+8. **[`08_seasonal_test_context.png`](results/figures/presentation/08_seasonal_test_context.png)**: Paired seasonal comparison (Val H1 vs. locked `v0-prototype` Test H2 arbitrage headroom) and stress-week dumbbell from mild Test weeks (`W30`/`W45`/`W48`/`W51`) to cap-binding `2019-W49`.
+9. **[`09_microgrid_architecture.png`](results/figures/presentation/09_microgrid_architecture.png)**: CMDP block diagram mapping the 17-D/23-D state space, physical assets (`368.15 kW` PCC cap, `250 kWp` PV, `500 kWh / ±250 kW` BESS, 5 demand zones with the discontinuous industrial motor rule), and 6-D safety projection into `G1`/`G2` gates.
+10. **[`10_dataset_split_regimes.png`](results/figures/presentation/10_dataset_split_regimes.png)**: 154-week chronological split timeline (`104w` Train / `26w` Val / `24w` Test).
+11. **[`11_safety_mechanisms.png`](results/figures/presentation/11_safety_mechanisms.png)**: 3-track forward and backward gradient flow schematic contrasting post-hoc `CapShield` (gradient disconnect and battery parking), `v0` 1-D analytical clipping (vanishing active Jacobian), and T3 STE (`α=0.1`, `forward_raw`) + 5-step `CapShield` co-design.
+12. **[`12_seed_stability_tradeoff.png`](results/figures/presentation/12_seed_stability_tradeoff.png)**: 5-seed reproducibility spread (Seeds 101–105) across Regimes 1–2 alongside 24h `MPCPolicy` forecast sensitivity (`perfect` vs. `causal_noisy` vs. `persistence`) and unserved penalty spike.
 
 ---
 

@@ -4,18 +4,21 @@ Imports metrics directly from persistent result tables:
 - results/tables/project_constants.csv
 - results/tables/frozen_baselines.csv
 - results/tables/per_seed_metrics.csv
+- results/tables/regime_benchmarks_val.csv
 - results/tables/test_evaluation.csv
 - results/tables/test_stress_weeks.csv
+- results/runs/*/*_seed*.json
 
 Eliminates all hardcoded values from report and figure generation.
 """
 
 import csv
+import glob
 import io
 import json
 import os
 import statistics
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 TABLES = os.path.join(ROOT, "results", "tables")
@@ -455,3 +458,230 @@ def extract_violation_hours(
         return m_vh, s_vh
 
     return 0.0, 0.0
+
+
+_REGIME_FLOAT_COLS = (
+    "cost_eur",
+    "energy_purchase_eur",
+    "battery_wear_eur",
+    "unserved_penalty_eur",
+    "demand_charge_eur",
+    "industrial_trip_eur",
+    "mean_exceedance_kw",
+    "max_hourly_exceedance_kw",
+    "cvar95_cost_eur",
+    "cvar95_exceedance_kw",
+    "violation_rate_pct",
+    "unserved_pct",
+    "battery_throughput_mwh",
+    "active_soc_pct",
+    "shield_intervention_rate",
+    "latency_p50_ms",
+    "latency_p99_ms",
+)
+_REGIME_INT_OR_FLOAT_COLS = (
+    "violation_hours",
+    "max_consecutive_violation_hours",
+)
+
+
+def _strip_optional(value: Any) -> Optional[str]:
+    """Return stripped string, or None when value is None or whitespace-only."""
+    if value is None:
+        return None
+    s = str(value).strip()
+    return None if s == "" else s
+
+
+def _parse_optional_float(value: Any) -> Optional[float]:
+    """Parse value as float, or return None when blank/missing."""
+    s = _strip_optional(value)
+    return None if s is None else float(s)
+
+
+def _parse_optional_int_or_float(value: Any) -> Optional[Union[int, float]]:
+    """Parse integral strings as int, decimal/scientific strings as float, or None."""
+    s = _strip_optional(value)
+    if s is None:
+        return None
+    if "." not in s and "e" not in s.lower():
+        return int(s)
+    return float(s)
+
+
+def _mean_std(values: Sequence[float]) -> Tuple[float, float]:
+    """Return (mean, sample std with ddof=1), using std=0.0 when n < 2."""
+    if not values:
+        return 0.0, 0.0
+    mean = statistics.fmean(values)
+    std = statistics.stdev(values) if len(values) > 1 else 0.0
+    return mean, std
+
+
+def load_regime_benchmarks(csv_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Load and type-parse rows from results/tables/regime_benchmarks_val.csv."""
+    path = csv_path or os.path.join(TABLES, "regime_benchmarks_val.csv")
+    if not os.path.exists(path):
+        return []
+
+    rows: List[Dict[str, Any]] = []
+    with open(path, encoding="utf-8") as f:
+        for raw in csv.DictReader(f):
+            n_weeks_str = _strip_optional(raw.get("n_weeks"))
+            parsed: Dict[str, Any] = {
+                "suite": raw.get("suite", ""),
+                "regime": raw.get("regime", ""),
+                "method": raw.get("method", ""),
+                "row_type": raw.get("row_type", ""),
+                "seed": raw.get("seed", ""),
+                "checkpoint_type": raw.get("checkpoint_type", ""),
+                "contingency": raw.get("contingency", ""),
+                "n_weeks": None if n_weeks_str is None else int(n_weeks_str),
+            }
+            for col in _REGIME_FLOAT_COLS:
+                parsed[col] = _parse_optional_float(raw.get(col))
+            for col in _REGIME_INT_OR_FLOAT_COLS:
+                parsed[col] = _parse_optional_int_or_float(raw.get(col))
+            rows.append(parsed)
+    return rows
+
+
+def load_training_curves(
+    prefixes: Optional[Sequence[str]] = None,
+    runs_dir: Optional[str] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Aggregate eval_checkpoints (50k..300k) across seed JSONs per run prefix."""
+    base_dir = runs_dir or RUNS
+    if not os.path.exists(base_dir):
+        return {}
+
+    target_set = set(prefixes) if prefixes is not None else None
+    candidates = sorted(
+        set(
+            glob.glob(os.path.join(base_dir, "*", "*_seed*.json"))
+            + glob.glob(os.path.join(base_dir, "*_seed*.json"))
+        )
+    )
+
+    by_prefix_step: Dict[str, Dict[int, Dict[str, List[float]]]] = {}
+    seed_counts: Dict[str, Dict[int, int]] = {}
+    curve_metrics = ("total_cost_eur", "violation_rate_pct", "active_soc_pct", "unserved_penalty_eur")
+
+    for path in candidates:
+        fname = os.path.basename(path)
+        if fname.endswith("_grid.json") or fname == "test_lock.json":
+            continue
+        prefix = fname.split("_seed")[0]
+        if target_set is not None and prefix not in target_set:
+            continue
+
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+
+        eval_ckpts = data.get("eval_checkpoints")
+        if not eval_ckpts:
+            continue
+
+        items: List[Tuple[int, Dict[str, Any]]] = []
+        if isinstance(eval_ckpts, dict):
+            for step_key, ck in eval_ckpts.items():
+                step = int(str(step_key).split("_")[0])
+                items.append((step, ck))
+        elif isinstance(eval_ckpts, list):
+            for ck in eval_ckpts:
+                if "step" in ck:
+                    items.append((int(ck["step"]), ck))
+
+        pfx_steps = by_prefix_step.setdefault(prefix, {})
+        pfx_counts = seed_counts.setdefault(prefix, {})
+        for step, ck in items:
+            bucket = pfx_steps.setdefault(
+                step,
+                {m: [] for m in (*curve_metrics, "lambda")},
+            )
+            pfx_counts[step] = pfx_counts.get(step, 0) + 1
+            bucket["total_cost_eur"].append(float(ck.get("total_cost_eur", 0.0)))
+            bucket["violation_rate_pct"].append(float(ck.get("violation_rate_pct", 0.0)))
+            if "soc_pinned_pct" in ck:
+                bucket["active_soc_pct"].append(100.0 - float(ck["soc_pinned_pct"]))
+            elif "active_soc_pct" in ck:
+                bucket["active_soc_pct"].append(float(ck["active_soc_pct"]))
+            bucket["unserved_penalty_eur"].append(float(ck.get("unserved_penalty_eur", 0.0)))
+            if ck.get("lambda") is not None:
+                bucket["lambda"].append(float(ck["lambda"]))
+
+    ordered_prefixes = (
+        [p for p in prefixes if p in by_prefix_step]
+        if prefixes is not None
+        else sorted(by_prefix_step.keys())
+    )
+
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for prefix in ordered_prefixes:
+        series: List[Dict[str, Any]] = []
+        for step in sorted(by_prefix_step[prefix].keys()):
+            bucket = by_prefix_step[prefix][step]
+            entry: Dict[str, Any] = {
+                "step": step,
+                "n_seeds": seed_counts[prefix][step],
+            }
+            for metric in curve_metrics:
+                mean, std = _mean_std(bucket[metric])
+                entry[f"{metric}_mean"] = mean
+                entry[f"{metric}_std"] = std
+            if bucket["lambda"]:
+                lam_mean, lam_std = _mean_std(bucket["lambda"])
+                entry["lambda_mean"] = lam_mean
+                entry["lambda_std"] = lam_std
+            series.append(entry)
+        out[prefix] = series
+    return out
+
+
+def load_test_evaluation_summary(csv_path: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    """Summarize locked test_evaluation.csv grouped by baseline model or RL run prefix."""
+    path = csv_path or os.path.join(TABLES, "test_evaluation.csv")
+    if not os.path.exists(path):
+        return {}
+
+    grouped: Dict[str, Dict[str, Any]] = {}
+    with open(path, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            model = row.get("model", "")
+            if not model:
+                continue
+            key = model.split("_seed")[0] if "_seed" in model else model
+            bucket = grouped.setdefault(
+                key,
+                {
+                    "family": row.get("family", ""),
+                    "cost_eur": [],
+                    "violation_rate_pct": [],
+                    "mean_exceedance_kw": [],
+                    "unserved_pct": [],
+                },
+            )
+            bucket["cost_eur"].append(float(row["cost_eur"]))
+            bucket["violation_rate_pct"].append(float(row["violation_rate_pct"]))
+            bucket["mean_exceedance_kw"].append(float(row["mean_exceedance_kw"]))
+            bucket["unserved_pct"].append(float(row["unserved_pct"]))
+
+    summary: Dict[str, Dict[str, Any]] = {}
+    for key, bucket in grouped.items():
+        cost_mean, cost_std = _mean_std(bucket["cost_eur"])
+        viol_mean, viol_std = _mean_std(bucket["violation_rate_pct"])
+        exc_mean, exc_std = _mean_std(bucket["mean_exceedance_kw"])
+        unserv_mean, unserv_std = _mean_std(bucket["unserved_pct"])
+        summary[key] = {
+            "family": bucket["family"],
+            "n": len(bucket["cost_eur"]),
+            "cost_mean": cost_mean,
+            "cost_std": cost_std,
+            "violation_rate_mean": viol_mean,
+            "violation_rate_std": viol_std,
+            "mean_exceedance_mean": exc_mean,
+            "mean_exceedance_std": exc_std,
+            "unserved_pct_mean": unserv_mean,
+            "unserved_pct_std": unserv_std,
+        }
+    return summary

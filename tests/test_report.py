@@ -1,5 +1,6 @@
 """Tests for dynamic results loading and plotting helpers."""
 
+import math
 import os
 import pytest
 from tools.report.load_results import (
@@ -8,7 +9,10 @@ from tools.report.load_results import (
     load_project_constants,
     load_baselines,
     load_per_seed_table,
+    load_regime_benchmarks,
+    load_test_evaluation_summary,
     load_test_stress_weeks_data,
+    load_training_curves,
     extract_metric_row,
 )
 from tools.report.plots import fig_w49_dispatch_trajectory
@@ -85,3 +89,60 @@ def test_extract_metric_row_no_hardcoding():
     assert tot > 50000.0
     assert tp > 50.0  # Active battery dispatch
     assert exc < 0.001  # Zero cap exceedance
+
+
+def test_load_regime_benchmarks_and_training_curves():
+    """Verify regime benchmark, training curve, and read-only test summary loaders."""
+    regime_rows = load_regime_benchmarks()
+    assert len(regime_rows) == 77
+    suites = {row["suite"] for row in regime_rows}
+    assert {"regime1_val", "regime2_val", "ood_val_2019-W04"}.issubset(suites)
+    assert all(
+        isinstance(row["n_weeks"], int)
+        and isinstance(row["cost_eur"], float)
+        and math.isfinite(row["cost_eur"])
+        for row in regime_rows
+    )
+
+    prefixes = ["clamped_ppo_diff_shield", "clamped_mb_ppo_lagrangian"]
+    curves = load_training_curves(prefixes)
+    assert list(curves.keys()) == prefixes
+    expected_steps = [50000, 100000, 150000, 200000, 250000, 300000]
+    metric_keys = (
+        "total_cost_eur_mean",
+        "total_cost_eur_std",
+        "violation_rate_pct_mean",
+        "violation_rate_pct_std",
+        "active_soc_pct_mean",
+        "active_soc_pct_std",
+        "unserved_penalty_eur_mean",
+        "unserved_penalty_eur_std",
+    )
+    for prefix in prefixes:
+        series = curves[prefix]
+        assert [pt["step"] for pt in series] == expected_steps
+        for pt in series:
+            assert pt["n_seeds"] == 5
+            for key in metric_keys:
+                assert isinstance(pt[key], float) and math.isfinite(pt[key])
+            if prefix == "clamped_mb_ppo_lagrangian":
+                assert isinstance(pt.get("lambda_mean"), float) and math.isfinite(pt["lambda_mean"])
+                assert isinstance(pt.get("lambda_std"), float) and math.isfinite(pt["lambda_std"])
+            else:
+                assert "lambda_mean" not in pt
+
+    test_summary = load_test_evaluation_summary()
+    summary_float_keys = (
+        "cost_mean",
+        "cost_std",
+        "violation_rate_mean",
+        "mean_exceedance_mean",
+        "unserved_pct_mean",
+    )
+    for key in ("Grid-Only", "PSM'", "clamped_ppo_diff_shield"):
+        assert key in test_summary
+        entry = test_summary[key]
+        assert entry["n"] >= 1
+        for field in summary_float_keys:
+            assert isinstance(entry[field], float) and math.isfinite(entry[field])
+    assert test_summary["clamped_ppo_diff_shield"]["n"] == 5
