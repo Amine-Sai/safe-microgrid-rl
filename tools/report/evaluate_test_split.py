@@ -182,6 +182,7 @@ class OODPerturbationWrapper:
         self._orig_bat_max_power_kw: Optional[float] = None
         self._orig_grid_import_cap_kw: Optional[float] = None
         self._orig_shield_cap_kw: Optional[float] = None
+        self._orig_policy_noise: List[Tuple[Any, float, bool]] = []
 
         self._apply_contingency()
 
@@ -225,15 +226,29 @@ class OODPerturbationWrapper:
 
     def configure_policy(self, policy: Any) -> None:
         """Propagate contingency parameters to policies that support them (e.g. MPCPolicy)."""
+        if policy is None:
+            return
+        target = getattr(policy, "policy", getattr(policy, "mpc", policy))
+        targets = [policy] if (target is None or target is policy) else [policy, target]
         if self.contingency == "forecast_noise":
             noise_std = float(self.config.get("noise_std", 0.20))
             relative = bool(self.config.get("relative", True))
-            if hasattr(policy, "forecast_noise_std"):
-                policy.forecast_noise_std = noise_std
-            if hasattr(policy, "forecast_noise_relative"):
-                policy.forecast_noise_relative = relative
-        if hasattr(policy, "_sync_parameters"):
-            policy._sync_parameters(self)
+            for obj in targets:
+                if hasattr(obj, "forecast_noise_std") or hasattr(obj, "forecast_noise_relative"):
+                    self._orig_policy_noise.append((
+                        obj,
+                        getattr(obj, "forecast_noise_std", 0.0),
+                        getattr(obj, "forecast_noise_relative", False),
+                    ))
+                if hasattr(obj, "forecast_noise_std"):
+                    obj.forecast_noise_std = noise_std
+                if hasattr(obj, "forecast_noise_relative"):
+                    obj.forecast_noise_relative = relative
+        for obj in targets:
+            if hasattr(obj, "_sync_parameters"):
+                obj._sync_parameters(self)
+            if hasattr(obj, "sync_env_params"):
+                obj.sync_env_params(self)
 
     def _perturb_obs(self, obs: np.ndarray) -> np.ndarray:
         if self.contingency != "forecast_noise":
@@ -261,11 +276,17 @@ class OODPerturbationWrapper:
 
     def reset(self, **kwargs: Any) -> Tuple[np.ndarray, Dict[str, Any]]:
         obs, info = self.env.reset(**kwargs)
-        return self._perturb_obs(obs), info
+        noisy_obs = self._perturb_obs(obs)
+        if hasattr(self.env, "set_last_obs"):
+            self.env.set_last_obs(noisy_obs)
+        return noisy_obs, info
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         obs, reward, terminated, truncated, info = self.env.step(action)
-        return self._perturb_obs(obs), reward, terminated, truncated, info
+        noisy_obs = self._perturb_obs(obs)
+        if hasattr(self.env, "set_last_obs"):
+            self.env.set_last_obs(noisy_obs)
+        return noisy_obs, reward, terminated, truncated, info
 
     def restore(self) -> None:
         """Idempotently restore base environment to unperturbed state."""
@@ -288,6 +309,12 @@ class OODPerturbationWrapper:
         if self._orig_shield_cap_kw is not None and hasattr(self.env, "cap_kw"):
             self.env.cap_kw = self._orig_shield_cap_kw
             self._orig_shield_cap_kw = None
+        for obj, orig_std, orig_rel in self._orig_policy_noise:
+            if hasattr(obj, "forecast_noise_std"):
+                obj.forecast_noise_std = orig_std
+            if hasattr(obj, "forecast_noise_relative"):
+                obj.forecast_noise_relative = orig_rel
+        self._orig_policy_noise.clear()
         self._restored = True
 
     def close(self) -> None:
@@ -572,19 +599,31 @@ def evaluate_ood_stress_suite(
     # 2. Perturbed OOD evaluations
     for cont in suite_contingencies:
         cfg = get_ood_contingency_config(cont, (contingency_configs or {}).get(cont))
-        with OODPerturbationWrapper(env, contingency=cont, contingency_config=cfg) as ood_env:
-            ood_env.configure_policy(policy)
+        wrapper = OODPerturbationWrapper(env, contingency=cont, contingency_config=cfg)
+        try:
+            wrapper.configure_policy(policy)
+            if agent_wrapper is not None and hasattr(agent_wrapper, "sync_env_params"):
+                agent_wrapper.sync_env_params(wrapper)
             if start_idx is not None:
                 results[cont] = evaluate_single_week(
-                    ood_env, start_idx=start_idx, policy=policy, agent_wrapper=agent_wrapper, action_tol=action_tol
+                    wrapper, start_idx=start_idx, policy=policy, agent_wrapper=agent_wrapper, action_tol=action_tol
                 )
             else:
                 results[cont] = evaluate_policy_on_split(
-                    ood_env, policy=policy, agent_wrapper=agent_wrapper, action_tol=action_tol
+                    wrapper, policy=policy, agent_wrapper=agent_wrapper, action_tol=action_tol
                 )
-
-        if hasattr(policy, "_sync_parameters"):
-            policy._sync_parameters(env)
+        finally:
+            wrapper.restore()
+            if policy is not None:
+                target = getattr(policy, "policy", getattr(policy, "mpc", policy))
+                targets = [policy] if (target is None or target is policy) else [policy, target]
+                for obj in targets:
+                    if hasattr(obj, "_sync_parameters"):
+                        obj._sync_parameters(env)
+                    if hasattr(obj, "sync_env_params"):
+                        obj.sync_env_params(env)
+            if agent_wrapper is not None and hasattr(agent_wrapper, "sync_env_params"):
+                agent_wrapper.sync_env_params(env)
 
     return results
 

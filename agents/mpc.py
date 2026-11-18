@@ -329,40 +329,33 @@ class MPCPolicy:
                 "Supported: 'perfect', 'oracle', 'persistence', 'causal_noisy'."
             )
 
-        # Optional Gaussian forecast noise
-        if self.forecast_noise_std > 0.0:
+        # Optional Gaussian forecast noise (future steps t >= 1 only; t=0 obs & cleared prices stay exact)
+        if self.forecast_noise_std > 0.0 and pv.shape[0] > 1:
+            pv = pv.copy()
+            loads = loads.copy()
             if self.forecast_noise_relative:
-                pv = np.maximum(
+                pv[1:] = np.maximum(
                     0.0,
-                    pv + self._rng.normal(0.0, self.forecast_noise_std * (pv + 1e-3), size=pv.shape),
-                )
-                loads = np.maximum(
-                    0.0,
-                    loads
+                    pv[1:]
                     + self._rng.normal(
-                        0.0, self.forecast_noise_std * (loads + 1e-3), size=loads.shape
+                        0.0, self.forecast_noise_std * (pv[1:] + 1e-3), size=pv[1:].shape
                     ),
                 )
-                price_kwh = np.maximum(
+                loads[1:] = np.maximum(
                     0.0,
-                    price_kwh
+                    loads[1:]
                     + self._rng.normal(
-                        0.0, self.forecast_noise_std * (price_kwh + 1e-4), size=price_kwh.shape
+                        0.0, self.forecast_noise_std * (loads[1:] + 1e-3), size=loads[1:].shape
                     ),
                 )
             else:
-                pv = np.maximum(
-                    0.0, pv + self._rng.normal(0.0, self.forecast_noise_std, size=pv.shape)
-                )
-                loads = np.maximum(
-                    0.0, loads + self._rng.normal(0.0, self.forecast_noise_std, size=loads.shape)
-                )
-                price_kwh = np.maximum(
+                pv[1:] = np.maximum(
                     0.0,
-                    price_kwh
-                    + self._rng.normal(
-                        0.0, self.forecast_noise_std / 1000.0, size=price_kwh.shape
-                    ),
+                    pv[1:] + self._rng.normal(0.0, self.forecast_noise_std, size=pv[1:].shape),
+                )
+                loads[1:] = np.maximum(
+                    0.0,
+                    loads[1:] + self._rng.normal(0.0, self.forecast_noise_std, size=loads[1:].shape),
                 )
 
         return pv.astype(np.float32), loads.astype(np.float32), price_kwh.astype(np.float32)

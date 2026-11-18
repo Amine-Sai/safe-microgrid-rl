@@ -41,6 +41,8 @@ from experiments.train_core import (
     load_config_with_base,
 )
 from tools.report.evaluate_test_split import (
+    ShieldIdlePolicy,
+    ShieldPSMPolicy,
     _step_policy_and_measure,
     compute_tail_and_safety_metrics,
     evaluate_ood_stress_suite,
@@ -402,6 +404,23 @@ def _evaluate_regime_baselines(
             **res,
         })
 
+    for name, pol in (
+        ("Shield + Idle", ShieldIdlePolicy()),
+        ("Shield + PSM'", ShieldPSMPolicy(PeakShaveMinPolicy())),
+    ):
+        shield_env = CapShield(SmartGridEnv(base_cfg))
+        res = _evaluate_rollout_full(shield_env, start_indices=start_indices, policy=pol)
+        rows.append({
+            "suite": suite,
+            "regime": regime,
+            "method": name,
+            "row_type": "single",
+            "seed": "N/A",
+            "checkpoint_type": "N/A",
+            "contingency": "nominal",
+            **res,
+        })
+
     lp_res = compute_split_lp("val", env_config=env_cfg or None)
     rows.append(_oracle_to_row(suite, regime, "LP'", lp_res))
 
@@ -432,6 +451,7 @@ def _ood_suite_to_rows(
     seed: Any,
     checkpoint_type: str,
     ood_results: Dict[str, Dict[str, Any]],
+    row_type: str = "single",
 ) -> List[Dict[str, Any]]:
     """Convert evaluate_ood_stress_suite output dictionary into canonical CSV rows."""
     rows: List[Dict[str, Any]] = []
@@ -440,7 +460,7 @@ def _ood_suite_to_rows(
             "suite": suite,
             "regime": "regime1",
             "method": method,
-            "row_type": "single",
+            "row_type": row_type,
             "seed": seed,
             "checkpoint_type": checkpoint_type,
             "contingency": cont,
@@ -469,7 +489,7 @@ def _ood_suite_to_rows(
 
 
 def _evaluate_val_ood(week_label: str, start_idx: int) -> List[Dict[str, Any]]:
-    """Run evaluate_ood_stress_suite on representative Val week for PSM', MPCPolicy(causal_noisy), and clamped_ppo_diff_shield."""
+    """Run evaluate_ood_stress_suite on representative Val week for PSM', Shield+PSM', MPC, Shield+MPC, and 5-seed clamped_ppo_diff_shield."""
     rows: List[Dict[str, Any]] = []
     suite = f"ood_val_{week_label}"
     contingencies = list(OOD_CONTINGENCIES_ORDER)
@@ -483,6 +503,15 @@ def _evaluate_val_ood(week_label: str, start_idx: int) -> List[Dict[str, Any]]:
     )
     rows.extend(_ood_suite_to_rows(suite, "PSM'", "N/A", "N/A", psm_ood))
 
+    env_shield_psm = CapShield(SmartGridEnv({"split": "val", "charge_clamp": True, "seed": 42}))
+    shield_psm_ood = evaluate_ood_stress_suite(
+        env_shield_psm,
+        policy=ShieldPSMPolicy(PeakShaveMinPolicy()),
+        start_idx=start_idx,
+        contingencies=contingencies,
+    )
+    rows.extend(_ood_suite_to_rows(suite, "Shield + PSM'", "N/A", "N/A", shield_psm_ood))
+
     env_mpc = SmartGridEnv({"split": "val", "charge_clamp": True, "seed": 42})
     mpc_pol = MPCPolicy(env=env_mpc, horizon=24, forecast_mode="causal_noisy", seed=42)
     mpc_ood = evaluate_ood_stress_suite(
@@ -493,22 +522,51 @@ def _evaluate_val_ood(week_label: str, start_idx: int) -> List[Dict[str, Any]]:
     )
     rows.extend(_ood_suite_to_rows(suite, "MPCPolicy(causal_noisy, H=24)", "42", "N/A", mpc_ood))
 
-    cfg_rl = load_config_with_base("clamped_ppo_diff_shield")
-    cfg_rl["seed"] = 101
-    env_rl = CapShield(build_env(cfg_rl, split="val", seed=201))
-    agent_rl = load_agent_for_method(cfg_rl["method"], cfg_rl)
-    ckpt_rl = os.path.join(
-        REPO_ROOT, "checkpoints", "ppo_diff_shield", "clamped_ppo_diff_shield_seed101_final.pt"
-    )
-    agent_rl.load_models(ckpt_rl)
-    rl_ood = evaluate_ood_stress_suite(
-        env_rl,
-        policy=None,
-        agent_wrapper=agent_rl,
+    env_mpc_base = SmartGridEnv({"split": "val", "charge_clamp": True, "seed": 42})
+    env_mpc_shield = CapShield(env_mpc_base)
+    mpc_shield_pol = MPCPolicy(env=env_mpc_base, horizon=24, forecast_mode="causal_noisy", seed=42)
+    mpc_shield_ood = evaluate_ood_stress_suite(
+        env_mpc_shield,
+        policy=mpc_shield_pol,
         start_idx=start_idx,
         contingencies=contingencies,
     )
-    rows.extend(_ood_suite_to_rows(suite, "clamped_ppo_diff_shield", 101, "final", rl_ood))
+    rows.extend(
+        _ood_suite_to_rows(suite, "Shield + MPCPolicy(causal_noisy, H=24)", "42", "N/A", mpc_shield_ood)
+    )
+
+    exp_id = "clamped_ppo_diff_shield"
+    cfg_base = load_config_with_base(exp_id)
+    folder = agent_name(cfg_base["method"], cfg_base)
+    rl_seed_rows: List[Dict[str, Any]] = []
+    for seed in SEEDS:
+        cfg_rl = dict(cfg_base, seed=seed)
+        run_json_path = os.path.join(REPO_ROOT, "results", "runs", folder, f"{exp_id}_seed{seed}.json")
+        if os.path.exists(run_json_path):
+            with open(run_json_path, encoding="utf-8") as f:
+                run_data = json.load(f)
+            ckpt_rl = os.path.join(REPO_ROOT, run_data["final_checkpoint"]["weights"])
+        else:
+            ckpt_rl = os.path.join(REPO_ROOT, "checkpoints", folder, f"{exp_id}_seed{seed}_final.pt")
+
+        env_rl = CapShield(build_env(cfg_rl, split="val", seed=seed + 100))
+        agent_rl = load_agent_for_method(cfg_rl["method"], cfg_rl)
+        agent_rl.load_models(ckpt_rl)
+        rl_ood = evaluate_ood_stress_suite(
+            env_rl,
+            policy=None,
+            agent_wrapper=agent_rl,
+            start_idx=start_idx,
+            contingencies=contingencies,
+        )
+        rl_seed_rows.extend(
+            _ood_suite_to_rows(suite, exp_id, seed, "final", rl_ood, row_type="per_seed")
+        )
+
+    rows.extend(rl_seed_rows)
+    for cont in ("nominal", *contingencies):
+        cont_rows = [r for r in rl_seed_rows if r["contingency"] == cont]
+        rows.extend(_summarize_seed_rows(cont_rows))
 
     return rows
 
@@ -578,9 +636,9 @@ def _print_summary(rows: List[Dict[str, Any]]) -> None:
                 )
     print("\n=== VAL OOD STRESS SUITE ===")
     for r in rows:
-        if r["suite"].startswith("ood_val_"):
+        if r["suite"].startswith("ood_val_") and r["row_type"] in ("single", "mean"):
             print(
-                f"  {r['method']:28s} | {r['contingency']:18s} | "
+                f"  {r['method']:38s} | {r['contingency']:18s} | "
                 f"cost={r['cost_eur']:8.2f} EUR | exc={r['mean_exceedance_kw']:6.4f} kW | "
                 f"max_exc={r['max_hourly_exceedance_kw']} | viol_h={r['violation_hours']}"
             )

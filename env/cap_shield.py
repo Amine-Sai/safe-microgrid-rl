@@ -255,6 +255,10 @@ class CapShield:
         self._last_obs = obs.copy()
         return obs, info
 
+    def set_last_obs(self, obs: np.ndarray) -> None:
+        """Update the cached last observation (e.g., after external observation wrappers)."""
+        self._last_obs = np.asarray(obs, dtype=np.float32).copy()
+
     def compose_action(
         self,
         battery_command_1d: Union[float, np.ndarray, List[float]],
