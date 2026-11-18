@@ -69,6 +69,9 @@ class DifferentiableSafetyLayer(nn.Module):
         dt_hours: Optional[float] = None,
         surrogate_grad_scale: float = 0.1,
         enforce_soc: bool = True,
+        motor_min_pct: Optional[float] = None,
+        industrial_shutdown_threshold: Optional[float] = None,
+        industrial_zone_idx: int = 4,
     ) -> None:
         """Initialise the differentiable analytical safety projection layer.
 
@@ -84,6 +87,9 @@ class DifferentiableSafetyLayer(nn.Module):
             dt_hours: Timestep duration in hours.
             surrogate_grad_scale: Straight-through gradient scale alpha across active clamps.
             enforce_soc: Whether to enforce physical battery SoC bounds on action[0].
+            motor_min_pct: Minimum industrial motor operating percentage or fraction.
+            industrial_shutdown_threshold: Shedding fraction threshold triggering full industrial shutdown.
+            industrial_zone_idx: Index of the industrial zone within zone loads (default 4).
         """
         super().__init__()
         cfg = default_config()
@@ -98,6 +104,15 @@ class DifferentiableSafetyLayer(nn.Module):
         self.dt_hours: float = float(dt_hours if dt_hours is not None else cfg.get("dt_hours", 1.0))
         self.surrogate_grad_scale: float = float(surrogate_grad_scale)
         self.enforce_soc: bool = bool(enforce_soc)
+        raw_motor_min = float(motor_min_pct if motor_min_pct is not None else cfg.get("motor_min_pct", 70.0))
+        self.motor_min_frac: float = raw_motor_min / 100.0 if raw_motor_min > 1.0 else raw_motor_min
+        self.industrial_shutdown_threshold: float = float(
+            industrial_shutdown_threshold
+            if industrial_shutdown_threshold is not None
+            else cfg.get("industrial_shutdown_threshold", 0.90)
+        )
+        self.industrial_zone_idx: int = int(industrial_zone_idx)
+        self.ind_linear_scale: float = (1.0 - self.motor_min_frac) / max(self.industrial_shutdown_threshold, 1e-6)
 
     def unnormalize_state(self, state: th.Tensor) -> th.Tensor:
         """Unnormalise state tensor to original physical units (kW) if normaliser is active.
@@ -195,6 +210,22 @@ class DifferentiableSafetyLayer(nn.Module):
             return raw_state[:, 2:7]
         return th.zeros((raw_state.shape[0], 5), dtype=raw_state.dtype, device=raw_state.device)
 
+    def _zone_shed_fractions(self, shed_actions: th.Tensor) -> th.Tensor:
+        """Map shedding actions in [-1, 1] to physical zone shed fractions matching SmartGridEnv."""
+        s_raw = 0.5 * (1.0 + shed_actions)
+        n_zones = shed_actions.shape[1]
+        if 0 <= self.industrial_zone_idx < n_zones:
+            idx = self.industrial_zone_idx
+            s_ind = s_raw[:, idx : idx + 1]
+            ind_linear = self.ind_linear_scale * s_ind
+            ind_frac = th.where(
+                s_ind > self.industrial_shutdown_threshold,
+                th.ones_like(s_ind) + (ind_linear - ind_linear.detach()),
+                ind_linear,
+            )
+            return th.cat([s_raw[:, :idx], ind_frac, s_raw[:, idx + 1 :]], dim=-1)
+        return s_raw
+
     def constraint_val(self, state: th.Tensor, action: th.Tensor) -> th.Tensor:
         r"""Compute linear constraint function $g(s, a) \le 0$.
 
@@ -222,7 +253,8 @@ class DifferentiableSafetyLayer(nn.Module):
             zone_loads = self.get_zone_loads(state)
             n_zones = min(action.shape[1] - 1, zone_loads.shape[1])
             shed_actions = action[:, 1 : 1 + n_zones]
-            shed_kw = (zone_loads[:, :n_zones] * (1.0 + shed_actions) * 0.5).sum(dim=-1, keepdim=True)
+            shed_fracs = self._zone_shed_fractions(shed_actions)
+            shed_kw = (zone_loads[:, :n_zones] * shed_fracs).sum(dim=-1, keepdim=True)
             g = p_net + self.p_max * a0 - shed_kw - self.p_cap
         else:
             g = p_net + self.p_max * a0 - self.p_cap
@@ -268,7 +300,9 @@ class DifferentiableSafetyLayer(nn.Module):
         if act_dim > 1:
             zone_loads = self.get_zone_loads(state)
             n_zones = min(act_dim - 1, zone_loads.shape[1])
-            cz = -0.5 * zone_loads[:, :n_zones]
+            cz = -0.5 * zone_loads[:, :n_zones].clone()
+            if 0 <= self.industrial_zone_idx < n_zones:
+                cz[:, self.industrial_zone_idx] = cz[:, self.industrial_zone_idx] * self.ind_linear_scale
             c_parts = [c0, cz]
             if act_dim - 1 > n_zones:
                 c_parts.append(th.zeros((b, act_dim - 1 - n_zones), dtype=action.dtype, device=action.device))
@@ -289,7 +323,7 @@ class DifferentiableSafetyLayer(nn.Module):
             is_active = is_active | th.any((action[:, 1:] > 1.0) | (action[:, 1:] < -1.0), dim=-1, keepdim=True)
 
         # KKT QP active hyperplane projection with bound-aware correction
-        for _ in range(3):
+        for _ in range(6):
             g = self.constraint_val(state, u)
             if g.dim() == 1:
                 g = g.unsqueeze(-1)
@@ -393,12 +427,18 @@ class SafePolicyNetwork(PolicyNetwork):
     def distribution(self, state: th.Tensor) -> th.distributions.Normal:
         r"""Construct Gaussian action distribution over raw actions: $\pi_\theta(u \mid s) \sim \mathcal{N}(\mu_{\text{raw}}(s), \sigma^2)$.
 
-        Using raw mean $\mu_{\text{raw}}(s)$ guarantees:
+        Using raw mean $\mu_{\text{raw}}(s)$ in the forward value while routing gradients through
+        `safety_layer(state, raw_mu)` when gradients are enabled guarantees:
         1. Exact Gaussian log_prob consistency when raw actions are stored (store_raw_action=True).
-        2. Elimination of double-projection bias: actions are sampled from the unprojected policy
-           and projected once by the safety layer during environment interaction.
+        2. Elimination of double-projection bias during rollouts (no_grad uses raw_mu directly).
+        3. Non-zero straight-through estimator (STE) gradients through `safety_layer` during policy updates.
         """
-        mu = self.forward_raw(state)
+        raw_mu = self.forward_raw(state)
+        if self.safety_layer is not None and th.is_grad_enabled():
+            proj_mu = self.safety_layer(state, raw_mu)
+            mu = raw_mu.detach() + (proj_mu - proj_mu.detach())
+        else:
+            mu = raw_mu
         std = th.exp(self.log_std)
         return th.distributions.Normal(mu, std)
 
