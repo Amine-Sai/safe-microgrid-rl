@@ -1,122 +1,122 @@
 suite,regime,method,row_type,seed,checkpoint_type,contingency,n_weeks,cost_eur,energy_purchase_eur,battery_wear_eur,unserved_penalty_eur,demand_charge_eur,industrial_trip_eur,mean_exceedance_kw,max_hourly_exceedance_kw,cvar95_cost_eur,cvar95_exceedance_kw,violation_hours,violation_rate_pct,max_consecutive_violation_hours,unserved_pct,battery_throughput_mwh,active_soc_pct,shield_intervention_rate,latency_p50_ms,latency_p99_ms
 regime1_val,regime1,Grid-Only,single,N/A,N/A,nominal,26,45337.92,45337.92,0.0,0.0,0.0,0.0,3.2571,88.7154,29.2,49.6676,468,10.71,22,0.0,0.0,100.0,0.0,0.0024,0.0034
-regime1_val,regime1,PSM',single,N/A,N/A,nominal,26,55530.22,44658.6,246.95,10624.67,0.0,0.0,0.0,0.0,68.49,0.0,0,0.0,0,0.8271,12.348,11.2,0.0,0.0329,0.0445
-regime1_val,regime1,Shield + Idle,single,N/A,N/A,nominal,26,58644.7,44417.53,0.0,14227.17,0.0,0.0,0.0,0.0,73.98,0.0,0,0.0,0,1.1076,0.0,100.0,0.1071,0.0024,0.0029
-regime1_val,regime1,Shield + PSM',single,N/A,N/A,nominal,26,55500.35,44660.23,246.95,10593.17,0.0,0.0,0.0,0.0,68.45,0.0,0,0.0,0,0.8247,12.348,11.2,0.0728,0.0353,0.0476
+regime1_val,regime1,PSM',single,N/A,N/A,nominal,26,55530.22,44658.6,246.95,10624.67,0.0,0.0,0.0,0.0,68.49,0.0,0,0.0,0,0.8271,12.348,11.2,0.0,0.0334,0.0487
+regime1_val,regime1,Shield + Idle,single,N/A,N/A,nominal,26,58644.7,44417.53,0.0,14227.17,0.0,0.0,0.0,0.0,73.98,0.0,0,0.0,0,1.1076,0.0,100.0,0.1071,0.0024,0.0034
+regime1_val,regime1,Shield + PSM',single,N/A,N/A,nominal,26,55500.35,44660.23,246.95,10593.17,0.0,0.0,0.0,0.0,68.45,0.0,0,0.0,0,0.8247,12.348,11.2,0.0728,0.0358,0.0512
 regime1_val,regime1,LP',single,N/A,N/A,nominal,26,53290.51,44192.97,436.73,8660.86,0.0,0.0,0.0,0.0,,0.0,0,0.0,0,,21.837,37.98,,,
 regime1_val,regime1,MILP',single,N/A,N/A,nominal,26,53290.51,44192.97,436.73,8660.86,0.0,0.0,0.0,0.0,,0.0,0,0.0,0,,21.837,37.96,,,
-regime1_val,regime1,"MPCPolicy(perfect, H=24)",single,42,N/A,nominal,26,53404.83,44261.26,383.39,8760.19,0.0,0.0,0.0,0.0,63.55,0.0,0,0.0,0,0.682,19.169,29.99,0.0,3.2765,3.6097
-regime1_val,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,nominal,26,53514.28,44251.67,395.56,8867.05,0.0,0.0,0.0,0.0,63.9,0.0,0,0.0,0,0.6903,19.778,33.63,0.0,3.3898,3.7591
-regime1_val,regime1,"MPCPolicy(persistence, H=24)",single,42,N/A,nominal,26,58134.64,44259.68,96.68,13778.28,0.0,0.0,0.0,0.0,73.98,0.0,0,0.0,0,1.0726,4.834,97.21,0.0,3.2443,3.8618
-regime1_val,regime1,clamped_ppo_diff_shield,per_seed,101,final,nominal,26,54766.3,44613.77,982.79,9169.74,0.0,0.0,0.0,0.0,64.58,0.0,0,0.0,0,0.7139,49.139,27.27,0.0602,1.0997,1.4302
-regime1_val,regime1,clamped_ppo_diff_shield,per_seed,102,final,nominal,26,56179.43,44246.76,1583.84,10348.83,0.0,0.0,0.0,0.0,67.56,0.0,0,0.0,0,0.8057,79.192,34.75,0.0721,1.1807,1.4982
-regime1_val,regime1,clamped_ppo_diff_shield,per_seed,103,final,nominal,26,55964.0,44197.97,1208.21,10557.81,0.0,0.0,0.0,0.0,67.14,0.0,0,0.0,0,0.8219,60.411,30.75,0.076,1.1757,1.3234
-regime1_val,regime1,clamped_ppo_diff_shield,per_seed,104,final,nominal,26,55999.11,44698.2,956.53,10344.38,0.0,0.0,0.0,0.0,68.02,0.0,0,0.0,0,0.8053,47.826,25.21,0.0689,1.1056,1.2305
-regime1_val,regime1,clamped_ppo_diff_shield,per_seed,105,final,nominal,26,58460.09,44550.58,1285.35,12624.15,0.0,0.0,0.0,0.0,72.2,0.0,0,0.0,0,0.9828,64.267,38.23,0.0902,1.102,1.2199
-regime1_val,regime1,clamped_ppo_diff_shield,mean,mean,final,nominal,26,56273.786,44461.456,1203.344,10608.982,0.0,0.0,0.0,0.0,67.9,0.0,0.0,0.0,0.0,0.8259,60.167,31.242,0.0735,1.1327,1.3404
-regime1_val,regime1,clamped_ppo_diff_shield,std,std,final,nominal,26,1344.6892,225.1164,255.4834,1252.2611,0.0,0.0,0.0,0.0,2.7486,0.0,0.0,0.0,0.0,0.0975,12.7744,5.3278,0.011,0.0416,0.1223
-regime1_val,regime1,clamped_ppo_diff_shield,per_seed,101,best,nominal,26,54766.3,44613.77,982.79,9169.74,0.0,0.0,0.0,0.0,64.58,0.0,0,0.0,0,0.7139,49.139,27.27,0.0602,1.1618,1.2331
-regime1_val,regime1,clamped_ppo_diff_shield,per_seed,102,best,nominal,26,55417.22,44434.91,970.93,10011.38,0.0,0.0,0.0,0.0,66.47,0.0,0,0.0,0,0.7794,48.546,45.7,0.0705,1.0951,1.2006
-regime1_val,regime1,clamped_ppo_diff_shield,per_seed,103,best,nominal,26,55217.91,44410.84,1056.02,9751.05,0.0,0.0,0.0,0.0,65.87,0.0,0,0.0,0,0.7591,52.801,33.75,0.0657,1.0985,1.1866
-regime1_val,regime1,clamped_ppo_diff_shield,per_seed,104,best,nominal,26,55124.56,44782.47,703.74,9638.35,0.0,0.0,0.0,0.0,66.07,0.0,0,0.0,0,0.7503,35.187,24.79,0.063,1.097,1.1922
-regime1_val,regime1,clamped_ppo_diff_shield,per_seed,105,best,nominal,26,57799.05,44562.97,997.7,12238.38,0.0,0.0,0.0,0.0,70.64,0.0,0,0.0,0,0.9528,49.885,31.78,0.0891,1.0984,1.2098
-regime1_val,regime1,clamped_ppo_diff_shield,mean,mean,best,nominal,26,55665.008,44560.992,942.236,10161.78,0.0,0.0,0.0,0.0,66.726,0.0,0.0,0.0,0.0,0.7911,47.1116,32.658,0.0697,1.1102,1.2045
-regime1_val,regime1,clamped_ppo_diff_shield,std,std,best,nominal,26,1216.0583,150.2367,137.2692,1200.178,0.0,0.0,0.0,0.0,2.2996,0.0,0.0,0.0,0.0,0.0935,6.8634,8.1085,0.0115,0.0289,0.0183
-regime1_val,regime1,causal23_ppo_diff_shield,per_seed,101,final,nominal,26,59576.62,44338.81,1154.2,14083.6,0.0,0.0,0.0,0.0,73.87,0.0,0,0.0,0,1.0964,57.71,23.42,0.1055,1.1523,1.288
-regime1_val,regime1,causal23_ppo_diff_shield,per_seed,102,final,nominal,26,55642.19,44398.65,1109.45,10134.08,0.0,0.0,0.0,0.0,66.54,0.0,0,0.0,0,0.7889,55.472,25.66,0.0719,1.2211,1.3199
-regime1_val,regime1,causal23_ppo_diff_shield,per_seed,103,final,nominal,26,57763.3,44723.81,2177.9,10861.59,0.0,0.0,0.0,0.0,68.88,0.0,0,0.0,0,0.8456,108.895,49.06,0.0751,1.2183,1.3114
-regime1_val,regime1,causal23_ppo_diff_shield,per_seed,104,final,nominal,26,56077.83,44418.48,1399.41,10259.94,0.0,0.0,0.0,0.0,67.15,0.0,0,0.0,0,0.7987,69.97,36.08,0.0721,1.14,1.3537
-regime1_val,regime1,causal23_ppo_diff_shield,per_seed,105,final,nominal,26,56217.53,44345.73,1341.3,10530.5,0.0,0.0,0.0,0.0,68.59,0.0,0,0.0,0,0.8198,67.065,26.9,0.0721,1.1322,1.2859
-regime1_val,regime1,causal23_ppo_diff_shield,mean,mean,final,nominal,26,57055.494,44445.096,1436.452,11173.942,0.0,0.0,0.0,0.0,69.006,0.0,0.0,0.0,0.0,0.8699,71.8224,32.224,0.0793,1.1728,1.3118
-regime1_val,regime1,causal23_ppo_diff_shield,std,std,final,nominal,26,1621.1496,159.4659,432.0786,1650.3336,0.0,0.0,0.0,0.0,2.8885,0.0,0.0,0.0,0.0,0.1285,21.604,10.5743,0.0147,0.0434,0.0277
-regime1_val,regime1,causal23_ppo_diff_shield,per_seed,101,best,nominal,26,57607.39,44363.45,821.97,12421.97,0.0,0.0,0.0,0.0,71.53,0.0,0,0.0,0,0.9671,41.098,32.35,0.0909,1.1304,1.2827
-regime1_val,regime1,causal23_ppo_diff_shield,per_seed,102,best,nominal,26,55642.19,44398.65,1109.45,10134.08,0.0,0.0,0.0,0.0,66.54,0.0,0,0.0,0,0.7889,55.472,25.66,0.0719,1.1876,1.3584
-regime1_val,regime1,causal23_ppo_diff_shield,per_seed,103,best,nominal,26,55995.94,44649.18,1837.47,9509.29,0.0,0.0,0.0,0.0,65.35,0.0,0,0.0,0,0.7403,91.873,46.63,0.0639,1.1342,1.3087
-regime1_val,regime1,causal23_ppo_diff_shield,per_seed,104,best,nominal,26,55258.97,44409.72,1193.58,9655.67,0.0,0.0,0.0,0.0,65.87,0.0,0,0.0,0,0.7517,59.679,34.46,0.0648,1.126,1.3666
-regime1_val,regime1,causal23_ppo_diff_shield,per_seed,105,best,nominal,26,54332.91,44781.15,654.49,8897.27,0.0,0.0,0.0,0.0,64.05,0.0,0,0.0,0,0.6927,32.725,21.29,0.057,1.1382,1.3627
-regime1_val,regime1,causal23_ppo_diff_shield,mean,mean,best,nominal,26,55767.48,44520.43,1123.392,10123.656,0.0,0.0,0.0,0.0,66.668,0.0,0.0,0.0,0.0,0.7881,56.1694,32.078,0.0697,1.1433,1.3358
-regime1_val,regime1,causal23_ppo_diff_shield,std,std,best,nominal,26,1201.0135,184.5815,454.3546,1358.5686,0.0,0.0,0.0,0.0,2.8672,0.0,0.0,0.0,0.0,0.1058,22.7175,9.6835,0.013,0.0252,0.0379
-regime2_val,regime2,Grid-Only,single,N/A,N/A,nominal,26,66095.86,45337.92,0.0,0.0,20757.94,0.0,3.2571,88.7154,116.23,49.6676,468,10.71,22,0.0,0.0,100.0,0.0,0.0024,0.0033
-regime2_val,regime2,PSM',single,N/A,N/A,nominal,26,70370.73,44658.6,246.95,3960.34,21504.84,0.0,0.0,0.0,138.61,0.0,0,0.0,0,0.8271,12.348,11.2,0.0,0.0328,0.0447
-regime2_val,regime2,Shield + Idle,single,N/A,N/A,nominal,26,69115.11,44417.53,0.0,5036.83,19660.75,0.0,0.0,0.0,124.24,0.0,0,0.0,0,1.1076,0.0,100.0,0.1071,0.0024,0.0034
-regime2_val,regime2,Shield + PSM',single,N/A,N/A,nominal,26,70363.16,44660.23,246.95,3949.27,21506.71,0.0,0.0,0.0,138.59,0.0,0,0.0,0,0.8247,12.348,11.2,0.0728,0.0358,0.0488
+regime1_val,regime1,"MPCPolicy(perfect, H=24)",single,42,N/A,nominal,26,53404.83,44261.26,383.39,8760.19,0.0,0.0,0.0,0.0,63.55,0.0,0,0.0,0,0.682,19.169,29.99,0.0,3.2738,3.7831
+regime1_val,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,nominal,26,53514.28,44251.67,395.56,8867.05,0.0,0.0,0.0,0.0,63.9,0.0,0,0.0,0,0.6903,19.778,33.63,0.0,3.4132,3.6756
+regime1_val,regime1,"MPCPolicy(persistence, H=24)",single,42,N/A,nominal,26,58134.64,44259.68,96.68,13778.28,0.0,0.0,0.0,0.0,73.98,0.0,0,0.0,0,1.0726,4.834,97.21,0.0,3.2638,3.5327
+regime1_val,regime1,clamped_ppo_diff_shield,per_seed,101,final,nominal,26,55045.6,44736.0,1538.46,8771.13,0.0,0.0,0.0,0.0,63.49,0.0,0,0.0,0,0.6828,76.923,44.69,0.0556,1.1213,1.2669
+regime1_val,regime1,clamped_ppo_diff_shield,per_seed,102,final,nominal,26,55968.83,44530.44,1767.54,9670.85,0.0,0.0,0.0,0.0,65.53,0.0,0,0.0,0,0.7529,88.377,44.28,0.0685,1.1287,1.2501
+regime1_val,regime1,clamped_ppo_diff_shield,per_seed,103,final,nominal,26,56649.27,44567.39,2097.21,9984.67,0.0,0.0,0.0,0.0,66.53,0.0,0,0.0,0,0.7773,104.86,50.57,0.0689,1.1533,1.2951
+regime1_val,regime1,clamped_ppo_diff_shield,per_seed,104,final,nominal,26,58324.76,44330.37,2213.18,11781.2,0.0,0.0,0.0,0.0,71.87,0.0,0,0.0,0,0.9172,110.659,42.12,0.0792,1.1691,1.3426
+regime1_val,regime1,clamped_ppo_diff_shield,per_seed,105,final,nominal,26,57496.22,45178.25,2499.59,9818.38,0.0,0.0,0.0,0.0,66.13,0.0,0,0.0,0,0.7644,124.979,70.99,0.0668,1.1403,1.3387
+regime1_val,regime1,clamped_ppo_diff_shield,mean,mean,final,nominal,26,56696.936,44668.49,2023.196,10005.246,0.0,0.0,0.0,0.0,66.71,0.0,0.0,0.0,0.0,0.7789,101.1596,50.53,0.0678,1.1425,1.2987
+regime1_val,regime1,clamped_ppo_diff_shield,std,std,final,nominal,26,1279.4517,319.381,377.1115,1098.2051,0.0,0.0,0.0,0.0,3.1127,0.0,0.0,0.0,0.0,0.0855,18.8554,11.8586,0.0084,0.0192,0.0416
+regime1_val,regime1,clamped_ppo_diff_shield,per_seed,101,best,nominal,26,54543.46,44596.09,1004.34,8943.03,0.0,0.0,0.0,0.0,63.84,0.0,0,0.0,0,0.6962,50.217,44.44,0.0588,1.1715,1.2791
+regime1_val,regime1,clamped_ppo_diff_shield,per_seed,102,best,nominal,26,55858.96,44570.32,1435.9,9852.74,0.0,0.0,0.0,0.0,65.88,0.0,0,0.0,0,0.767,71.795,39.54,0.0705,1.1419,1.2766
+regime1_val,regime1,clamped_ppo_diff_shield,per_seed,103,best,nominal,26,54337.06,44410.46,1091.23,8835.38,0.0,0.0,0.0,0.0,63.63,0.0,0,0.0,0,0.6878,54.562,36.2,0.0568,1.1343,1.275
+regime1_val,regime1,clamped_ppo_diff_shield,per_seed,104,best,nominal,26,54972.21,44711.48,1211.47,9049.26,0.0,0.0,0.0,0.0,64.39,0.0,0,0.0,0,0.7045,60.574,33.52,0.0579,1.1303,1.2761
+regime1_val,regime1,clamped_ppo_diff_shield,per_seed,105,best,nominal,26,57302.78,44760.23,1582.92,10959.63,0.0,0.0,0.0,0.0,68.24,0.0,0,0.0,0,0.8532,79.146,49.66,0.0794,1.126,1.2463
+regime1_val,regime1,clamped_ppo_diff_shield,mean,mean,best,nominal,26,55402.894,44609.716,1265.172,9528.008,0.0,0.0,0.0,0.0,65.196,0.0,0.0,0.0,0.0,0.7417,63.2588,40.672,0.0647,1.1408,1.2706
+regime1_val,regime1,clamped_ppo_diff_shield,std,std,best,nominal,26,1212.1964,136.4286,240.4604,895.2828,0.0,0.0,0.0,0.0,1.9154,0.0,0.0,0.0,0.0,0.0697,12.0229,6.4694,0.0099,0.0181,0.0137
+regime1_val,regime1,causal23_ppo_diff_shield,per_seed,101,final,nominal,26,56585.86,44224.55,1470.77,10890.53,0.0,0.0,0.0,0.0,69.2,0.0,0,0.0,0,0.8478,73.539,37.04,0.0767,1.1504,1.2906
+regime1_val,regime1,causal23_ppo_diff_shield,per_seed,102,final,nominal,26,58683.71,44395.08,1475.54,12813.08,0.0,0.0,0.0,0.0,72.03,0.0,0,0.0,0,0.9975,73.777,28.34,0.0948,1.1509,1.2771
+regime1_val,regime1,causal23_ppo_diff_shield,per_seed,103,final,nominal,26,55361.98,44503.25,2066.01,8792.73,0.0,0.0,0.0,0.0,63.52,0.0,0,0.0,0,0.6845,103.3,48.33,0.0565,1.1485,1.2668
+regime1_val,regime1,causal23_ppo_diff_shield,per_seed,104,final,nominal,26,55760.61,44547.69,1566.75,9646.17,0.0,0.0,0.0,0.0,65.27,0.0,0,0.0,0,0.751,78.337,41.69,0.0675,1.1513,1.4159
+regime1_val,regime1,causal23_ppo_diff_shield,per_seed,105,final,nominal,26,55983.18,44368.49,2044.32,9570.36,0.0,0.0,0.0,0.0,65.88,0.0,0,0.0,0,0.7451,102.216,43.66,0.0634,1.1461,1.2558
+regime1_val,regime1,causal23_ppo_diff_shield,mean,mean,final,nominal,26,56475.068,44407.812,1724.678,10342.574,0.0,0.0,0.0,0.0,67.18,0.0,0.0,0.0,0.0,0.8052,86.2338,39.812,0.0718,1.1494,1.3012
+regime1_val,regime1,causal23_ppo_diff_shield,std,std,final,nominal,26,1311.6538,126.459,304.2034,1572.1772,0.0,0.0,0.0,0.0,3.4035,0.0,0.0,0.0,0.0,0.1224,15.21,7.5859,0.0148,0.0022,0.0654
+regime1_val,regime1,causal23_ppo_diff_shield,per_seed,101,best,nominal,26,55367.38,44273.89,988.73,10104.75,0.0,0.0,0.0,0.0,66.67,0.0,0,0.0,0,0.7867,49.437,39.56,0.0719,1.1485,1.3202
+regime1_val,regime1,causal23_ppo_diff_shield,per_seed,102,best,nominal,26,56142.35,44408.02,1029.53,10704.8,0.0,0.0,0.0,0.0,67.22,0.0,0,0.0,0,0.8334,51.477,26.47,0.0801,1.2139,1.3464
+regime1_val,regime1,causal23_ppo_diff_shield,per_seed,103,best,nominal,26,54545.38,44686.19,995.14,8864.04,0.0,0.0,0.0,0.0,63.84,0.0,0,0.0,0,0.6901,49.757,44.67,0.0563,1.2109,1.34
+regime1_val,regime1,causal23_ppo_diff_shield,per_seed,104,best,nominal,26,55667.82,44569.11,1397.76,9700.95,0.0,0.0,0.0,0.0,65.93,0.0,0,0.0,0,0.7552,69.888,37.57,0.0657,1.1508,1.345
+regime1_val,regime1,causal23_ppo_diff_shield,per_seed,105,best,nominal,26,54618.21,44719.58,550.3,9348.33,0.0,0.0,0.0,0.0,65.21,0.0,0,0.0,0,0.7278,27.515,20.76,0.0607,1.1552,1.3389
+regime1_val,regime1,causal23_ppo_diff_shield,mean,mean,best,nominal,26,55268.228,44531.358,992.292,9744.574,0.0,0.0,0.0,0.0,65.774,0.0,0.0,0.0,0.0,0.7586,49.6148,33.806,0.0669,1.1759,1.3381
+regime1_val,regime1,causal23_ppo_diff_shield,std,std,best,nominal,26,685.315,188.6317,300.4866,704.6299,0.0,0.0,0.0,0.0,1.3207,0.0,0.0,0.0,0.0,0.0549,15.0243,9.8656,0.0094,0.0335,0.0105
+regime2_val,regime2,Grid-Only,single,N/A,N/A,nominal,26,66095.86,45337.92,0.0,0.0,20757.94,0.0,3.2571,88.7154,116.23,49.6676,468,10.71,22,0.0,0.0,100.0,0.0,0.0024,0.0034
+regime2_val,regime2,PSM',single,N/A,N/A,nominal,26,70370.73,44658.6,246.95,3960.34,21504.84,0.0,0.0,0.0,138.61,0.0,0,0.0,0,0.8271,12.348,11.2,0.0,0.0348,0.049
+regime2_val,regime2,Shield + Idle,single,N/A,N/A,nominal,26,69115.11,44417.53,0.0,5036.83,19660.75,0.0,0.0,0.0,124.24,0.0,0,0.0,0,1.1076,0.0,100.0,0.1071,0.0024,0.0033
+regime2_val,regime2,Shield + PSM',single,N/A,N/A,nominal,26,70363.16,44660.23,246.95,3949.27,21506.71,0.0,0.0,0.0,138.59,0.0,0,0.0,0,0.8247,12.348,11.2,0.0728,0.0357,0.0492
 regime2_val,regime2,LP',single,N/A,N/A,nominal,26,64513.29,44192.08,1252.28,1957.8,17111.13,0.0,0.0,0.0,,0.0,0,0.0,0,,62.613,72.07,,,
 regime2_val,regime2,MILP',single,N/A,N/A,nominal,26,64513.29,44192.08,1252.28,1957.8,17111.13,0.0,0.0,0.0,,0.0,0,0.0,0,,62.613,72.21,,,
-regime2_val,regime2,"MPCPolicy(perfect, H=24)",single,42,N/A,nominal,26,65472.28,44079.45,1710.26,2852.75,16829.82,0.0,0.0,0.0,102.03,0.0,0,0.0,0,1.0239,85.513,70.08,0.0,3.5174,3.9087
-regime2_val,regime2,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,nominal,26,65250.3,44138.11,1574.31,2454.95,17082.94,0.0,0.0,0.0,102.07,0.0,0,0.0,0,0.8624,78.716,78.34,0.0,3.6338,4.0156
-regime2_val,regime2,ci_ppo_shielded,per_seed,101,final,nominal,26,71030.74,44479.49,981.99,4875.73,20693.54,0.0,0.0,0.0,127.65,0.0,0,0.0,0,1.0586,49.099,21.22,0.1007,0.1587,0.2987
-regime2_val,regime2,ci_ppo_shielded,per_seed,102,final,nominal,26,70095.85,44528.14,529.78,4981.68,20056.25,0.0,0.0,0.0,117.73,0.0,0,0.0,0,1.0885,26.489,13.39,0.1049,0.1476,0.2011
-regime2_val,regime2,ci_ppo_shielded,per_seed,103,final,nominal,26,71014.55,44448.61,639.05,4844.32,21082.57,0.0,0.0,0.0,131.76,0.0,0,0.0,0,1.0683,31.953,21.18,0.1042,0.1458,0.1996
-regime2_val,regime2,ci_ppo_shielded,per_seed,104,final,nominal,26,71000.22,44320.39,751.9,4974.74,20953.19,0.0,0.0,0.0,127.49,0.0,0,0.0,0,1.0956,37.595,17.9,0.1046,0.1478,0.2048
-regime2_val,regime2,ci_ppo_shielded,per_seed,105,final,nominal,26,69763.97,44410.48,371.29,4796.93,20185.26,0.0,0.0,0.0,123.96,0.0,0,0.0,0,1.0634,18.565,13.23,0.103,0.1458,0.2014
-regime2_val,regime2,ci_ppo_shielded,mean,mean,final,nominal,26,70581.066,44437.422,654.802,4894.68,20594.162,0.0,0.0,0.0,125.718,0.0,0.0,0.0,0.0,1.0749,32.7402,17.384,0.1035,0.1491,0.2211
-regime2_val,regime2,ci_ppo_shielded,std,std,final,nominal,26,605.988,78.3374,230.6175,81.2848,456.5823,0.0,0.0,0.0,5.2506,0.0,0.0,0.0,0.0,0.0162,11.5305,3.956,0.0017,0.0054,0.0434
-regime2_val,regime2,ci_ppo_diff_shield,per_seed,101,final,nominal,26,69159.24,44294.94,169.13,5001.42,19693.76,0.0,0.0,0.0,119.71,0.0,0,0.0,0,1.0971,8.456,4.4,0.1053,1.1366,1.2894
-regime2_val,regime2,ci_ppo_diff_shield,per_seed,102,final,nominal,26,69593.07,44240.72,393.72,4942.47,20016.16,0.0,0.0,0.0,119.99,0.0,0,0.0,0,1.0923,19.686,9.52,0.1062,1.1565,1.2957
-regime2_val,regime2,ci_ppo_diff_shield,per_seed,103,final,nominal,26,70842.2,44620.48,525.66,4636.6,21059.46,0.0,0.0,0.0,135.98,0.0,0,0.0,0,0.9941,26.283,14.06,0.0911,1.1543,1.2861
-regime2_val,regime2,ci_ppo_diff_shield,per_seed,104,final,nominal,26,69643.34,44312.81,511.14,4907.16,19912.22,0.0,0.0,0.0,117.67,0.0,0,0.0,0,1.0668,25.557,13.6,0.1021,1.1443,1.2576
-regime2_val,regime2,ci_ppo_diff_shield,per_seed,105,final,nominal,26,69479.29,44241.53,582.55,4796.57,19858.65,0.0,0.0,0.0,121.72,0.0,0,0.0,0,1.0349,29.127,14.65,0.098,1.1472,1.3586
-regime2_val,regime2,ci_ppo_diff_shield,mean,mean,final,nominal,26,69743.428,44342.096,436.44,4856.844,20108.05,0.0,0.0,0.0,123.014,0.0,0.0,0.0,0.0,1.057,21.8218,11.246,0.1005,1.1478,1.2975
-regime2_val,regime2,ci_ppo_diff_shield,std,std,final,nominal,26,642.4503,158.8786,164.4446,143.9671,544.4747,0.0,0.0,0.0,7.3894,0.0,0.0,0.0,0.0,0.043,8.2223,4.3271,0.0062,0.008,0.0372
-regime2_val,regime2,ci_ppo_diff_6d,per_seed,101,final,nominal,26,79613.27,43930.69,325.8,15724.94,19631.83,0.0,0.0,0.0001,130.55,0.0,0,0.0,0,2.0093,16.29,16.69,0.0,1.9687,2.2302
-regime2_val,regime2,ci_ppo_diff_6d,per_seed,102,final,nominal,26,83970.98,44007.95,315.75,20059.08,19588.2,0.0,0.0,0.0001,154.58,0.0,0,0.0,0,1.4792,15.787,12.43,0.0,1.9331,2.1197
-regime2_val,regime2,ci_ppo_diff_6d,per_seed,103,final,nominal,26,80906.27,44086.2,279.07,16785.58,19755.41,0.0,0.0,0.0001,144.51,0.0,0,0.0,0,1.5011,13.954,12.27,0.0,2.0003,2.4339
-regime2_val,regime2,ci_ppo_diff_6d,per_seed,104,final,nominal,26,85082.74,44364.35,345.97,20282.58,20089.84,0.0,0.0,0.0001,167.26,0.0,1,0.02,1,1.391,17.298,11.84,0.0,1.9417,2.2339
-regime2_val,regime2,ci_ppo_diff_6d,per_seed,105,final,nominal,26,85420.97,44179.97,195.84,21379.54,19665.62,0.0,0.0,0.0001,143.51,0.0,0,0.0,0,1.3381,9.792,7.39,0.0,1.9098,2.1391
-regime2_val,regime2,ci_ppo_diff_6d,mean,mean,final,nominal,26,82998.846,44113.832,292.486,18846.344,19746.18,0.0,0.0,0.0001,148.082,0.0,0.2,0.004,0.2,1.5437,14.6242,12.124,0.0,1.9507,2.2314
-regime2_val,regime2,ci_ppo_diff_6d,std,std,final,nominal,26,2597.8521,167.8161,59.2284,2446.4513,201.6872,0.0,0.0,0.0,13.7027,0.0,0.4472,0.0089,0.4472,0.2685,2.9612,3.296,0.0,0.0348,0.1245
-ood_val_2019-W04,regime1,PSM',single,N/A,N/A,nominal,1,8115.88,,,,0.0,0.0,0.0,0.0,120.46,0.0,0,0.0,0,6.4196,,,0.0,0.0334,0.0466
-ood_val_2019-W04,regime1,PSM',single,N/A,N/A,pv_inverter_trip,1,8872.52,,,,0.0,0.0,0.0,0.0,121.39,0.0,0,0.0,0,7.5317,,,0.0,0.0334,0.0441
-ood_val_2019-W04,regime1,PSM',single,N/A,N/A,bess_derate,1,7941.62,,,,0.0,0.0,1.1932,36.6245,120.46,20.5976,20,11.9,10,6.1324,,,0.0,0.0334,0.0457
-ood_val_2019-W04,regime1,PSM',single,N/A,N/A,grid_cap_reduction,1,8115.09,,,,0.0,0.0,62.7137,73.5808,120.46,73.5808,167,99.4,158,6.4493,,,0.0,0.0335,0.0449
-ood_val_2019-W04,regime1,PSM',single,N/A,N/A,forecast_noise,1,8110.55,,,,0.0,0.0,0.3298,8.2376,120.49,5.2246,19,11.31,4,6.4049,,,0.0,0.0343,0.0455
-ood_val_2019-W04,regime1,Shield + PSM',single,N/A,N/A,nominal,1,8110.49,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.4108,,,0.5893,0.0358,0.0471
-ood_val_2019-W04,regime1,Shield + PSM',single,N/A,N/A,pv_inverter_trip,1,8866.84,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.5225,,,0.619,0.0358,0.046
-ood_val_2019-W04,regime1,Shield + PSM',single,N/A,N/A,bess_derate,1,8121.1,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.4283,,,0.631,0.0362,0.0479
-ood_val_2019-W04,regime1,Shield + PSM',single,N/A,N/A,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.994,0.0362,0.0482
-ood_val_2019-W04,regime1,Shield + PSM',single,N/A,N/A,forecast_noise,1,8105.01,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,36,21.43,4,6.3959,,,0.5833,0.0367,0.0497
-ood_val_2019-W04,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,nominal,1,7875.5,,,,0.0,0.0,0.0,0.0,120.32,0.0,0,0.0,0,6.0412,,,0.0,3.4891,3.6515
-ood_val_2019-W04,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,pv_inverter_trip,1,8729.3,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.32,,,0.0,3.562,3.73
-ood_val_2019-W04,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,bess_derate,1,7888.08,,,,0.0,0.0,0.0,0.0,120.32,0.0,0,0.0,0,6.0602,,,0.0,3.5308,3.7293
-ood_val_2019-W04,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.0,3.5882,3.7237
-ood_val_2019-W04,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,forecast_noise,1,7899.73,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,33,19.64,4,6.0645,,,0.0,3.6046,3.8202
-ood_val_2019-W04,regime1,"Shield + MPCPolicy(causal_noisy, H=24)",single,42,N/A,nominal,1,7875.5,,,,0.0,0.0,0.0,0.0,120.32,0.0,0,0.0,0,6.0412,,,0.0,3.5511,3.7444
-ood_val_2019-W04,regime1,"Shield + MPCPolicy(causal_noisy, H=24)",single,42,N/A,pv_inverter_trip,1,8729.3,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.32,,,0.0,3.5668,3.7041
-ood_val_2019-W04,regime1,"Shield + MPCPolicy(causal_noisy, H=24)",single,42,N/A,bess_derate,1,7888.08,,,,0.0,0.0,0.0,0.0,120.32,0.0,0,0.0,0,6.0602,,,0.0,3.5478,3.703
-ood_val_2019-W04,regime1,"Shield + MPCPolicy(causal_noisy, H=24)",single,42,N/A,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.0,3.6005,3.7678
-ood_val_2019-W04,regime1,"Shield + MPCPolicy(causal_noisy, H=24)",single,42,N/A,forecast_noise,1,7899.73,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,34,20.24,4,6.0645,,,0.0,3.6005,3.7302
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,101,final,nominal,1,7941.53,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.1023,,,0.5476,1.0949,1.166
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,101,final,pv_inverter_trip,1,8795.88,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.3834,,,0.5893,1.0933,1.1544
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,101,final,bess_derate,1,7911.47,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0531,,,0.5476,1.0935,1.1751
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,101,final,grid_cap_reduction,1,17944.61,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.402,,,0.9762,1.0957,1.1767
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,101,final,forecast_noise,1,7988.77,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,35,20.83,4,6.1817,,,0.5536,1.0972,1.1897
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,102,final,nominal,1,7997.44,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.2385,,,0.5833,1.0961,1.1613
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,102,final,pv_inverter_trip,1,8865.26,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.5421,,,0.625,1.0993,1.2492
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,102,final,bess_derate,1,7946.94,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.1562,,,0.5833,1.1008,1.2347
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,102,final,grid_cap_reduction,1,17944.61,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.402,,,0.9762,1.1005,1.2056
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,102,final,forecast_noise,1,8011.18,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,35,20.83,4,6.2637,,,0.5655,1.1016,1.1717
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,103,final,nominal,1,7883.37,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0209,,,0.5417,1.0954,1.1423
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,103,final,pv_inverter_trip,1,8738.67,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.3106,,,0.5833,1.094,1.2076
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,103,final,bess_derate,1,7886.36,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0227,,,0.5417,1.097,1.2485
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,103,final,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.9762,1.0994,1.2153
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,103,final,forecast_noise,1,7985.04,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,34,20.24,4,6.1945,,,0.5476,1.1001,1.2198
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,104,final,nominal,1,7961.0,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.1334,,,0.5536,1.0989,1.1912
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,104,final,pv_inverter_trip,1,8781.14,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.3643,,,0.5893,1.1012,1.2251
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,104,final,bess_derate,1,7915.05,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0582,,,0.5476,1.0988,1.1529
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,104,final,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.9762,1.0974,1.1692
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,104,final,forecast_noise,1,8035.9,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,35,20.83,4,6.2594,,,0.5655,1.1016,1.1996
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,105,final,nominal,1,8167.39,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.4712,,,0.6012,1.0994,1.2406
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,105,final,pv_inverter_trip,1,8915.13,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.5829,,,0.631,1.0999,1.2759
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,105,final,bess_derate,1,8114.27,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.3961,,,0.5952,1.1081,1.2398
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,105,final,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.9762,1.1025,1.3147
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,105,final,forecast_noise,1,8180.32,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,35,20.83,4,6.4953,,,0.6012,1.1056,1.2797
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,mean,mean,final,nominal,1,7990.146,,,,0.0,0.0,0.0,0.0,120.42,0.0,0.0,0.0,0.0,6.1933,,,0.5655,1.0969,1.1803
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,std,std,final,nominal,1,107.3345,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.1738,,,0.0256,0.0021,0.038
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,mean,mean,final,pv_inverter_trip,1,8819.216,,,,0.0,0.0,0.0,0.0,121.35,0.0,0.0,0.0,0.0,7.4367,,,0.6036,1.0975,1.2224
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,std,std,final,pv_inverter_trip,1,70.359,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.1188,,,0.0225,0.0036,0.0459
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,mean,mean,final,bess_derate,1,7954.818,,,,0.0,0.0,0.0,0.0,120.42,0.0,0.0,0.0,0.0,6.1373,,,0.5631,1.0996,1.2102
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,std,std,final,bess_derate,1,91.6979,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.1531,,,0.0244,0.0054,0.0432
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,mean,mean,final,grid_cap_reduction,1,17942.492,,,,0.0,0.0,0.0,0.0,186.62,0.0,0.0,0.0,0.0,22.3985,,,0.9762,1.0991,1.2163
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,std,std,final,grid_cap_reduction,1,1.9335,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0032,,,0.0,0.0026,0.0583
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,mean,mean,final,forecast_noise,1,8040.242,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,34.8,20.712,4.0,6.2789,,,0.5667,1.1012,1.2121
-ood_val_2019-W04,regime1,clamped_ppo_diff_shield,std,std,final,forecast_noise,1,80.9042,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.4472,0.2639,0.0,0.1265,,,0.0208,0.003,0.0416
+regime2_val,regime2,"MPCPolicy(perfect, H=24)",single,42,N/A,nominal,26,65472.28,44079.45,1710.26,2852.75,16829.82,0.0,0.0,0.0,102.03,0.0,0,0.0,0,1.0239,85.513,70.08,0.0,3.5187,3.8641
+regime2_val,regime2,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,nominal,26,65250.3,44138.11,1574.31,2454.95,17082.94,0.0,0.0,0.0,102.07,0.0,0,0.0,0,0.8624,78.716,78.34,0.0,3.694,4.0041
+regime2_val,regime2,ci_ppo_shielded,per_seed,101,final,nominal,26,71030.74,44479.49,981.99,4875.73,20693.54,0.0,0.0,0.0,127.65,0.0,0,0.0,0,1.0586,49.099,21.22,0.1007,0.1574,0.2227
+regime2_val,regime2,ci_ppo_shielded,per_seed,102,final,nominal,26,70095.85,44528.14,529.78,4981.68,20056.25,0.0,0.0,0.0,117.73,0.0,0,0.0,0,1.0885,26.489,13.39,0.1049,0.1551,0.2161
+regime2_val,regime2,ci_ppo_shielded,per_seed,103,final,nominal,26,71014.55,44448.61,639.05,4844.32,21082.57,0.0,0.0,0.0,131.76,0.0,0,0.0,0,1.0683,31.953,21.18,0.1042,0.1507,0.2359
+regime2_val,regime2,ci_ppo_shielded,per_seed,104,final,nominal,26,71000.22,44320.39,751.9,4974.74,20953.19,0.0,0.0,0.0,127.49,0.0,0,0.0,0,1.0956,37.595,17.9,0.1046,0.1555,0.2485
+regime2_val,regime2,ci_ppo_shielded,per_seed,105,final,nominal,26,69763.97,44410.48,371.29,4796.93,20185.26,0.0,0.0,0.0,123.96,0.0,0,0.0,0,1.0634,18.565,13.23,0.103,0.1517,0.2248
+regime2_val,regime2,ci_ppo_shielded,mean,mean,final,nominal,26,70581.066,44437.422,654.802,4894.68,20594.162,0.0,0.0,0.0,125.718,0.0,0.0,0.0,0.0,1.0749,32.7402,17.384,0.1035,0.1541,0.2296
+regime2_val,regime2,ci_ppo_shielded,std,std,final,nominal,26,605.988,78.3374,230.6175,81.2848,456.5823,0.0,0.0,0.0,5.2506,0.0,0.0,0.0,0.0,0.0162,11.5305,3.956,0.0017,0.0028,0.0127
+regime2_val,regime2,ci_ppo_diff_shield,per_seed,101,final,nominal,26,69498.56,44312.95,343.46,5009.0,19833.15,0.0,0.0,0.0,120.39,0.0,0,0.0,0,1.0972,17.173,8.88,0.1055,1.1546,1.3153
+regime2_val,regime2,ci_ppo_diff_shield,per_seed,102,final,nominal,26,70496.14,44305.04,566.79,5007.4,20616.92,0.0,0.0,0.0,124.12,0.0,0,0.0,0,1.0989,28.339,14.01,0.1062,1.1534,1.3245
+regime2_val,regime2,ci_ppo_diff_shield,per_seed,103,final,nominal,26,69835.22,44766.31,673.53,3965.98,20429.4,0.0,0.0,0.0,129.34,0.0,0,0.0,0,0.812,33.676,17.86,0.0682,1.1982,1.4118
+regime2_val,regime2,ci_ppo_diff_shield,per_seed,104,final,nominal,26,70185.16,44314.04,751.68,4674.56,20444.89,0.0,0.0,0.0,123.88,0.0,0,0.0,0,1.0031,37.584,18.29,0.0948,1.1865,1.4053
+regime2_val,regime2,ci_ppo_diff_shield,per_seed,105,final,nominal,26,68906.11,44456.56,840.2,3626.42,19982.94,0.0,0.0,0.0,122.58,0.0,0,0.0,0,0.7527,42.01,24.52,0.065,1.2188,1.3959
+regime2_val,regime2,ci_ppo_diff_shield,mean,mean,final,nominal,26,69784.238,44430.98,635.132,4456.672,20261.46,0.0,0.0,0.0,124.062,0.0,0.0,0.0,0.0,0.9528,31.7564,16.712,0.0879,1.1823,1.3706
+regime2_val,regime2,ci_ppo_diff_shield,std,std,final,nominal,26,617.0216,197.843,191.6076,629.6705,335.1213,0.0,0.0,0.0,3.3005,0.0,0.0,0.0,0.0,0.1617,9.5804,5.7752,0.02,0.0283,0.0467
+regime2_val,regime2,ci_ppo_diff_6d,per_seed,101,final,nominal,26,81683.5,44002.36,681.75,16996.11,20003.28,0.0,0.0,0.0001,150.04,0.0,0,0.0,0,1.9907,34.087,18.29,0.0,2.0282,2.25
+regime2_val,regime2,ci_ppo_diff_6d,per_seed,102,final,nominal,26,80712.45,44280.66,883.38,14982.51,20565.9,0.0,0.0,0.0001,145.8,0.0,0,0.0,0,1.3778,44.169,23.83,0.0,2.0329,2.2214
+regime2_val,regime2,ci_ppo_diff_6d,per_seed,103,final,nominal,26,86348.24,43980.71,177.94,22487.0,19702.6,0.0,0.0,0.0001,148.76,0.0,0,0.0,0,1.8202,8.897,3.94,0.0,1.9457,2.1286
+regime2_val,regime2,ci_ppo_diff_6d,per_seed,104,final,nominal,26,90170.14,44078.95,627.05,25294.25,20169.89,0.0,0.0,0.0001,157.7,0.0,0,0.0,0,2.1122,31.353,15.52,0.0,1.9952,2.2056
+regime2_val,regime2,ci_ppo_diff_6d,per_seed,105,final,nominal,26,92983.44,43680.31,771.46,28462.8,20068.88,0.0,0.0,0.0001,164.87,0.0,0,0.0,0,2.0013,38.573,24.13,0.0,2.0091,2.1828
+regime2_val,regime2,ci_ppo_diff_6d,mean,mean,final,nominal,26,86379.554,44004.598,628.316,21644.534,20102.11,0.0,0.0,0.0001,153.434,0.0,0.0,0.0,0.0,1.8604,31.4158,17.142,0.0,2.0022,2.1977
+regime2_val,regime2,ci_ppo_diff_6d,std,std,final,nominal,26,5295.0407,216.493,269.8348,5623.8185,312.32,0.0,0.0,0.0,7.756,0.0,0.0,0.0,0.0,0.2893,13.4917,8.2432,0.0,0.035,0.0457
+ood_val_2019-W04,regime1,PSM',single,N/A,N/A,nominal,1,8115.88,,,,0.0,0.0,0.0,0.0,120.46,0.0,0,0.0,0,6.4196,,,0.0,0.0325,0.052
+ood_val_2019-W04,regime1,PSM',single,N/A,N/A,pv_inverter_trip,1,8872.52,,,,0.0,0.0,0.0,0.0,121.39,0.0,0,0.0,0,7.5317,,,0.0,0.0331,0.0475
+ood_val_2019-W04,regime1,PSM',single,N/A,N/A,bess_derate,1,7941.62,,,,0.0,0.0,1.1932,36.6245,120.46,20.5976,20,11.9,10,6.1324,,,0.0,0.033,0.0458
+ood_val_2019-W04,regime1,PSM',single,N/A,N/A,grid_cap_reduction,1,8115.09,,,,0.0,0.0,62.7137,73.5808,120.46,73.5808,167,99.4,158,6.4493,,,0.0,0.0333,0.0469
+ood_val_2019-W04,regime1,PSM',single,N/A,N/A,forecast_noise,1,8110.55,,,,0.0,0.0,0.3298,8.2376,120.49,5.2246,19,11.31,4,6.4049,,,0.0,0.0343,0.049
+ood_val_2019-W04,regime1,Shield + PSM',single,N/A,N/A,nominal,1,8110.49,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.4108,,,0.5893,0.0357,0.0533
+ood_val_2019-W04,regime1,Shield + PSM',single,N/A,N/A,pv_inverter_trip,1,8866.84,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.5225,,,0.619,0.0358,0.0511
+ood_val_2019-W04,regime1,Shield + PSM',single,N/A,N/A,bess_derate,1,8121.1,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.4283,,,0.631,0.0358,0.0474
+ood_val_2019-W04,regime1,Shield + PSM',single,N/A,N/A,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.994,0.0358,0.0479
+ood_val_2019-W04,regime1,Shield + PSM',single,N/A,N/A,forecast_noise,1,8105.01,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,36,21.43,4,6.3959,,,0.5833,0.0364,0.0485
+ood_val_2019-W04,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,nominal,1,7875.5,,,,0.0,0.0,0.0,0.0,120.32,0.0,0,0.0,0,6.0412,,,0.0,3.5573,5.0769
+ood_val_2019-W04,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,pv_inverter_trip,1,8729.3,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.32,,,0.0,3.5673,3.7643
+ood_val_2019-W04,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,bess_derate,1,7888.08,,,,0.0,0.0,0.0,0.0,120.32,0.0,0,0.0,0,6.0602,,,0.0,3.5513,3.8813
+ood_val_2019-W04,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.0,3.6481,4.1283
+ood_val_2019-W04,regime1,"MPCPolicy(causal_noisy, H=24)",single,42,N/A,forecast_noise,1,7899.73,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,33,19.64,4,6.0645,,,0.0,3.6164,3.9377
+ood_val_2019-W04,regime1,"Shield + MPCPolicy(causal_noisy, H=24)",single,42,N/A,nominal,1,7875.5,,,,0.0,0.0,0.0,0.0,120.32,0.0,0,0.0,0,6.0412,,,0.0,3.5682,4.0764
+ood_val_2019-W04,regime1,"Shield + MPCPolicy(causal_noisy, H=24)",single,42,N/A,pv_inverter_trip,1,8729.3,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.32,,,0.0,3.5754,3.8443
+ood_val_2019-W04,regime1,"Shield + MPCPolicy(causal_noisy, H=24)",single,42,N/A,bess_derate,1,7888.08,,,,0.0,0.0,0.0,0.0,120.32,0.0,0,0.0,0,6.0602,,,0.0,3.6079,3.93
+ood_val_2019-W04,regime1,"Shield + MPCPolicy(causal_noisy, H=24)",single,42,N/A,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.0,3.6888,3.8711
+ood_val_2019-W04,regime1,"Shield + MPCPolicy(causal_noisy, H=24)",single,42,N/A,forecast_noise,1,7899.73,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,34,20.24,4,6.0645,,,0.0,3.6976,3.912
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,101,final,nominal,1,7911.05,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0209,,,0.5417,1.1904,1.3031
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,101,final,pv_inverter_trip,1,8770.48,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.3106,,,0.5833,1.1904,1.3241
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,101,final,bess_derate,1,7910.06,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0209,,,0.5417,1.1916,1.2881
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,101,final,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.9762,1.1943,1.3011
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,101,final,forecast_noise,1,7934.17,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,35,20.83,4,6.0602,,,0.5417,1.1636,1.3228
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,102,final,nominal,1,7900.31,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0722,,,0.5714,1.2104,1.3472
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,102,final,pv_inverter_trip,1,8758.19,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.3618,,,0.6131,1.2035,1.3413
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,102,final,bess_derate,1,7904.25,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0816,,,0.5714,1.2029,1.3134
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,102,final,grid_cap_reduction,1,17944.61,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.402,,,0.9762,1.2072,1.3025
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,102,final,forecast_noise,1,7924.12,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,35,20.83,4,6.1156,,,0.5714,1.2099,1.3501
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,103,final,nominal,1,7893.15,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0209,,,0.5417,1.1521,1.3453
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,103,final,pv_inverter_trip,1,8750.07,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.3106,,,0.5833,1.1506,1.3704
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,103,final,bess_derate,1,7890.07,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0209,,,0.5417,1.1982,1.4075
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,103,final,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.9762,1.208,1.5893
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,103,final,forecast_noise,1,8007.43,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,34,20.24,4,6.2182,,,0.5476,1.1865,1.2911
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,104,final,nominal,1,8298.48,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.6933,,,0.6071,1.1223,1.2522
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,104,final,pv_inverter_trip,1,9051.9,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.8064,,,0.6369,1.1249,1.7203
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,104,final,bess_derate,1,8279.18,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.6603,,,0.6071,1.1253,1.2727
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,104,final,grid_cap_reduction,1,18009.36,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.5053,,,0.9821,1.1177,1.2352
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,104,final,forecast_noise,1,8274.12,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,36,21.43,4,6.6519,,,0.5952,1.1204,1.261
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,105,final,nominal,1,7898.5,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0209,,,0.5417,1.1603,1.3565
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,105,final,pv_inverter_trip,1,8756.97,,,,0.0,0.0,0.0,0.0,121.35,0.0,0,0.0,0,7.3106,,,0.5833,1.1706,1.347
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,105,final,bess_derate,1,7893.82,,,,0.0,0.0,0.0,0.0,120.42,0.0,0,0.0,0,6.0297,,,0.5417,1.181,1.5652
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,105,final,grid_cap_reduction,1,17941.08,,,,0.0,0.0,0.0,0.0,186.62,0.0,0,0.0,0,22.3962,,,0.9762,1.1697,1.3792
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,per_seed,105,final,forecast_noise,1,7918.35,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,36,21.43,4,6.0602,,,0.5417,1.1795,1.4159
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,mean,mean,final,nominal,1,7980.298,,,,0.0,0.0,0.0,0.0,120.42,0.0,0.0,0.0,0.0,6.1656,,,0.5607,1.1671,1.3209
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,std,std,final,nominal,1,177.9879,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.2958,,,0.0289,0.0343,0.0436
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,mean,mean,final,pv_inverter_trip,1,8817.522,,,,0.0,0.0,0.0,0.0,121.35,0.0,0.0,0.0,0.0,7.42,,,0.6,1.168,1.4206
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,std,std,final,pv_inverter_trip,1,131.2275,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.2171,,,0.0243,0.0313,0.1683
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,mean,mean,final,bess_derate,1,7975.476,,,,0.0,0.0,0.0,0.0,120.42,0.0,0.0,0.0,0.0,6.1627,,,0.5607,1.1798,1.3694
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,std,std,final,bess_derate,1,169.9635,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.2793,,,0.0289,0.0316,0.1213
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,mean,mean,final,grid_cap_reduction,1,17955.442,,,,0.0,0.0,0.0,0.0,186.62,0.0,0.0,0.0,0.0,22.4192,,,0.9774,1.1794,1.3615
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,std,std,final,grid_cap_reduction,1,30.1798,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0482,,,0.0026,0.0378,0.1372
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,mean,mean,final,forecast_noise,1,8011.638,,,,0.0,0.0,0.3354,8.2876,120.45,5.2746,35.2,20.952,4.0,6.2212,,,0.5595,1.172,1.3282
+ood_val_2019-W04,regime1,clamped_ppo_diff_shield,std,std,final,forecast_noise,1,151.0611,,,,0.0,0.0,0.0,0.0,0.0,0.0,0.8367,0.4984,0.0,0.2493,,,0.0234,0.0333,0.0594

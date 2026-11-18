@@ -37,7 +37,7 @@
     "shielded": false,
     "ppo_use_minibatches": false,
     "ppo_value_epochs": 1,
-    "ppo_store_raw_action": false,
+    "ppo_store_raw_action": true,
     "ppo_init_log_std": -1.0,
     "ppo_init_log_std_shed": null,
     "charge_clamp": true,
@@ -60,54 +60,54 @@
     "grid_import_cap_kw": 368.153918,
     "reward_scale_effective": 0.096879
   },
-  "wall_clock_sec": 298.08317136764526,
-  "steps_per_sec": 1006.4305160991145,
+  "wall_clock_sec": 401.4030911922455,
+  "steps_per_sec": 747.3783998746534,
   "wall_clock_history": {
     "50000_steps": {
-      "chunk_time_sec": 51.01529598236084,
-      "cumulative_time_sec": 51.01529598236084,
-      "steps_per_sec": 980.0982046107919
+      "chunk_time_sec": 65.20293068885803,
+      "cumulative_time_sec": 65.20293068885803,
+      "steps_per_sec": 766.8366969361405
     },
     "100000_steps": {
-      "chunk_time_sec": 51.207101345062256,
-      "cumulative_time_sec": 102.2223973274231,
-      "steps_per_sec": 978.259193821246
+      "chunk_time_sec": 63.765437841415405,
+      "cumulative_time_sec": 128.96836853027344,
+      "steps_per_sec": 775.3839266139624
     },
     "150000_steps": {
-      "chunk_time_sec": 52.75634980201721,
-      "cumulative_time_sec": 154.9787471294403,
-      "steps_per_sec": 967.8746459004344
+      "chunk_time_sec": 70.14152669906616,
+      "cumulative_time_sec": 199.1098952293396,
+      "steps_per_sec": 753.3528146716484
     },
     "200000_steps": {
-      "chunk_time_sec": 43.597782373428345,
-      "cumulative_time_sec": 198.57652950286865,
-      "steps_per_sec": 1007.1683723181937
+      "chunk_time_sec": 65.71488451957703,
+      "cumulative_time_sec": 264.8247797489166,
+      "steps_per_sec": 755.2163365891298
     },
     "250000_steps": {
-      "chunk_time_sec": 51.01167368888855,
-      "cumulative_time_sec": 249.5882031917572,
-      "steps_per_sec": 1001.6499049353163
+      "chunk_time_sec": 69.38538336753845,
+      "cumulative_time_sec": 334.2101631164551,
+      "steps_per_sec": 748.0323089782516
     },
     "300000_steps": {
-      "chunk_time_sec": 46.102776765823364,
-      "cumulative_time_sec": 295.69097995758057,
-      "steps_per_sec": 1014.5727138617403
+      "chunk_time_sec": 64.52076745033264,
+      "cumulative_time_sec": 398.7309305667877,
+      "steps_per_sec": 752.3870786085149
     }
   },
   "eval_checkpoints": {
     "50000_steps": {
-      "energy_purchase_eur": 45203.911203650525,
+      "energy_purchase_eur": 45189.00154725695,
       "unserved_penalty_eur": 0.0,
-      "battery_wear_eur": 98.79999999999995,
+      "battery_wear_eur": 100.30627965045856,
       "demand_charge_eur": 0.0,
       "industrial_trip_eur": 0.0,
-      "total_cost_eur": 45302.71120365053,
+      "total_cost_eur": 45289.30782690741,
       "unserved_energy_pct": 0.0,
-      "violation_rate_pct": 10.691391941391942,
-      "violation_hours": 467,
-      "mean_exceedance_kw": 3.2565813861135284,
+      "violation_rate_pct": 10.668498168498168,
+      "violation_hours": 466,
+      "mean_exceedance_kw": 3.2518486343727275,
       "frac_saturated": 0.8333333333333333,
-      "soc_pinned_pct": 97.82509157509158,
+      "soc_pinned_pct": 96.26831501831502,
       "mean_charge_clipped_by_cap_kw": 0.0,
       "mean_charge_clipped_by_soc_kw": 0.0,
       "cap_clipped_steps_pct": 0.0,
@@ -115,18 +115,18 @@
       "clipped_pct": 0.0
     },
     "100000_steps": {
-      "energy_purchase_eur": 45204.21420100122,
+      "energy_purchase_eur": 45204.50251105218,
       "unserved_penalty_eur": 0.0,
       "battery_wear_eur": 98.79999999999995,
       "demand_charge_eur": 0.0,
       "industrial_trip_eur": 0.0,
-      "total_cost_eur": 45303.01420100122,
+      "total_cost_eur": 45303.302511052185,
       "unserved_energy_pct": 0.0,
       "violation_rate_pct": 10.691391941391942,
       "violation_hours": 467,
       "mean_exceedance_kw": 3.2565813861135284,
       "frac_saturated": 0.8333333333333333,
-      "soc_pinned_pct": 98.35164835164835,
+      "soc_pinned_pct": 98.1456043956044,
       "mean_charge_clipped_by_cap_kw": 0.0,
       "mean_charge_clipped_by_soc_kw": 0.0,
       "cap_clipped_steps_pct": 0.0,
@@ -134,18 +134,18 @@
       "clipped_pct": 0.0
     },
     "150000_steps": {
-      "energy_purchase_eur": 45204.347571162274,
-      "unserved_penalty_eur": 0.0,
+      "energy_purchase_eur": 45204.068289426854,
+      "unserved_penalty_eur": 0.012094139121472836,
       "battery_wear_eur": 98.79999999999995,
       "demand_charge_eur": 0.0,
       "industrial_trip_eur": 0.0,
-      "total_cost_eur": 45303.14757116228,
-      "unserved_energy_pct": 0.0,
+      "total_cost_eur": 45302.88038356598,
+      "unserved_energy_pct": 9.415294313609683e-07,
       "violation_rate_pct": 10.691391941391942,
       "violation_hours": 467,
       "mean_exceedance_kw": 3.2565813861135284,
       "frac_saturated": 0.8333333333333333,
-      "soc_pinned_pct": 98.23717948717949,
+      "soc_pinned_pct": 98.42032967032966,
       "mean_charge_clipped_by_cap_kw": 0.0,
       "mean_charge_clipped_by_soc_kw": 0.0,
       "cap_clipped_steps_pct": 0.0,
@@ -153,18 +153,18 @@
       "clipped_pct": 0.0
     },
     "200000_steps": {
-      "energy_purchase_eur": 45204.269341198495,
+      "energy_purchase_eur": 45204.50352945714,
       "unserved_penalty_eur": 0.0,
       "battery_wear_eur": 98.79999999999995,
       "demand_charge_eur": 0.0,
       "industrial_trip_eur": 0.0,
-      "total_cost_eur": 45303.0693411985,
+      "total_cost_eur": 45303.303529457145,
       "unserved_energy_pct": 0.0,
       "violation_rate_pct": 10.691391941391942,
       "violation_hours": 467,
       "mean_exceedance_kw": 3.2565813861135284,
       "frac_saturated": 0.8333333333333333,
-      "soc_pinned_pct": 98.3058608058608,
+      "soc_pinned_pct": 98.21428571428571,
       "mean_charge_clipped_by_cap_kw": 0.0,
       "mean_charge_clipped_by_soc_kw": 0.0,
       "cap_clipped_steps_pct": 0.0,
@@ -172,18 +172,18 @@
       "clipped_pct": 0.0
     },
     "250000_steps": {
-      "energy_purchase_eur": 45204.15855297237,
+      "energy_purchase_eur": 45204.17440965562,
       "unserved_penalty_eur": 0.0,
       "battery_wear_eur": 98.79999999999995,
       "demand_charge_eur": 0.0,
       "industrial_trip_eur": 0.0,
-      "total_cost_eur": 45302.95855297237,
+      "total_cost_eur": 45302.974409655624,
       "unserved_energy_pct": 0.0,
       "violation_rate_pct": 10.691391941391942,
       "violation_hours": 467,
       "mean_exceedance_kw": 3.2565813861135284,
-      "frac_saturated": 0.8333333333333333,
-      "soc_pinned_pct": 98.35164835164835,
+      "frac_saturated": 0.8335241147741147,
+      "soc_pinned_pct": 98.44322344322345,
       "mean_charge_clipped_by_cap_kw": 0.0,
       "mean_charge_clipped_by_soc_kw": 0.0,
       "cap_clipped_steps_pct": 0.0,
@@ -191,18 +191,18 @@
       "clipped_pct": 0.0
     },
     "300000_steps": {
-      "energy_purchase_eur": 45204.13497033506,
+      "energy_purchase_eur": 45203.944997219136,
       "unserved_penalty_eur": 0.0,
       "battery_wear_eur": 98.79999999999995,
       "demand_charge_eur": 0.0,
       "industrial_trip_eur": 0.0,
-      "total_cost_eur": 45302.93497033506,
+      "total_cost_eur": 45302.74499721914,
       "unserved_energy_pct": 0.0,
       "violation_rate_pct": 10.691391941391942,
       "violation_hours": 467,
       "mean_exceedance_kw": 3.2565813861135284,
       "frac_saturated": 0.8333333333333333,
-      "soc_pinned_pct": 98.35164835164835,
+      "soc_pinned_pct": 98.62637362637363,
       "mean_charge_clipped_by_cap_kw": 0.0,
       "mean_charge_clipped_by_soc_kw": 0.0,
       "cap_clipped_steps_pct": 0.0,
@@ -213,18 +213,18 @@
   "final_checkpoint": {
     "checkpoint": "300000_steps",
     "metrics": {
-      "energy_purchase_eur": 45204.13497033506,
+      "energy_purchase_eur": 45203.944997219136,
       "unserved_penalty_eur": 0.0,
       "battery_wear_eur": 98.79999999999995,
       "demand_charge_eur": 0.0,
       "industrial_trip_eur": 0.0,
-      "total_cost_eur": 45302.93497033506,
+      "total_cost_eur": 45302.74499721914,
       "unserved_energy_pct": 0.0,
       "violation_rate_pct": 10.691391941391942,
       "violation_hours": 467,
       "mean_exceedance_kw": 3.2565813861135284,
       "frac_saturated": 0.8333333333333333,
-      "soc_pinned_pct": 98.35164835164835,
+      "soc_pinned_pct": 98.62637362637363,
       "mean_charge_clipped_by_cap_kw": 0.0,
       "mean_charge_clipped_by_soc_kw": 0.0,
       "cap_clipped_steps_pct": 0.0,
@@ -236,18 +236,18 @@
   "best_checkpoint": {
     "checkpoint": "50000_steps",
     "metrics": {
-      "energy_purchase_eur": 45203.911203650525,
+      "energy_purchase_eur": 45189.00154725695,
       "unserved_penalty_eur": 0.0,
-      "battery_wear_eur": 98.79999999999995,
+      "battery_wear_eur": 100.30627965045856,
       "demand_charge_eur": 0.0,
       "industrial_trip_eur": 0.0,
-      "total_cost_eur": 45302.71120365053,
+      "total_cost_eur": 45289.30782690741,
       "unserved_energy_pct": 0.0,
-      "violation_rate_pct": 10.691391941391942,
-      "violation_hours": 467,
-      "mean_exceedance_kw": 3.2565813861135284,
+      "violation_rate_pct": 10.668498168498168,
+      "violation_hours": 466,
+      "mean_exceedance_kw": 3.2518486343727275,
       "frac_saturated": 0.8333333333333333,
-      "soc_pinned_pct": 97.82509157509158,
+      "soc_pinned_pct": 96.26831501831502,
       "mean_charge_clipped_by_cap_kw": 0.0,
       "mean_charge_clipped_by_soc_kw": 0.0,
       "cap_clipped_steps_pct": 0.0,
@@ -258,18 +258,18 @@
     "role": "SECONDARY (reported only to quantify checkpoint-selection optimism)"
   },
   "final_metrics": {
-    "energy_purchase_eur": 45204.13497033506,
+    "energy_purchase_eur": 45203.944997219136,
     "unserved_penalty_eur": 0.0,
     "battery_wear_eur": 98.79999999999995,
     "demand_charge_eur": 0.0,
     "industrial_trip_eur": 0.0,
-    "total_cost_eur": 45302.93497033506,
+    "total_cost_eur": 45302.74499721914,
     "unserved_energy_pct": 0.0,
     "violation_rate_pct": 10.691391941391942,
     "violation_hours": 467,
     "mean_exceedance_kw": 3.2565813861135284,
     "frac_saturated": 0.8333333333333333,
-    "soc_pinned_pct": 98.35164835164835,
+    "soc_pinned_pct": 98.62637362637363,
     "mean_charge_clipped_by_cap_kw": 0.0,
     "mean_charge_clipped_by_soc_kw": 0.0,
     "cap_clipped_steps_pct": 0.0,
@@ -277,9 +277,9 @@
     "clipped_pct": 0.0
   },
   "training_time_metrics": {
-    "total_cost_eur": 3504682.1618055105,
-    "mean_exceedance_kw": 2.6548735084031927,
-    "violation_rate_pct": 8.541666666666666,
+    "total_cost_eur": 3655000.8559578415,
+    "mean_exceedance_kw": 2.5624076952314363,
+    "violation_rate_pct": 8.303,
     "cost_limit_d_main": 0.05,
     "satisfies_d_main_on_train": false
   },
@@ -293,8 +293,8 @@
   "degeneracy_check": {
     "is_degenerate": false,
     "summary": "None (healthy dynamic dispatch)",
-    "mean_battery_cmd": -0.27529609203338623,
-    "mean_shed_cmd": -0.9877499938011169,
-    "soc_pinned_bounds_pct": 71.68433333333334
+    "mean_battery_cmd": -0.32915782928466797,
+    "mean_shed_cmd": -0.9765968322753906,
+    "soc_pinned_bounds_pct": 75.44433333333333
   }
 }
