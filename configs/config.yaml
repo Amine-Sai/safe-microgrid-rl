@@ -202,11 +202,13 @@ experiments:
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
+    ppo_store_raw_action: true
   clamped_ppo_lagrangian:
     method: ppo_lagrangian
     reward_scale: 0.096879
     total_steps: 300000
     eval_interval_steps: 50000
+    ppo_store_raw_action: true
   clamped_ppo_residual:
     method: ppo_lagrangian
     residual_on_heuristic: true
